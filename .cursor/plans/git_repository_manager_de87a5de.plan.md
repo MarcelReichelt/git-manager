@@ -4,37 +4,37 @@ overview: Greenfield TypeScript CLI/TUI git manager with first-run setup, in-too
 todos:
   - id: scaffold
     content: "Initialize npm project: TypeScript, tsup, commander, vitest, package bin entry"
-    status: pending
+    status: completed
   - id: registry
     content: SQLite registry (paths), primary_branch, startup local/remote validation
-    status: pending
+    status: completed
   - id: config
     content: Config loader/writer, wizard (incl. clone_root), settings show/edit
-    status: pending
+    status: completed
   - id: context
     content: Context resolver, layout inference (sibling vs workspaces), cwd matching
-    status: pending
+    status: completed
   - id: commands-core
     content: Wizard, repo switch picker (clone/add), register, clone, worktree switch
-    status: pending
+    status: completed
   - id: git-ops
     content: "Git service: branches, worktree push/pull, worktrees, changes/status"
-    status: pending
+    status: completed
   - id: merge
     content: "Merge service: pull all remote source/target branches first, conflict reporting"
-    status: pending
+    status: completed
   - id: copy-hooks
     content: Hook runner + global/local plugins (jiti) + copy service + example plugins
-    status: pending
+    status: completed
   - id: tui
     content: Ink split TUI, repo picker, settings overlay, changes, action bar
-    status: pending
+    status: completed
   - id: tests
     content: Vitest tests for setup wizard, settings R/W, clone, merge, push/pull, hooks
-    status: pending
+    status: completed
   - id: docs
     content: README + docs/ guides (getting started, use cases, config, plugins)
-    status: pending
+    status: completed
 isProject: false
 ---
 

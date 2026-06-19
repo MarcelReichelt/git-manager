@@ -1,0 +1,42 @@
+{
+  "name": "git-manager",
+  "version": "0.1.0",
+  "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
+  "type": "module",
+  "bin": {
+    "git-manager": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "link:global": "node scripts/link-global.mjs",
+    "unlink:global": "node scripts/unlink-global.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "yarn@4.9.2",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@inquirer/prompts": "^7.3.2",
+    "better-sqlite3": "^11.8.1",
+    "commander": "^13.1.0",
+    "execa": "^9.5.2",
+    "ink": "^5.2.0",
+    "jiti": "^2.4.2",
+    "react": "^18.3.1",
+    "simple-git": "^3.27.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.10",
+    "@types/react": "^18.3.18",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}

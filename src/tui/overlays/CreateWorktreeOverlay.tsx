@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { NEW_BRANCH_OPTION } from '../layout.js';
+import { pickerDialogWidth, pickerInnerHeight, truncatePickerHint } from '../dialog.js';
 import { sliceScrollLines, scrollIndicator } from '../scroll.js';
 
 export type CreateWorktreeOverlayState = {
@@ -14,7 +15,6 @@ export type CreateWorktreeOverlayState = {
 
 interface CreateWorktreeOverlayProps {
   state: CreateWorktreeOverlayState;
-  height: number;
   width: number;
 }
 
@@ -29,10 +29,21 @@ export function pickerLabel(choice: string): string {
   return choice;
 }
 
-export function CreateWorktreeOverlay({ state, height, width }: CreateWorktreeOverlayProps) {
+export function createWorktreeDialogWidth(columns: number): number {
+  return pickerDialogWidth(columns);
+}
+
+export function createWorktreeInnerHeight(state: CreateWorktreeOverlayState): number {
+  if (state.phase !== 'pick') {
+    return 1;
+  }
+  return Math.max(1, pickerInnerHeight(pickerChoices(state.branches).length));
+}
+
+export function CreateWorktreeOverlay({ state, width }: CreateWorktreeOverlayProps) {
   if (state.phase === 'loading') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} height={height}>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={width}>
         <Text bold color="cyan">
           Create worktree
         </Text>
@@ -43,7 +54,7 @@ export function CreateWorktreeOverlay({ state, height, width }: CreateWorktreeOv
 
   if (state.phase === 'name') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} height={height}>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={width}>
         <Text bold color="cyan">
           New branch name
         </Text>
@@ -52,13 +63,13 @@ export function CreateWorktreeOverlay({ state, height, width }: CreateWorktreeOv
           <Text color="cyan">▌</Text>
         </Text>
         {state.error ? <Text color="red">{state.error}</Text> : null}
-        <Text color="gray">Enter confirm · Esc back · Type branch name</Text>
+        <Text color="gray">{truncatePickerHint(width - 2, 'Enter confirm · Esc back · Type branch name')}</Text>
       </Box>
     );
   }
 
   const choices = pickerChoices(state.branches);
-  const innerHeight = Math.max(3, height - 4);
+  const innerHeight = createWorktreeInnerHeight(state);
   const rows = choices.map((choice, index) => ({
     choice,
     index,
@@ -73,15 +84,15 @@ export function CreateWorktreeOverlay({ state, height, width }: CreateWorktreeOv
   const indicator = scrollIndicator(hiddenAbove, hiddenBelow);
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} height={height}>
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={width}>
       <Text bold color="cyan">
         Create worktree — pick branch
       </Text>
-      <Text color="gray">{truncateHint(width)}</Text>
+      <Text color="gray">{truncatePickerHint(width - 2)}</Text>
       {choices.length === 1 ? (
         <Text dimColor>No remote branches without a checkout. Pick “Create new branch”.</Text>
       ) : null}
-      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+      <Box flexDirection="column" overflow="hidden">
         {visible.map((row) => (
           <Text key={row.choice} color={row.selected ? 'cyan' : undefined} inverse={row.selected}>
             {row.selected ? '› ' : '  '}
@@ -93,14 +104,6 @@ export function CreateWorktreeOverlay({ state, height, width }: CreateWorktreeOv
       {state.error ? <Text color="red">{state.error}</Text> : null}
     </Box>
   );
-}
-
-function truncateHint(width: number): string {
-  const hint = '↑/↓ select · Enter confirm · Esc cancel';
-  if (hint.length <= width) {
-    return hint;
-  }
-  return hint.slice(0, width);
 }
 
 export function initialCreateOverlayState(): CreateWorktreeOverlayState {

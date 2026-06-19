@@ -103,6 +103,39 @@ describe('register', () => {
   });
 });
 
+describe('ensureActiveRepository', () => {
+  let cleanup: () => void;
+  let base: string;
+  let previousCwd: string;
+
+  beforeEach(() => {
+    previousCwd = process.cwd();
+    base = createTempDir();
+    const env = setupTestEnv(base);
+    cleanup = env.cleanup;
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    cleanup();
+  });
+
+  it('auto-selects repository when started inside a git repo', async () => {
+    const repoPath = join(base, 'test-repo');
+    initRepo(repoPath);
+    process.chdir(repoPath);
+
+    const { ensureActiveRepository } = await import('../src/core/startup-context.js');
+    const { getActiveContext } = await import('../src/core/active-session.js');
+
+    await ensureActiveRepository({ promptIfMissing: false });
+
+    const ctx = getActiveContext();
+    expect(ctx).toBeDefined();
+    expect(ctx!.repository.name).toBe('test-repo');
+  });
+});
+
 describe('gitignore workspaces', () => {
   it('appends .workspaces to gitignore', async () => {
     const base = createTempDir();

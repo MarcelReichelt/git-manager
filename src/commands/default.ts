@@ -1,12 +1,11 @@
 import { select } from '@inquirer/prompts';
 import { ensureSetup } from './setup.js';
 import { runStartupHealthCheck } from './doctor.js';
-import { registerFromCwd } from '../core/register-service.js';
-import { getActiveContext, getActiveRepository } from '../core/active-session.js';
+import { getActiveContext } from '../core/active-session.js';
 import { printStatusHeader } from '../core/status-display.js';
 import { getChangesForPath } from '../core/changes-service.js';
 import { repoPicker } from './repo.js';
-import { isGitRepo } from '../core/git-service.js';
+import { ensureActiveRepository } from '../core/startup-context.js';
 import { showChanges } from './changes.js';
 import { openWorktree } from './worktree.js';
 import { editSettingsInteractive } from './settings.js';
@@ -19,11 +18,7 @@ export async function runDefaultCommand(): Promise<void> {
   await ensureSetup();
   await runStartupHealthCheck();
 
-  if (await isGitRepo(process.cwd())) {
-    await registerFromCwd();
-  } else if (!getActiveRepository()) {
-    await repoPicker();
-  }
+  await ensureActiveRepository();
 
   const ctx = getActiveContext();
   let changes;

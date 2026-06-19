@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import { ensureSetup } from '../commands/setup.js';
-import { getActiveContext, switchWorktree } from '../core/active-session.js';
+import { getActiveContext, switchWorktree, type ActiveContext } from '../core/active-session.js';
+import { ensureActiveRepository } from '../core/startup-context.js';
 import {
   listRepositories,
   listWorktrees,
@@ -15,13 +16,15 @@ import { pullWorktree, pushWorktree } from '../core/sync-service.js';
 import { removeWorktreeEntry } from '../core/worktree-service.js';
 import { mergeIntoPrimary, mergeFromPrimary } from '../core/merge-service.js';
 import { syncWorktreesFromGit } from '../core/worktree-service.js';
-import { repoPicker } from '../commands/repo.js';
 import { ChangesPanel, flattenChanges } from './panels/ChangesPanel.js';
 import { WorktreePanel } from './panels/WorktreePanel.js';
 import { sliceScrollLines } from './scroll.js';
 import { Footer } from './components/Footer.js';
+import { DialogOverlay } from './components/DialogOverlay.js';
 import {
   CreateWorktreeOverlay,
+  createWorktreeDialogWidth,
+  createWorktreeInnerHeight,
   initialCreateOverlayState,
   type CreateWorktreeOverlayState,
 } from './overlays/CreateWorktreeOverlay.js';
@@ -31,6 +34,18 @@ import {
   loadCreateOverlayBranches,
   movePickerSelection,
 } from './overlays/create-worktree.js';
+import {
+  RepoPickerOverlay,
+  initialRepoPickerState,
+  repoPickerDialogWidth,
+  repoPickerInnerHeight,
+  type RepoPickerOverlayState,
+} from './overlays/RepoPickerOverlay.js';
+import {
+  buildRepoPickerChoices,
+  confirmRepoPicker,
+  moveRepoPickerSelection,
+} from './overlays/repo-picker.js';
 
 type PanelFocus = 'worktrees' | 'changes';
 
@@ -57,9 +72,10 @@ function App() {
   const [changes, setChanges] = useState<WorktreeChanges[]>([]);
   const [message, setMessage] = useState('');
   const [overlay, setOverlay] = useState<CreateWorktreeOverlayState | null>(null);
-  const ctx = getActiveContext();
+  const [repoOverlay, setRepoOverlay] = useState<RepoPickerOverlayState | null>(null);
+  const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const overlayPickerHeight = Math.max(8, Math.floor(paneHeight * 0.7));
+  const dialogOpen = overlay !== null || repoOverlay !== null;
 
   const showMessage = useCallback((text: string) => {
     setMessage(text);
@@ -84,6 +100,8 @@ function App() {
   useEffect(() => {
     (async () => {
       await ensureSetup();
+      await ensureActiveRepository({ promptIfMissing: false });
+      setCtx(getActiveContext());
       setReady(true);
       await refresh();
     })();
@@ -95,7 +113,7 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (overlay) {
+    if (overlay || repoOverlay) {
       return;
     }
     const config = loadGlobalConfig();
@@ -103,7 +121,7 @@ function App() {
     if (interval <= 0) return;
     const id = setInterval(refresh, interval);
     return () => clearInterval(id);
-  }, [refresh, overlay]);
+  }, [refresh, overlay, repoOverlay]);
 
   useEffect(() => {
     if (!overlay || overlay.phase !== 'loading' || !ctx) {
@@ -192,6 +210,38 @@ function App() {
     setOverlay(null);
   }, []);
 
+  const openRepoOverlay = useCallback(() => {
+    setRepoOverlay(initialRepoPickerState(buildRepoPickerChoices()));
+  }, []);
+
+  const closeRepoOverlay = useCallback(() => {
+    setRepoOverlay(null);
+  }, []);
+
+  const submitRepoOverlay = useCallback(async () => {
+    if (!repoOverlay) {
+      return;
+    }
+    try {
+      const result = await confirmRepoPicker(repoOverlay);
+      if (result.action === 'error') {
+        setRepoOverlay({ ...repoOverlay, error: result.message });
+        return;
+      }
+      if (result.action === 'unsupported') {
+        closeRepoOverlay();
+        showMessage(result.message);
+        return;
+      }
+      closeRepoOverlay();
+      setCtx(getActiveContext());
+      showMessage(`Active repository: ${result.repository.name}`);
+      await refresh();
+    } catch (err) {
+      setRepoOverlay({ ...repoOverlay, error: (err as Error).message });
+    }
+  }, [repoOverlay, closeRepoOverlay, showMessage, refresh]);
+
   const submitCreateOverlay = useCallback(async () => {
     if (!overlay || !ctx) {
       return;
@@ -221,6 +271,34 @@ function App() {
   }, [overlay, ctx, closeOverlay, showMessage, refresh]);
 
   useInput((input, key) => {
+    if (repoOverlay) {
+      if (key.escape) {
+        closeRepoOverlay();
+        return;
+      }
+      if (key.upArrow) {
+        setRepoOverlay((current) =>
+          current
+            ? moveRepoPickerSelection(current, -1, Math.max(1, repoPickerInnerHeight(current)))
+            : current,
+        );
+        return;
+      }
+      if (key.downArrow) {
+        setRepoOverlay((current) =>
+          current
+            ? moveRepoPickerSelection(current, 1, Math.max(1, repoPickerInnerHeight(current)))
+            : current,
+        );
+        return;
+      }
+      if (key.return) {
+        void submitRepoOverlay();
+        return;
+      }
+      return;
+    }
+
     if (overlay) {
       if (key.escape) {
         if (overlay.phase === 'name') {
@@ -239,7 +317,7 @@ function App() {
         if (key.upArrow) {
           setOverlay((current) =>
             current
-              ? movePickerSelection(current, -1, Math.max(3, overlayPickerHeight - 4))
+              ? movePickerSelection(current, -1, createWorktreeInnerHeight(current))
               : current,
           );
           return;
@@ -247,7 +325,7 @@ function App() {
         if (key.downArrow) {
           setOverlay((current) =>
             current
-              ? movePickerSelection(current, 1, Math.max(3, overlayPickerHeight - 4))
+              ? movePickerSelection(current, 1, createWorktreeInnerHeight(current))
               : current,
           );
           return;
@@ -314,6 +392,10 @@ function App() {
       void refresh();
       return;
     }
+    if (input === 'R') {
+      openRepoOverlay();
+      return;
+    }
     if (!ctx || !selectedWt) {
       return;
     }
@@ -346,9 +428,6 @@ function App() {
           await refresh();
         } else if (input === 'w') {
           openCreateOverlay();
-        } else if (input === 'R') {
-          exit();
-          await repoPicker();
         }
       } catch (err) {
         showMessage((err as Error).message);
@@ -393,29 +472,41 @@ function App() {
         </Box>
       </Box>
 
-      <Box height={paneHeight} flexDirection="row" overflow="hidden">
+      <Box height={paneHeight} flexDirection="row" overflow="hidden" position="relative">
+        <Box flexDirection="row" width={columns} height={paneHeight} dimColor={dialogOpen}>
+          <WorktreePanel
+            worktrees={worktrees}
+            changes={changes}
+            activeWorktreeId={ctx.worktree.id}
+            selectedIndex={selectedIndex}
+            height={paneHeight}
+            scrollOffset={worktreeScroll}
+            focused={focus === 'worktrees' && !dialogOpen}
+          />
+          <ChangesPanel
+            changes={selectedChanges}
+            label={selectedWt?.label ?? selectedWt?.branch ?? 'none'}
+            height={paneHeight}
+            scrollOffset={changesScroll}
+            focused={focus === 'changes' && !dialogOpen}
+          />
+        </Box>
         {overlay ? (
-          <CreateWorktreeOverlay state={overlay} height={paneHeight} width={columns} />
-        ) : (
-          <>
-            <WorktreePanel
-              worktrees={worktrees}
-              changes={changes}
-              activeWorktreeId={ctx.worktree.id}
-              selectedIndex={selectedIndex}
-              height={paneHeight}
-              scrollOffset={worktreeScroll}
-              focused={focus === 'worktrees'}
+          <DialogOverlay width={columns} height={paneHeight}>
+            <CreateWorktreeOverlay
+              state={overlay}
+              width={createWorktreeDialogWidth(columns)}
             />
-            <ChangesPanel
-              changes={selectedChanges}
-              label={selectedWt?.label ?? selectedWt?.branch ?? 'none'}
-              height={paneHeight}
-              scrollOffset={changesScroll}
-              focused={focus === 'changes'}
+          </DialogOverlay>
+        ) : null}
+        {repoOverlay ? (
+          <DialogOverlay width={columns} height={paneHeight}>
+            <RepoPickerOverlay
+              state={repoOverlay}
+              width={repoPickerDialogWidth(columns)}
             />
-          </>
-        )}
+          </DialogOverlay>
+        ) : null}
       </Box>
 
       <Box height={FOOTER_HEIGHT} overflow="hidden">

@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { ensureActiveRepository } from '../core/startup-context.js';
 
 export async function launchTui(): Promise<void> {
+  await ensureActiveRepository({ promptIfMissing: false });
   const tuiPath = join(dirname(fileURLToPath(import.meta.url)), 'tui', 'index.js');
   const child = spawn(process.execPath, [tuiPath], { stdio: 'inherit' });
   return new Promise((resolve, reject) => {

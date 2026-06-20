@@ -13,3 +13,5 @@ package-lock.json
 
 .pnp.*
 .workspaces/
+.npmrc
+.env

@@ -19,6 +19,7 @@ import { syncWorktreesFromGit } from '../core/worktree-service.js';
 import { ChangesPanel, flattenChanges } from './panels/ChangesPanel.js';
 import { WorktreePanel } from './panels/WorktreePanel.js';
 import { sliceScrollLines } from './scroll.js';
+import { resolveWorktreeSelectionIndex } from './selection.js';
 import { Footer } from './components/Footer.js';
 import { DialogOverlay } from './components/DialogOverlay.js';
 import {
@@ -75,6 +76,7 @@ function App() {
   const [repoOverlay, setRepoOverlay] = useState<RepoPickerOverlayState | null>(null);
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
   const dialogOpen = overlay !== null || repoOverlay !== null;
 
   const showMessage = useCallback((text: string) => {
@@ -93,8 +95,13 @@ function App() {
     setWorktrees(wts);
     const ch = await getChangesForWorktrees(wts);
     setChanges(ch);
-    const idx = wts.findIndex((w) => w.id === active.worktree.id);
-    if (idx >= 0) setSelectedIndex(idx);
+    setSelectedIndex((prevIndex) =>
+      resolveWorktreeSelectionIndex(wts, {
+        previousWorktreeId: selectedWorktreeIdRef.current,
+        activeWorktreeId: active.worktree.id,
+        previousIndex: prevIndex,
+      }),
+    );
   }, []);
 
   useEffect(() => {
@@ -166,6 +173,13 @@ function App() {
     () => sliceScrollLines(worktrees, innerPaneHeight, 0).maxScroll,
     [worktrees, innerPaneHeight],
   );
+
+  useEffect(() => {
+    const wt = worktrees[selectedIndex];
+    if (wt) {
+      selectedWorktreeIdRef.current = wt.id;
+    }
+  }, [selectedIndex, worktrees]);
 
   useEffect(() => {
     setChangesScroll(0);

@@ -1,5 +1,5 @@
 import type { Repository, Worktree } from '../../core/registry.js';
-import { listRemoteBranches } from '../../core/git-service.js';
+import { hasLocalBranch, listLocalBranches, listRemoteBranches } from '../../core/git-service.js';
 import { createWorktree } from '../../core/worktree-service.js';
 import { branchesAvailableForWorktree } from '../layout.js';
 import { NEW_BRANCH_OPTION } from '../layout.js';
@@ -19,7 +19,9 @@ export async function loadCreateOverlayBranches(
   worktrees: Worktree[],
 ): Promise<string[]> {
   const remoteBranches = await listRemoteBranches(repository.git_root);
-  return branchesAvailableForWorktree(remoteBranches, worktrees);
+  const localBranches = await listLocalBranches(repository.git_root);
+  const branches = [...new Set([...remoteBranches, ...localBranches])].sort();
+  return branchesAvailableForWorktree(branches, worktrees);
 }
 
 export function movePickerSelection(
@@ -71,5 +73,7 @@ export async function executeCreateWorktree(
   branch: string,
   newBranch: boolean,
 ): Promise<Worktree> {
-  return createWorktree(repository, branch, { newBranch });
+  const createNewBranch =
+    newBranch && !(await hasLocalBranch(repository.git_root, branch));
+  return createWorktree(repository, branch, { newBranch: createNewBranch });
 }

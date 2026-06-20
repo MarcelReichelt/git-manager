@@ -47,7 +47,7 @@ export function CreateWorktreeOverlay({ state, width }: CreateWorktreeOverlayPro
         <Text bold color="cyan">
           Create worktree
         </Text>
-        <Text>Loading remote branches…</Text>
+        <Text>Loading branches…</Text>
       </Box>
     );
   }

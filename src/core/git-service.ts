@@ -73,6 +73,11 @@ export async function listRemoteBranches(gitRoot: string): Promise<string[]> {
     .sort();
 }
 
+export async function listLocalBranches(gitRoot: string): Promise<string[]> {
+  const branches = await git(gitRoot).branch(['-l']);
+  return Object.keys(branches.branches).sort();
+}
+
 export async function getUpstream(cwd: string): Promise<string | null> {
   try {
     const upstream = await git(cwd).revparse(['--abbrev-ref', '@{upstream}']);
@@ -95,6 +100,15 @@ export async function getAheadBehind(cwd: string): Promise<{ ahead: number; behi
 export async function hasRemoteBranch(gitRoot: string, branch: string): Promise<boolean> {
   try {
     await git(gitRoot).raw(['rev-parse', '--verify', `origin/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function hasLocalBranch(gitRoot: string, branch: string): Promise<boolean> {
+  try {
+    await git(gitRoot).raw(['rev-parse', '--verify', `refs/heads/${branch}`]);
     return true;
   } catch {
     return false;

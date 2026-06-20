@@ -136,6 +136,42 @@ describe('ensureActiveRepository', () => {
   });
 });
 
+describe('createWorktree', () => {
+  let cleanup: () => void;
+  let base: string;
+
+  beforeEach(() => {
+    base = createTempDir();
+    const env = setupTestEnv(base);
+    cleanup = env.cleanup;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('recreates worktree for existing local branch after removal', async () => {
+    const repoPath = join(base, 'test-repo');
+    initRepo(repoPath);
+    const ctx = await resolveFromGitRoot(repoPath);
+    const repo = await registerContext(ctx);
+    const { createWorktree, removeWorktreeEntry } = await import('../src/core/worktree-service.js');
+    const { listWorktrees } = await import('../src/core/registry.js');
+
+    const wt = await createWorktree(repo, 'test', { newBranch: true });
+    expect(wt.branch).toBe('test');
+
+    await removeWorktreeEntry(repo, wt);
+
+    const recreated = await createWorktree(repo, 'test');
+    expect(recreated.branch).toBe('test');
+    expect(recreated.path).toBe(wt.path);
+
+    const worktrees = listWorktrees(repo.id);
+    expect(worktrees.filter((w) => w.branch === 'test')).toHaveLength(1);
+  });
+});
+
 describe('gitignore workspaces', () => {
   it('appends .workspaces to gitignore', async () => {
     const base = createTempDir();

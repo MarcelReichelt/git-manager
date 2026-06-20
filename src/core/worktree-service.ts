@@ -5,8 +5,8 @@ import {
   ensureGitignoreEntry,
   fetchAll,
   getCurrentBranch,
+  hasLocalBranch,
   hasRemoteBranch,
-  listRemoteBranches,
   listWorktrees as gitListWorktrees,
   removeWorktree,
 } from './git-service.js';
@@ -94,21 +94,15 @@ export async function createWorktree(
 
   if (options.newBranch) {
     await addWorktree(repository.git_root, targetPath, branch, { newBranch: true });
+  } else if (await hasLocalBranch(repository.git_root, branch)) {
+    await addWorktree(repository.git_root, targetPath, branch);
+  } else if (await hasRemoteBranch(repository.git_root, branch)) {
+    await addWorktree(repository.git_root, targetPath, branch, {
+      newBranch: true,
+      track: `origin/${branch}`,
+    });
   } else {
-    const remotes = await listRemoteBranches(repository.git_root);
-    if (remotes.includes(branch)) {
-      await addWorktree(repository.git_root, targetPath, branch, {
-        newBranch: true,
-        track: `origin/${branch}`,
-      });
-    } else if (await hasRemoteBranch(repository.git_root, branch)) {
-      await addWorktree(repository.git_root, targetPath, branch, {
-        newBranch: true,
-        track: `origin/${branch}`,
-      });
-    } else {
-      await addWorktree(repository.git_root, targetPath, branch, { newBranch: true });
-    }
+    await addWorktree(repository.git_root, targetPath, branch, { newBranch: true });
   }
 
   if (repository.layout_mode === 'workspaces') {

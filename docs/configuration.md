@@ -42,4 +42,4 @@ commands = ["yarn"]
 
 `defaults (code) → global config → per-repo config → CLI flags`
 
-Edit via `git-manager settings edit` or TUI settings (planned overlay).
+Edit via `git-manager settings edit` or TUI settings (`S` or `,` in the UI).

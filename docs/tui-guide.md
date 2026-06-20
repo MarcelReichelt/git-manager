@@ -21,7 +21,8 @@ Launch with `git-manager ui`.
 | w | Create worktree (branch picker overlay) |
 | x | Remove selected worktree |
 | M / m | Merge into / from primary |
-| R | Change repository (opens CLI picker) |
+| R | Change repository (picker overlay) |
+| S / , | Settings (global config overlay) |
 | r | Refresh |
 | q | Quit |
 

@@ -47,6 +47,20 @@ import {
   confirmRepoPicker,
   moveRepoPickerSelection,
 } from './overlays/repo-picker.js';
+import {
+  SettingsOverlay,
+  settingsDialogWidth,
+  settingsInnerHeight,
+  type SettingsOverlayState,
+} from './overlays/SettingsOverlay.js';
+import {
+  backToSettingsList,
+  createInitialSettingsState,
+  moveSettingsSelection,
+  openSettingsField,
+  saveLayoutModePick,
+  saveSettingsEdit,
+} from './overlays/settings-overlay.js';
 
 type PanelFocus = 'worktrees' | 'changes';
 
@@ -74,10 +88,11 @@ function App() {
   const [message, setMessage] = useState('');
   const [overlay, setOverlay] = useState<CreateWorktreeOverlayState | null>(null);
   const [repoOverlay, setRepoOverlay] = useState<RepoPickerOverlayState | null>(null);
+  const [settingsOverlay, setSettingsOverlay] = useState<SettingsOverlayState | null>(null);
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
-  const dialogOpen = overlay !== null || repoOverlay !== null;
+  const dialogOpen = overlay !== null || repoOverlay !== null || settingsOverlay !== null;
 
   const showMessage = useCallback((text: string) => {
     setMessage(text);
@@ -120,7 +135,7 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (overlay || repoOverlay) {
+    if (overlay || repoOverlay || settingsOverlay) {
       return;
     }
     const config = loadGlobalConfig();
@@ -128,7 +143,7 @@ function App() {
     if (interval <= 0) return;
     const id = setInterval(refresh, interval);
     return () => clearInterval(id);
-  }, [refresh, overlay, repoOverlay]);
+  }, [refresh, overlay, repoOverlay, settingsOverlay]);
 
   useEffect(() => {
     if (!overlay || overlay.phase !== 'loading' || !ctx) {
@@ -232,6 +247,14 @@ function App() {
     setRepoOverlay(null);
   }, []);
 
+  const openSettingsOverlay = useCallback(() => {
+    setSettingsOverlay(createInitialSettingsState());
+  }, []);
+
+  const closeSettingsOverlay = useCallback(() => {
+    setSettingsOverlay(null);
+  }, []);
+
   const submitRepoOverlay = useCallback(async () => {
     if (!repoOverlay) {
       return;
@@ -285,6 +308,98 @@ function App() {
   }, [overlay, ctx, closeOverlay, showMessage, refresh]);
 
   useInput((input, key) => {
+    if (settingsOverlay) {
+      const innerHeight = Math.max(1, settingsInnerHeight(settingsOverlay));
+
+      if (key.escape) {
+        if (settingsOverlay.phase === 'list') {
+          closeSettingsOverlay();
+        } else {
+          setSettingsOverlay(backToSettingsList(settingsOverlay));
+        }
+        return;
+      }
+
+      if (settingsOverlay.phase === 'list' || settingsOverlay.phase === 'pick_layout') {
+        if (key.upArrow) {
+          setSettingsOverlay((current) =>
+            current ? moveSettingsSelection(current, -1, innerHeight) : current,
+          );
+          return;
+        }
+        if (key.downArrow) {
+          setSettingsOverlay((current) =>
+            current ? moveSettingsSelection(current, 1, innerHeight) : current,
+          );
+          return;
+        }
+        if (key.return) {
+          if (settingsOverlay.phase === 'pick_layout') {
+            const result = saveLayoutModePick(settingsOverlay);
+            if (result.action === 'error') {
+              setSettingsOverlay({ ...settingsOverlay, error: result.message });
+              return;
+            }
+            setSettingsOverlay(result.state);
+            showMessage(result.message);
+            return;
+          }
+
+          const openResult = openSettingsField(settingsOverlay);
+          if (openResult.action === 'error') {
+            setSettingsOverlay({ ...settingsOverlay, error: openResult.message });
+            return;
+          }
+          if (openResult.action === 'pick_layout') {
+            setSettingsOverlay({
+              ...settingsOverlay,
+              phase: 'pick_layout',
+              layoutPickerIndex: openResult.index,
+              scroll: 0,
+              error: undefined,
+            });
+            return;
+          }
+          setSettingsOverlay({
+            ...settingsOverlay,
+            phase: 'edit',
+            editValue: openResult.value,
+            error: undefined,
+          });
+        }
+        return;
+      }
+
+      if (settingsOverlay.phase === 'edit') {
+        if (key.return) {
+          const result = saveSettingsEdit(settingsOverlay);
+          if (result.action === 'error') {
+            setSettingsOverlay({ ...settingsOverlay, error: result.message });
+            return;
+          }
+          setSettingsOverlay(result.state);
+          showMessage(result.message);
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setSettingsOverlay({
+            ...settingsOverlay,
+            editValue: settingsOverlay.editValue.slice(0, -1),
+            error: undefined,
+          });
+          return;
+        }
+        if (input && input.length === 1 && !key.ctrl && !key.meta) {
+          setSettingsOverlay({
+            ...settingsOverlay,
+            editValue: settingsOverlay.editValue + input,
+            error: undefined,
+          });
+        }
+      }
+      return;
+    }
+
     if (repoOverlay) {
       if (key.escape) {
         closeRepoOverlay();
@@ -410,6 +525,10 @@ function App() {
       openRepoOverlay();
       return;
     }
+    if (input === 'S' || input === ',') {
+      openSettingsOverlay();
+      return;
+    }
     if (!ctx || !selectedWt) {
       return;
     }
@@ -518,6 +637,14 @@ function App() {
             <RepoPickerOverlay
               state={repoOverlay}
               width={repoPickerDialogWidth(columns)}
+            />
+          </DialogOverlay>
+        ) : null}
+        {settingsOverlay ? (
+          <DialogOverlay width={columns} height={paneHeight}>
+            <SettingsOverlay
+              state={settingsOverlay}
+              width={settingsDialogWidth(columns)}
             />
           </DialogOverlay>
         ) : null}

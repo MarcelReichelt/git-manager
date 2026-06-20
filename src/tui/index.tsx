@@ -7,6 +7,7 @@ import {
   listRepositories,
   listWorktrees,
   getGlobalState,
+  getPrimaryWorktree,
   type Worktree,
 } from '../core/registry.js';
 import { getChangesForWorktrees, type WorktreeChanges } from '../core/changes-service.js';
@@ -14,7 +15,6 @@ import { loadGlobalConfig } from '../config/loader.js';
 import { openEditor } from '../core/editor-service.js';
 import { pullWorktree, pushWorktree } from '../core/sync-service.js';
 import { removeWorktreeEntry } from '../core/worktree-service.js';
-import { mergeIntoPrimary, mergeFromPrimary } from '../core/merge-service.js';
 import { syncWorktreesFromGit } from '../core/worktree-service.js';
 import { ChangesPanel, flattenChanges } from './panels/ChangesPanel.js';
 import { WorktreePanel } from './panels/WorktreePanel.js';
@@ -61,6 +61,30 @@ import {
   saveLayoutModePick,
   saveSettingsEdit,
 } from './overlays/settings-overlay.js';
+import {
+  MergeOverlay,
+  mergeDialogWidth,
+  type MergeOverlayState,
+} from './overlays/MergeOverlay.js';
+import {
+  confirmMergeIntoDialog,
+  confirmUpdateStep,
+  createMergeIntoOverlayState,
+  createUpdateOverlayState,
+  executeMergeAction,
+  moveMergeConfirmSelection,
+  prepareUpdateFromPrimary,
+  primarySyncBlockedMessage,
+} from './overlays/merge-worktree.js';
+import {
+  ShortcutsOverlay,
+  initialShortcutsOverlayState,
+  shortcutsDialogWidth,
+  shortcutsInnerHeight,
+  type ShortcutsOverlayState,
+} from './overlays/ShortcutsOverlay.js';
+import { moveShortcutsSelection, selectedShortcutAction } from './overlays/shortcuts-overlay.js';
+import { tuiShortcutEntries, type ShortcutActionId } from './shortcuts.js';
 
 type PanelFocus = 'worktrees' | 'changes';
 
@@ -89,10 +113,17 @@ function App() {
   const [overlay, setOverlay] = useState<CreateWorktreeOverlayState | null>(null);
   const [repoOverlay, setRepoOverlay] = useState<RepoPickerOverlayState | null>(null);
   const [settingsOverlay, setSettingsOverlay] = useState<SettingsOverlayState | null>(null);
+  const [mergeOverlay, setMergeOverlay] = useState<MergeOverlayState | null>(null);
+  const [shortcutsOverlay, setShortcutsOverlay] = useState<ShortcutsOverlayState | null>(null);
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
-  const dialogOpen = overlay !== null || repoOverlay !== null || settingsOverlay !== null;
+  const dialogOpen =
+    overlay !== null ||
+    repoOverlay !== null ||
+    settingsOverlay !== null ||
+    mergeOverlay !== null ||
+    shortcutsOverlay !== null;
 
   const showMessage = useCallback((text: string) => {
     setMessage(text);
@@ -135,7 +166,7 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (overlay || repoOverlay || settingsOverlay) {
+    if (overlay || repoOverlay || settingsOverlay || mergeOverlay || shortcutsOverlay) {
       return;
     }
     const config = loadGlobalConfig();
@@ -143,7 +174,7 @@ function App() {
     if (interval <= 0) return;
     const id = setInterval(refresh, interval);
     return () => clearInterval(id);
-  }, [refresh, overlay, repoOverlay, settingsOverlay]);
+  }, [refresh, overlay, repoOverlay, settingsOverlay, mergeOverlay, shortcutsOverlay]);
 
   useEffect(() => {
     if (!overlay || overlay.phase !== 'loading' || !ctx) {
@@ -255,6 +286,73 @@ function App() {
     setSettingsOverlay(null);
   }, []);
 
+  const closeMergeOverlay = useCallback(() => {
+    setMergeOverlay(null);
+  }, []);
+
+  const openShortcutsOverlay = useCallback(() => {
+    setShortcutsOverlay(initialShortcutsOverlayState());
+  }, []);
+
+  const closeShortcutsOverlay = useCallback(() => {
+    setShortcutsOverlay(null);
+  }, []);
+
+  const startUpdateFromPrimary = useCallback(async () => {
+    if (!ctx || !selectedWt) {
+      return;
+    }
+    const primary = getPrimaryWorktree(ctx.repository.id);
+    if (!primary) {
+      showMessage('Primary worktree not found');
+      return;
+    }
+    const primaryBranch = primary.branch;
+    const isPrimary = selectedWt.id === primary.id;
+    const blocked = primarySyncBlockedMessage(isPrimary, primaryBranch);
+    if (blocked) {
+      showMessage(blocked);
+      return;
+    }
+    try {
+      const prepared = await prepareUpdateFromPrimary(ctx.repository, selectedWt, primary);
+      if (prepared.alreadyUpToDate) {
+        showMessage(`${selectedWt.label ?? selectedWt.branch} already includes ${primaryBranch}`);
+        return;
+      }
+      if (prepared.steps.length === 0) {
+        await executeMergeAction(ctx.repository, selectedWt, 'update-from-primary', {
+          updatePlan: prepared.plan,
+        });
+        showMessage(`Updated ${selectedWt.label ?? selectedWt.branch} from ${primaryBranch}`);
+        await refresh();
+        return;
+      }
+      setMergeOverlay(createUpdateOverlayState(selectedWt, primaryBranch, prepared.steps));
+    } catch (err) {
+      showMessage((err as Error).message);
+    }
+  }, [ctx, selectedWt, showMessage, refresh]);
+
+  const startMergeIntoPrimary = useCallback(() => {
+    if (!ctx || !selectedWt) {
+      return;
+    }
+    const primary = getPrimaryWorktree(ctx.repository.id);
+    if (!primary) {
+      showMessage('Primary worktree not found');
+      return;
+    }
+    const primaryBranch = primary.branch;
+    const isPrimary = selectedWt.id === primary.id;
+    const blocked = primarySyncBlockedMessage(isPrimary, primaryBranch);
+    if (blocked) {
+      showMessage(blocked);
+      return;
+    }
+    setMergeOverlay(createMergeIntoOverlayState(selectedWt, primaryBranch));
+  }, [ctx, selectedWt, showMessage]);
+
   const submitRepoOverlay = useCallback(async () => {
     if (!repoOverlay) {
       return;
@@ -307,7 +405,221 @@ function App() {
     }
   }, [overlay, ctx, closeOverlay, showMessage, refresh]);
 
+  const submitMergeOverlay = useCallback(async () => {
+    if (!mergeOverlay || !ctx || !selectedWt) {
+      return;
+    }
+
+    if (mergeOverlay.phase === 'confirm-update-step') {
+      const result = confirmUpdateStep(mergeOverlay);
+      if (result.action === 'cancel') {
+        closeMergeOverlay();
+        return;
+      }
+      if (result.action === 'next-step') {
+        setMergeOverlay({
+          ...mergeOverlay,
+          updateStepIndex: result.nextStepIndex,
+          confirmIndex: 0,
+          error: undefined,
+        });
+        return;
+      }
+      try {
+        await executeMergeAction(ctx.repository, selectedWt, 'update-from-primary', {
+          updatePlan: result.plan,
+        });
+        closeMergeOverlay();
+        showMessage(
+          `Updated ${selectedWt.label ?? selectedWt.branch} from ${mergeOverlay.primaryBranch}`,
+        );
+        await refresh();
+      } catch (err) {
+        setMergeOverlay({ ...mergeOverlay, error: (err as Error).message });
+      }
+      return;
+    }
+
+    const result = confirmMergeIntoDialog(mergeOverlay);
+    if (result.action === 'cancel') {
+      closeMergeOverlay();
+      return;
+    }
+
+    try {
+      await executeMergeAction(ctx.repository, selectedWt, result.pick);
+      closeMergeOverlay();
+      showMessage(
+        `Merged ${selectedWt.label ?? selectedWt.branch} into ${mergeOverlay.primaryBranch}`,
+      );
+      await refresh();
+    } catch (err) {
+      setMergeOverlay({ ...mergeOverlay, error: (err as Error).message });
+    }
+  }, [mergeOverlay, ctx, selectedWt, closeMergeOverlay, showMessage, refresh]);
+
+  const primaryBranch = useMemo(() => {
+    if (!ctx) {
+      return 'primary';
+    }
+    const primary = getPrimaryWorktree(ctx.repository.id);
+    return primary?.branch ?? ctx.repository.primary_branch;
+  }, [ctx]);
+
+  const shortcutsMenuHeight = useMemo(
+    () => shortcutsInnerHeight(tuiShortcutEntries(primaryBranch).length),
+    [primaryBranch],
+  );
+
+  const runShortcutAction = useCallback(
+    async (action: ShortcutActionId) => {
+      closeShortcutsOverlay();
+
+      switch (action) {
+        case 'focus-toggle':
+          setFocus((current) => (current === 'worktrees' ? 'changes' : 'worktrees'));
+          return;
+        case 'navigate-up':
+          if (focus === 'changes') scrollChanges(-1);
+          else scrollWorktrees(-1);
+          return;
+        case 'navigate-down':
+          if (focus === 'changes') scrollChanges(1);
+          else scrollWorktrees(1);
+          return;
+        case 'changes-down':
+          setFocus('changes');
+          scrollChanges(1);
+          return;
+        case 'changes-up':
+          setFocus('changes');
+          scrollChanges(-1);
+          return;
+        case 'refresh':
+          await refresh();
+          return;
+        case 'change-repo':
+          openRepoOverlay();
+          return;
+        case 'settings':
+          openSettingsOverlay();
+          return;
+        case 'shortcuts-menu':
+          return;
+        case 'quit':
+          exit();
+          return;
+        default:
+          break;
+      }
+
+      if (!ctx || !selectedWt) {
+        showMessage('No worktree selected');
+        return;
+      }
+
+      try {
+        switch (action) {
+          case 'open-editor':
+            switchWorktree(ctx.repository.id, selectedWt.label ?? selectedWt.branch);
+            openEditor(selectedWt.path, ctx.repository.path);
+            showMessage(`Opened ${selectedWt.label ?? selectedWt.branch}`);
+            return;
+          case 'pull':
+            await pullWorktree(ctx.repository, selectedWt);
+            showMessage(`Pulled ${selectedWt.label ?? selectedWt.branch}`);
+            await refresh();
+            return;
+          case 'push':
+            await pushWorktree(ctx.repository, selectedWt);
+            showMessage(`Pushed ${selectedWt.label ?? selectedWt.branch}`);
+            await refresh();
+            return;
+          case 'update-from-primary':
+            await startUpdateFromPrimary();
+            return;
+          case 'merge-into-primary':
+            startMergeIntoPrimary();
+            return;
+          case 'create-worktree':
+            openCreateOverlay();
+            return;
+          case 'remove-worktree':
+            await removeWorktreeEntry(ctx.repository, selectedWt);
+            showMessage(`Removed ${selectedWt.label ?? selectedWt.branch}`);
+            await refresh();
+            return;
+        }
+      } catch (err) {
+        showMessage((err as Error).message);
+      }
+    },
+    [
+      closeShortcutsOverlay,
+      focus,
+      scrollChanges,
+      scrollWorktrees,
+      refresh,
+      openRepoOverlay,
+      openSettingsOverlay,
+      exit,
+      ctx,
+      selectedWt,
+      showMessage,
+      startUpdateFromPrimary,
+      startMergeIntoPrimary,
+      openCreateOverlay,
+    ],
+  );
+
   useInput((input, key) => {
+    if (shortcutsOverlay) {
+      if (key.escape || input === 'm') {
+        closeShortcutsOverlay();
+        return;
+      }
+      if (key.upArrow) {
+        setShortcutsOverlay((current) =>
+          current ? moveShortcutsSelection(current, -1, primaryBranch) : current,
+        );
+        return;
+      }
+      if (key.downArrow) {
+        setShortcutsOverlay((current) =>
+          current ? moveShortcutsSelection(current, 1, primaryBranch) : current,
+        );
+        return;
+      }
+      if (key.return) {
+        const action = selectedShortcutAction(shortcutsOverlay, primaryBranch);
+        if (action) {
+          void runShortcutAction(action);
+        }
+        return;
+      }
+      return;
+    }
+
+    if (mergeOverlay) {
+      if (key.escape) {
+        closeMergeOverlay();
+        return;
+      }
+
+      if (key.upArrow) {
+        setMergeOverlay((current) => (current ? moveMergeConfirmSelection(current, -1) : current));
+        return;
+      }
+      if (key.downArrow) {
+        setMergeOverlay((current) => (current ? moveMergeConfirmSelection(current, 1) : current));
+        return;
+      }
+      if (key.return) {
+        void submitMergeOverlay();
+      }
+      return;
+    }
+
     if (settingsOverlay) {
       const innerHeight = Math.max(1, settingsInnerHeight(settingsOverlay));
 
@@ -529,6 +841,10 @@ function App() {
       openSettingsOverlay();
       return;
     }
+    if (input === 'm') {
+      openShortcutsOverlay();
+      return;
+    }
     if (!ctx || !selectedWt) {
       return;
     }
@@ -547,14 +863,10 @@ function App() {
           await pushWorktree(ctx.repository, selectedWt);
           showMessage(`Pushed ${selectedWt.label ?? selectedWt.branch}`);
           await refresh();
-        } else if (input === 'M') {
-          await mergeIntoPrimary(ctx.repository, selectedWt.label ?? selectedWt.branch);
-          showMessage('Merged into primary');
-          await refresh();
-        } else if (input === 'm') {
-          await mergeFromPrimary(ctx.repository, selectedWt.label ?? selectedWt.branch);
-          showMessage('Merged from primary');
-          await refresh();
+        } else if (input === 'u') {
+          void startUpdateFromPrimary();
+        } else if (input === 'U') {
+          startMergeIntoPrimary();
         } else if (input === 'x') {
           await removeWorktreeEntry(ctx.repository, selectedWt);
           showMessage(`Removed ${selectedWt.label ?? selectedWt.branch}`);
@@ -645,6 +957,21 @@ function App() {
             <SettingsOverlay
               state={settingsOverlay}
               width={settingsDialogWidth(columns)}
+            />
+          </DialogOverlay>
+        ) : null}
+        {mergeOverlay ? (
+          <DialogOverlay width={columns} height={paneHeight}>
+            <MergeOverlay state={mergeOverlay} width={mergeDialogWidth(columns)} />
+          </DialogOverlay>
+        ) : null}
+        {shortcutsOverlay ? (
+          <DialogOverlay width={columns} height={paneHeight}>
+            <ShortcutsOverlay
+              primaryBranch={primaryBranch}
+              state={shortcutsOverlay}
+              width={shortcutsDialogWidth(columns)}
+              innerHeight={shortcutsMenuHeight}
             />
           </DialogOverlay>
         ) : null}

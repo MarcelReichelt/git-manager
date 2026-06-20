@@ -20,7 +20,9 @@ Launch with `git-manager ui`.
 | p / P | Pull / push |
 | w | Create worktree (branch picker overlay) |
 | x | Remove selected worktree |
-| M / m | Merge into / from primary |
+| m | Show shortcuts menu |
+| u | Update from primary |
+| U | Merge into primary (confirmation) |
 | R | Change repository (picker overlay) |
 | S / , | Settings (global config overlay) |
 | r | Refresh |

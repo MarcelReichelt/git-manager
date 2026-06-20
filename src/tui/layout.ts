@@ -12,7 +12,7 @@ export function truncateEnd(text: string, maxLength: number): string {
 }
 
 export const FOOTER_ACTIONS =
-  'Tab focus · ↑/↓ navigate · o open · w worktree · x remove · p/P sync · M/m merge · S settings · R repo · r refresh · q quit';
+  'Tab focus · ↑/↓ navigate · o open · w worktree · m menu · p/P sync · u/U primary · S settings · R repo · r refresh · q quit';
 
 export function branchesAvailableForWorktree(
   remoteBranches: string[],

@@ -1,4 +1,13 @@
-import { mergeBranch, fetchAll, branchTracksRemote, pullCheckout } from './git-service.js';
+import {
+  mergeBranch,
+  fetchAll,
+  branchTracksRemote,
+  pullCheckout,
+  stashChanges,
+  popStash,
+  getAheadBehind,
+  isBranchAncestorOf,
+} from './git-service.js';
 import { getChangesForPath } from './changes-service.js';
 import { runHooks } from './hook-runner.js';
 import {
@@ -40,7 +49,7 @@ export async function mergeIntoPrimary(
     throw new Error('Primary worktree not found');
   }
   if (source.id === primary.id) {
-    throw new Error('Source and target are the same');
+    throw new Error('Cannot merge the primary worktree into itself');
   }
 
   const ctx: MergeHookContext = {
@@ -84,10 +93,75 @@ export async function mergeIntoPrimary(
   await runHooks('merge', 'post', ctx, primary.path);
 }
 
+export interface UpdateFromPrimaryPrecheck {
+  primaryHasLocalChanges: boolean;
+  targetHasLocalChanges: boolean;
+  primaryBehind: number;
+  primaryTracksRemote: boolean;
+  targetUpToDateWithPrimary: boolean;
+}
+
+export interface UpdateFromPrimaryPlan {
+  pullPrimary: boolean;
+  stashPrimary: boolean;
+  stashTarget: boolean;
+}
+
+export async function precheckUpdateFromPrimary(
+  repository: Repository,
+  target: Worktree,
+  primary: Worktree,
+): Promise<UpdateFromPrimaryPrecheck> {
+  await fetchAll(repository.git_root);
+
+  const [primaryChanges, targetChanges] = await Promise.all([
+    getChangesForPath(primary.path, {
+      worktreeId: primary.id,
+      label: primary.label ?? primary.branch,
+      branch: primary.branch,
+    }),
+    getChangesForPath(target.path, {
+      worktreeId: target.id,
+      label: target.label ?? target.branch,
+      branch: target.branch,
+    }),
+  ]);
+
+  const primaryTracksRemote = await branchTracksRemote(
+    primary.path,
+    repository.git_root,
+    primary.branch,
+  );
+  let primaryBehind = 0;
+  if (primaryTracksRemote) {
+    const { behind } = await getAheadBehind(primary.path);
+    primaryBehind = behind;
+  }
+
+  const targetUpToDateWithPrimary = await isBranchAncestorOf(
+    target.path,
+    primary.branch,
+  );
+
+  return {
+    primaryHasLocalChanges: !primaryChanges.isClean,
+    targetHasLocalChanges: !targetChanges.isClean,
+    primaryBehind,
+    primaryTracksRemote,
+    targetUpToDateWithPrimary,
+  };
+}
+
 export async function mergeFromPrimary(
   repository: Repository,
   targetQuery: string,
-  options: { force?: boolean; layoutRoot?: string } = {},
+  options: {
+    force?: boolean;
+    layoutRoot?: string;
+    stashDirtyTarget?: boolean;
+    stashDirtyPrimary?: boolean;
+    pullPrimary?: boolean;
+  } = {},
 ): Promise<void> {
   const layoutRoot = options.layoutRoot ?? repository.path;
   const config = loadRepoConfig(layoutRoot);
@@ -98,6 +172,9 @@ export async function mergeFromPrimary(
   }
   if (!primary) {
     throw new Error('Primary worktree not found');
+  }
+  if (target.id === primary.id) {
+    throw new Error('Cannot update the primary worktree from itself');
   }
 
   const ctx: MergeHookContext = {
@@ -113,17 +190,44 @@ export async function mergeFromPrimary(
 
   await runHooks('merge', 'pre', ctx, target.path);
 
+  let stashedPrimary = false;
+  let stashedTarget = false;
+  if (options.stashDirtyPrimary) {
+    stashedPrimary = await stashChanges(primary.path, 'git-manager primary auto-stash');
+  }
+  if (options.stashDirtyTarget) {
+    stashedTarget = await stashChanges(target.path, 'git-manager target auto-stash');
+  }
+
   if (!options.force) {
-    await assertClean(primary, target);
+    const toCheck: Worktree[] = [];
+    // Primary is checked only when pulling: merge uses the branch ref, not the primary
+    // checkout's working tree. Requiring a clean primary without a pull blocks valid
+    // updates when the primary has local WIP (see mergeFromPrimary integration test).
+    if (options.pullPrimary && !stashedPrimary) {
+      toCheck.push(primary);
+    }
+    if (!stashedTarget) {
+      toCheck.push(target);
+    }
+    if (toCheck.length > 0) {
+      await assertClean(...toCheck);
+    }
   }
 
   await fetchAll(repository.git_root);
-  await pullBranchIfRemote(repository, primary);
+  if (options.pullPrimary) {
+    await pullBranchIfRemote(repository, primary);
+  }
   await pullBranchIfRemote(repository, target);
 
   try {
     await mergeBranch(target.path, primary.branch);
   } catch (err) {
+    await restoreStashedChanges([
+      { path: target.path, stashed: stashedTarget },
+      { path: primary.path, stashed: stashedPrimary },
+    ]);
     const changes = await getChangesForPath(target.path, {
       worktreeId: target.id,
       label: target.label ?? target.branch,
@@ -136,6 +240,25 @@ export async function mergeFromPrimary(
       }
     }
     throw err;
+  }
+
+  if (stashedTarget) {
+    try {
+      await popStash(target.path);
+    } catch (err) {
+      throw new Error(
+        `Updated from ${primary.branch}, but reapplying stashed changes in ${target.label ?? target.branch} failed: ${(err as Error).message}`,
+      );
+    }
+  }
+  if (stashedPrimary) {
+    try {
+      await popStash(primary.path);
+    } catch (err) {
+      throw new Error(
+        `Updated from ${primary.branch}, but reapplying stashed changes on ${primary.branch} failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   await runHooks('merge', 'post', ctx, target.path);
@@ -201,6 +324,21 @@ async function assertClean(...worktrees: Worktree[]): Promise<void> {
       throw new Error(
         `Worktree ${w.label ?? w.branch} has uncommitted changes. Commit or stash first.`,
       );
+    }
+  }
+}
+
+async function restoreStashedChanges(
+  entries: Array<{ path: string; stashed: boolean }>,
+): Promise<void> {
+  for (const entry of entries) {
+    if (!entry.stashed) {
+      continue;
+    }
+    try {
+      await popStash(entry.path);
+    } catch {
+      // best effort during rollback
     }
   }
 }

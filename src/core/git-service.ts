@@ -97,6 +97,19 @@ export async function getAheadBehind(cwd: string): Promise<{ ahead: number; behi
   }
 }
 
+export async function isBranchAncestorOf(
+  cwd: string,
+  ancestorBranch: string,
+  descendantRef = 'HEAD',
+): Promise<boolean> {
+  try {
+    await git(cwd).raw(['merge-base', '--is-ancestor', ancestorBranch, descendantRef]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function hasRemoteBranch(gitRoot: string, branch: string): Promise<boolean> {
   try {
     await git(gitRoot).raw(['rev-parse', '--verify', `origin/${branch}`]);
@@ -230,6 +243,22 @@ export async function pruneWorktrees(gitRoot: string): Promise<void> {
 
 export async function mergeBranch(targetPath: string, sourceBranch: string): Promise<void> {
   await git(targetPath).merge([sourceBranch]);
+}
+
+export async function stashChanges(
+  cwd: string,
+  message = 'git-manager auto-stash',
+): Promise<boolean> {
+  const status = await git(cwd).status();
+  if (status.isClean()) {
+    return false;
+  }
+  await git(cwd).stash(['push', '-u', '-m', message]);
+  return true;
+}
+
+export async function popStash(cwd: string): Promise<void> {
+  await git(cwd).stash(['pop']);
 }
 
 export function repoNameFromUrl(url: string): string {

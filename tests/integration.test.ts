@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { rmSync } from 'node:fs';
-import { createTempDir, initRepo, setupTestEnv } from './helpers.js';
+import { rmSync, writeFileSync, existsSync } from 'node:fs';
+import { createTempDir, initRepo, setupTestEnv, runGit } from './helpers.js';
 import { saveGlobalConfig, loadGlobalConfig, isSetupComplete } from '../src/config/loader.js';
 import { defaultGlobalConfig } from '../src/config/schema.js';
 import { resolveFromGitRoot } from '../src/core/context.js';
@@ -169,6 +169,58 @@ describe('createWorktree', () => {
 
     const worktrees = listWorktrees(repo.id);
     expect(worktrees.filter((w) => w.branch === 'test')).toHaveLength(1);
+  });
+});
+
+describe('mergeFromPrimary', () => {
+  let cleanup: () => void;
+  let base: string;
+
+  beforeEach(() => {
+    base = createTempDir();
+    const env = setupTestEnv(base);
+    cleanup = env.cleanup;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('merges from a dirty primary checkout when not pulling', async () => {
+    const repoPath = join(base, 'test-repo');
+    initRepo(repoPath);
+    const ctx = await resolveFromGitRoot(repoPath);
+    const repo = await registerContext(ctx);
+    const { createWorktree } = await import('../src/core/worktree-service.js');
+    const { mergeFromPrimary } = await import('../src/core/merge-service.js');
+
+    const feature = await createWorktree(repo, 'feature', { newBranch: true });
+
+    writeFileSync(join(repoPath, 'main-only.txt'), 'main\n');
+    runGit('add . && git commit -m "main only"', repoPath);
+    writeFileSync(join(repoPath, 'wip.txt'), 'wip\n');
+
+    await mergeFromPrimary(repo, feature.label ?? feature.branch, { pullPrimary: false });
+
+    expect(existsSync(join(feature.path, 'main-only.txt'))).toBe(true);
+    expect(existsSync(join(repoPath, 'wip.txt'))).toBe(true);
+    expect(runGit('status --porcelain', repoPath)).toContain('wip.txt');
+  });
+
+  it('requires a clean primary checkout when pulling without stashing', async () => {
+    const repoPath = join(base, 'test-repo');
+    initRepo(repoPath);
+    const ctx = await resolveFromGitRoot(repoPath);
+    const repo = await registerContext(ctx);
+    const { createWorktree } = await import('../src/core/worktree-service.js');
+    const { mergeFromPrimary } = await import('../src/core/merge-service.js');
+
+    const feature = await createWorktree(repo, 'feature', { newBranch: true });
+    writeFileSync(join(repoPath, 'wip.txt'), 'wip\n');
+
+    await expect(
+      mergeFromPrimary(repo, feature.label ?? feature.branch, { pullPrimary: true }),
+    ).rejects.toThrow(/uncommitted changes/i);
   });
 });
 

@@ -1,5 +1,39 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+
+const isWindows = process.platform === 'win32';
+
+/**
+ * Resolve a path to an absolute, native-separator form. Git emits POSIX-style
+ * forward slashes even on Windows, so this is used to bring git output and
+ * Node-generated paths into the same shape before they are stored or compared.
+ */
+export function normalizePath(path: string): string {
+  return resolve(path);
+}
+
+/**
+ * Compare two filesystem paths for equality across platforms. On Windows the
+ * comparison is case-insensitive because the filesystem is.
+ */
+export function pathsEqual(a: string, b: string): boolean {
+  const left = resolve(a);
+  const right = resolve(b);
+  return isWindows ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+/**
+ * Return true when `child` is the same as, or nested within, `parent`.
+ * Separator-agnostic and case-insensitive on Windows.
+ */
+export function isPathInside(child: string, parent: string): boolean {
+  const rel = relative(resolve(parent), resolve(child));
+  if (rel === '') {
+    return true;
+  }
+  const normalizedRel = isWindows ? rel.toLowerCase() : rel;
+  return !normalizedRel.startsWith('..') && !isAbsolute(normalizedRel);
+}
 
 export function expandHome(path: string): string {
   if (path.startsWith('~/')) {

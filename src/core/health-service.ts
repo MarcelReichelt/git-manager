@@ -16,7 +16,7 @@ import {
   pruneWorktrees,
 } from './git-service.js';
 import { syncWorktreesFromGit } from './worktree-service.js';
-import { repoConfigPath } from '../config/paths.js';
+import { pathsEqual, repoConfigPath } from '../config/paths.js';
 
 export interface HealthIssue {
   type: string;
@@ -68,7 +68,6 @@ export async function checkHealth(options: { all?: boolean } = {}): Promise<Heal
       continue;
     }
 
-    const gitPaths = new Set(gitEntries.map((e) => e.path));
     const worktrees = listWorktrees(repo.id);
 
     for (const wt of worktrees) {
@@ -83,7 +82,7 @@ export async function checkHealth(options: { all?: boolean } = {}): Promise<Heal
         });
         continue;
       }
-      if (!gitPaths.has(wt.path)) {
+      if (!gitEntries.some((e) => pathsEqual(e.path, wt.path))) {
         issues.push({
           type: 'orphan-registry',
           repository: repo,
@@ -97,7 +96,7 @@ export async function checkHealth(options: { all?: boolean } = {}): Promise<Heal
 
     for (const entry of gitEntries) {
       if (entry.isBare) continue;
-      const found = worktrees.find((w) => w.path === entry.path);
+      const found = worktrees.find((w) => pathsEqual(w.path, entry.path));
       if (!found) {
         issues.push({
           type: 'missing-registry',

@@ -17,8 +17,19 @@ export function initRepo(path: string, options: { initialBranch?: string } = {})
   mkdirSync(path, { recursive: true });
   const branch = options.initialBranch ?? 'main';
   execSync(`git init -b ${branch}`, { cwd: path, stdio: 'ignore' });
+  configureTestIdentity(path);
   writeFileSync(join(path, 'README.md'), '# test\n');
   execSync('git add . && git commit -m "init"', { cwd: path, stdio: 'ignore' });
+}
+
+/**
+ * Configure a repo-local git identity so tests are hermetic on machines
+ * (e.g. fresh Windows installs) that have no global user.name/user.email set.
+ */
+function configureTestIdentity(path: string): void {
+  execSync('git config user.name "git-manager test"', { cwd: path, stdio: 'ignore' });
+  execSync('git config user.email "test@git-manager.local"', { cwd: path, stdio: 'ignore' });
+  execSync('git config commit.gpgsign false', { cwd: path, stdio: 'ignore' });
 }
 
 export function setupTestEnv(baseDir: string): {

@@ -1,4 +1,5 @@
 import { basename, join, resolve } from 'node:path';
+import { isPathInside } from '../config/paths.js';
 import { loadRepoConfig, saveRepoConfig } from '../config/loader.js';
 import type { LayoutMode } from '../config/schema.js';
 import {
@@ -103,11 +104,9 @@ export function matchPathToWorktree(
   cwd: string,
   worktreePaths: string[],
 ): string | null {
-  const resolved = resolve(cwd);
   for (const path of worktreePaths) {
-    const resolvedPath = resolve(path);
-    if (resolved === resolvedPath || resolved.startsWith(resolvedPath + '/')) {
-      return resolvedPath;
+    if (isPathInside(cwd, path)) {
+      return resolve(path);
     }
   }
   return null;

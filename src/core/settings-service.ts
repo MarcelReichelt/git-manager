@@ -17,9 +17,10 @@ import { getActiveRepository } from './active-session.js';
 export async function runSetupWizard(): Promise<GlobalConfig> {
   console.log('\nWelcome to git-manager! Let\'s configure your settings.\n');
 
+  const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
   const detectedEditors = ['cursor', 'code', 'nvim', 'vim'].filter((e) => {
     try {
-      execSync(`which ${e}`, { stdio: 'ignore' });
+      execSync(`${lookupCommand} ${e}`, { stdio: 'ignore' });
       return true;
     } catch {
       return false;

@@ -3,12 +3,18 @@ import { unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-const linkPath = join(homedir(), '.local', 'bin', 'git-manager');
+const binDir = join(homedir(), '.local', 'bin');
+const candidates = [join(binDir, 'git-manager'), join(binDir, 'git-manager.cmd')];
 
-if (!existsSync(linkPath)) {
+const removed = candidates.filter((linkPath) => {
+  if (!existsSync(linkPath)) {
+    return false;
+  }
+  unlinkSync(linkPath);
+  console.log(`Removed: ${linkPath}`);
+  return true;
+});
+
+if (removed.length === 0) {
   console.log('No global git-manager link found.');
-  process.exit(0);
 }
-
-unlinkSync(linkPath);
-console.log(`Removed: ${linkPath}`);

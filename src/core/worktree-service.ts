@@ -20,6 +20,7 @@ import {
   type Worktree,
 } from './registry.js';
 import { loadRepoConfig } from '../config/loader.js';
+import { pathsEqual } from '../config/paths.js';
 import type { WorktreeHookContext } from '../hooks/types.js';
 
 export async function syncWorktreesFromGit(repository: Repository): Promise<Worktree[]> {
@@ -31,7 +32,7 @@ export async function syncWorktreesFromGit(repository: Repository): Promise<Work
       continue;
     }
     const branch = entry.branch === 'HEAD' ? await getCurrentBranch(entry.path) : entry.branch;
-    const isPrimary = entry.path === repository.git_root;
+    const isPrimary = pathsEqual(entry.path, repository.git_root);
     const wt = upsertWorktree({
       repositoryId: repository.id,
       branch,

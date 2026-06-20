@@ -1,0 +1,36 @@
+{
+  "name": "git-manager (Linux dev)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "node",
+
+  // Keep Linux-built node_modules (incl. the native better-sqlite3 binary)
+  // in an isolated volume so it never collides with the Windows host's
+  // node_modules that is bind-mounted alongside the source.
+  "mounts": [
+    "source=git-manager-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+  ],
+
+  // Put the globally linked CLI (yarn link:global -> ~/.local/bin) on PATH.
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/node/.local/bin"
+  },
+
+  // The named volume mounts as root-owned; hand it to the node user, then
+  // provision Yarn, install dependencies, and build the CLI.
+  "postCreateCommand": "sudo chown node:node node_modules && corepack enable && yarn install && yarn build",
+  "waitFor": "postCreateCommand",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

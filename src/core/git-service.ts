@@ -1,5 +1,6 @@
 import { basename, join } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
+import { normalizePath } from '../config/paths.js';
 
 export function git(cwd: string): SimpleGit {
   return simpleGit({ baseDir: cwd });
@@ -16,7 +17,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 export async function findGitRoot(startPath: string): Promise<string | null> {
   try {
     const result = await git(startPath).revparse(['--show-toplevel']);
-    return result.trim();
+    return normalizePath(result.trim());
   } catch {
     return null;
   }
@@ -176,7 +177,7 @@ export async function listWorktrees(gitRoot: string): Promise<
           isBare: current.isBare ?? false,
         });
       }
-      current = { path: line.slice('worktree '.length).trim() };
+      current = { path: normalizePath(line.slice('worktree '.length).trim()) };
     } else if (line.startsWith('branch ')) {
       current.branch = line.slice('branch refs/heads/'.length).trim();
     } else if (line === 'bare') {

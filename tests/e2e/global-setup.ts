@@ -99,9 +99,21 @@ async function createToken(): Promise<string> {
 }
 
 async function ensureRepo(token: string): Promise<void> {
+  const headers = { 'Content-Type': 'application/json', Authorization: `token ${token}` };
+
+  // Gitea's /data volume survives `docker compose up` re-runs, so delete any
+  // leftover repo from a previous e2e session before seeding a fresh one.
+  const del = await fetch(`${GITEA_URL}/api/v1/repos/${USER}/${REPO}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if (!del.ok && del.status !== 404) {
+    throw new Error(`Failed to reset Gitea repo: ${del.status} ${await del.text()}`);
+  }
+
   const res = await fetch(`${GITEA_URL}/api/v1/user/repos`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `token ${token}` },
+    headers,
     body: JSON.stringify({
       name: REPO,
       auto_init: true,
@@ -109,8 +121,7 @@ async function ensureRepo(token: string): Promise<void> {
       private: false,
     }),
   });
-  // 201 created, 409 already exists (re-run) are both fine.
-  if (!res.ok && res.status !== 409) {
+  if (!res.ok) {
     throw new Error(`Failed to create Gitea repo: ${res.status} ${await res.text()}`);
   }
 }

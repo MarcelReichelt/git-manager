@@ -162,7 +162,6 @@ export function ChangesPanel({
       flexDirection="column"
       borderStyle="single"
       borderColor={panelBorderColor(focused)}
-      dimColor={!focused}
       paddingX={1}
       height={height}
       overflow="hidden"
@@ -180,7 +179,6 @@ export function ChangesPanel({
             <Text
               key={line.key}
               color={isSelected ? 'cyan' : line.color}
-              dimColor={line.dim}
               inverse={isSelected}
             >
               {line.text}
@@ -188,7 +186,11 @@ export function ChangesPanel({
           );
         })}
       </Box>
-      {indicator ? <Text color="gray">{indicator}</Text> : null}
+      {indicator ? (
+        <Text color="gray" dimColor={!focused}>
+          {indicator}
+        </Text>
+      ) : null}
     </Box>
   );
 }

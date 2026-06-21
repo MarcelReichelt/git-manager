@@ -4,27 +4,38 @@ Launch with `git-manager ui`.
 
 ## Layout
 
-- Top: registered repo names (`*` = active)
-- Left: worktrees with change count badges
-- Right: changes for selected worktree
-- Footer: key hints
+The TUI uses a three-stage carousel. Two panels are visible at a time; use `Tab` / `→` and `Shift-Tab` / `←` to move between stages:
+
+| Stage | Left panel | Right panel |
+| --- | --- | --- |
+| 1 | Registered repos (`*` = active) | Worktrees with change count badges |
+| 2 | Worktrees | Changed files for selected worktree |
+| 3 | Changed files | Diff for selected file |
+
+The footer shows context-sensitive key hints for the current stage.
+
+Press `m` at any time to open the full shortcuts menu.
 
 ## Keybindings
 
 | Key | Action |
 | --- | --- |
-| Tab | Switch focus (worktrees / changes) |
-| Up/Down | Move selection (worktrees) or scroll (changes) |
-| j / k | Focus changes + scroll |
-| Enter / o | Set active + open editor |
-| p / P | Pull / push |
+| Tab / → | Next column (stage) |
+| Shift-Tab / ← | Previous column (stage) |
+| ↑ / ↓ | Move selection or scroll |
+| j / k | Scroll changes list (changes stage) |
+| J / Shift-↓ | Jump to next hunk in diff |
+| K / Shift-↑ | Jump to previous hunk in diff |
+| Enter / o | Set active worktree and open editor |
+| p / P | Pull / push selected worktree |
 | w | Create worktree (branch picker overlay) |
 | x | Remove selected worktree |
-| m | Show shortcuts menu |
+| g | View stashes (list, apply, pop, drop, stash all) |
 | u | Update from primary |
 | U | Merge into primary (confirmation) |
 | R | Change repository (picker overlay) |
 | S / , | Settings (global config overlay) |
+| m | Show shortcuts menu |
 | r | Refresh |
 | q | Quit |
 

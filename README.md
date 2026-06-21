@@ -54,7 +54,7 @@ yarn test:e2e          # CLI e2e tests (needs a running Gitea; see docker-compos
 yarn test:e2e:docker   # full e2e stack in Docker (Gitea + runner)
 ```
 
-This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (currently `yarn-4.9.2.cjs`).
+This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (see `packageManager` in `package.json`).
 
 Example plugins live in `plugins/`.
 

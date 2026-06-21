@@ -13,5 +13,5 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable Corepack so the Yarn version pinned in package.json
-# ("packageManager": "yarn@4.9.2") is provisioned automatically.
+# ("packageManager": "yarn@4.17.0") is provisioned automatically.
 RUN corepack enable

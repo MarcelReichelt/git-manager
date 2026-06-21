@@ -1,6 +1,6 @@
 {
   "name": "@murakai/git-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
   "type": "module",
   "bin": "./dist/cli.js",
@@ -13,7 +13,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:docker": "docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e",
     "link:global": "node scripts/link-global.mjs",
-    "unlink:global": "node scripts/unlink-global.mjs"
+    "unlink:global": "node scripts/unlink-global.mjs",
+    "publish": "yarn build && yarn link:global && yarn test && yarn test:e2e:docker && yarn publish"
   },
   "engines": {
     "node": ">=20"

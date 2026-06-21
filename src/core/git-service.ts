@@ -246,20 +246,76 @@ export async function mergeBranch(targetPath: string, sourceBranch: string): Pro
   await git(targetPath).merge([sourceBranch]);
 }
 
-export async function stashChanges(
+export async function stashAllChanges(
   cwd: string,
-  message = 'git-manager auto-stash',
+  message = 'git-manager stash',
 ): Promise<boolean> {
   const status = await git(cwd).status();
-  if (status.isClean()) {
+  if (status.conflicted.length > 0) {
+    throw new Error('Cannot stash while merge conflicts are present');
+  }
+  const hasChanges =
+    status.staged.length > 0 ||
+    status.modified.length > 0 ||
+    status.created.length > 0 ||
+    status.deleted.length > 0 ||
+    status.renamed.length > 0 ||
+    status.not_added.length > 0;
+  if (!hasChanges) {
     return false;
   }
+  // -u includes untracked (new) files; staging them is not required.
   await git(cwd).stash(['push', '-u', '-m', message]);
   return true;
 }
 
+export async function stashChanges(
+  cwd: string,
+  message = 'git-manager auto-stash',
+): Promise<boolean> {
+  return stashAllChanges(cwd, message);
+}
+
 export async function popStash(cwd: string): Promise<void> {
   await git(cwd).stash(['pop']);
+}
+
+export type StashEntry = {
+  index: number;
+  label: string;
+};
+
+export async function listStashes(cwd: string): Promise<StashEntry[]> {
+  const output = await git(cwd).raw(['stash', 'list']);
+  if (!output.trim()) {
+    return [];
+  }
+  return output
+    .trim()
+    .split('\n')
+    .map((line, lineIndex) => {
+      const match = line.match(/^stash@\{(\d+)\}:\s*(.*)$/);
+      return {
+        index: match ? Number.parseInt(match[1], 10) : lineIndex,
+        label: match?.[2] ?? line,
+      };
+    });
+}
+
+function stashRef(index: number): string {
+  return `stash@{${index}}`;
+}
+
+export async function applyStash(cwd: string, index: number): Promise<void> {
+  await git(cwd).stash(['apply', stashRef(index)]);
+}
+
+export async function popStashAt(cwd: string, index: number): Promise<void> {
+  await git(cwd).stash(['pop', stashRef(index)]);
+}
+
+export async function dropStash(cwd: string, index: number): Promise<void> {
+  await git(cwd).stash(['drop', stashRef(index)]);
 }
 
 export function repoNameFromUrl(url: string): string {

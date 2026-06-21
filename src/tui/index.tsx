@@ -83,6 +83,13 @@ import {
   type ShortcutsOverlayState,
 } from './overlays/ShortcutsOverlay.js';
 import { moveShortcutsSelection, selectedShortcutAction } from './overlays/shortcuts-overlay.js';
+import {
+  StashOverlay,
+  createStashOverlayState,
+  stashDialogWidth,
+  type StashOverlayState,
+} from './overlays/StashOverlay.js';
+import { loadStashOverlayList, moveStashSelection, runStashAction, runStashCreate } from './overlays/stash-overlay.js';
 import { tuiShortcutEntries, type ShortcutActionId } from './shortcuts.js';
 
 type PanelFocus = 'worktrees' | 'changes';
@@ -114,6 +121,7 @@ function App() {
   const [settingsOverlay, setSettingsOverlay] = useState<SettingsOverlayState | null>(null);
   const [mergeOverlay, setMergeOverlay] = useState<MergeOverlayState | null>(null);
   const [shortcutsOverlay, setShortcutsOverlay] = useState<ShortcutsOverlayState | null>(null);
+  const [stashOverlay, setStashOverlay] = useState<StashOverlayState | null>(null);
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
@@ -123,7 +131,8 @@ function App() {
     repoOverlay !== null ||
     settingsOverlay !== null ||
     mergeOverlay !== null ||
-    shortcutsOverlay !== null;
+    shortcutsOverlay !== null ||
+    stashOverlay !== null;
 
   const showMessage = useCallback((text: string) => {
     setMessage(text);
@@ -173,7 +182,7 @@ function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (overlay || repoOverlay || settingsOverlay || mergeOverlay || shortcutsOverlay) {
+    if (overlay || repoOverlay || settingsOverlay || mergeOverlay || shortcutsOverlay || stashOverlay) {
       return;
     }
     const config = loadGlobalConfig();
@@ -181,7 +190,7 @@ function App() {
     if (interval <= 0) return;
     const id = setInterval(refresh, interval);
     return () => clearInterval(id);
-  }, [refresh, overlay, repoOverlay, settingsOverlay, mergeOverlay, shortcutsOverlay]);
+  }, [refresh, overlay, repoOverlay, settingsOverlay, mergeOverlay, shortcutsOverlay, stashOverlay]);
 
   useEffect(() => {
     if (!overlay || overlay.phase !== 'loading' || !ctx) {
@@ -213,6 +222,34 @@ function App() {
       cancelled = true;
     };
   }, [overlay?.phase, ctx, worktrees, showMessage]);
+
+  useEffect(() => {
+    if (!stashOverlay || stashOverlay.phase !== 'loading') {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await loadStashOverlayList(
+          stashOverlay.worktreePath,
+          stashOverlay.worktreeLabel,
+        );
+        if (cancelled) {
+          return;
+        }
+        setStashOverlay(loaded);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        showMessage((err as Error).message);
+        setStashOverlay(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stashOverlay?.phase, stashOverlay?.worktreePath, stashOverlay?.worktreeLabel, showMessage]);
 
   const selectedChanges = changes[selectedIndex];
   const selectedWt = worktrees[selectedIndex];
@@ -304,6 +341,57 @@ function App() {
   const closeShortcutsOverlay = useCallback(() => {
     setShortcutsOverlay(null);
   }, []);
+
+  const openStashOverlay = useCallback(() => {
+    if (!selectedWt) {
+      showMessage('No worktree selected');
+      return;
+    }
+    setStashOverlay(
+      createStashOverlayState(selectedWt.path, selectedWt.label ?? selectedWt.branch),
+    );
+  }, [selectedWt, showMessage]);
+
+  const closeStashOverlay = useCallback(() => {
+    setStashOverlay(null);
+  }, []);
+
+  const submitStashAction = useCallback(
+    async (action: 'apply' | 'pop' | 'drop') => {
+      if (!stashOverlay) {
+        return;
+      }
+      const result = await runStashAction(stashOverlay, action);
+      if (result.action === 'error') {
+        setStashOverlay(result.state);
+        showMessage(result.message);
+        return;
+      }
+      setStashOverlay(result.state);
+      showMessage(result.message);
+      if (result.refreshChanges) {
+        await refresh();
+      }
+    },
+    [stashOverlay, showMessage, refresh],
+  );
+
+  const submitStashCreate = useCallback(async () => {
+    if (!stashOverlay) {
+      return;
+    }
+    const result = await runStashCreate(stashOverlay);
+    if (result.action === 'error') {
+      setStashOverlay(result.state);
+      showMessage(result.message);
+      return;
+    }
+    setStashOverlay(result.state);
+    showMessage(result.message);
+    if (result.refreshChanges) {
+      await refresh();
+    }
+  }, [stashOverlay, showMessage, refresh]);
 
   const startUpdateFromPrimary = useCallback(async () => {
     if (!ctx || !selectedWt) {
@@ -512,6 +600,9 @@ function App() {
         case 'settings':
           openSettingsOverlay();
           return;
+        case 'view-stashes':
+          openStashOverlay();
+          return;
         case 'shortcuts-menu':
           return;
         case 'quit':
@@ -570,6 +661,7 @@ function App() {
       refresh,
       openRepoOverlay,
       openSettingsOverlay,
+      openStashOverlay,
       exit,
       ctx,
       selectedWt,
@@ -581,6 +673,40 @@ function App() {
   );
 
   useInput((input, key) => {
+    if (stashOverlay) {
+      if (key.escape) {
+        closeStashOverlay();
+        return;
+      }
+      if (stashOverlay.phase === 'list' && !stashOverlay.busy) {
+        if (key.upArrow) {
+          setStashOverlay((current) => (current ? moveStashSelection(current, -1) : current));
+          return;
+        }
+        if (key.downArrow) {
+          setStashOverlay((current) => (current ? moveStashSelection(current, 1) : current));
+          return;
+        }
+        if ((key.return || input === 'a') && stashOverlay.stashes.length > 0) {
+          void submitStashAction('apply');
+          return;
+        }
+        if (input === 'P' && stashOverlay.stashes.length > 0) {
+          void submitStashAction('pop');
+          return;
+        }
+        if (input === 'd' && stashOverlay.stashes.length > 0) {
+          void submitStashAction('drop');
+          return;
+        }
+        if (input === 's') {
+          void submitStashCreate();
+          return;
+        }
+      }
+      return;
+    }
+
     if (shortcutsOverlay) {
       if (key.escape || input === 'm') {
         closeShortcutsOverlay();
@@ -860,6 +986,10 @@ function App() {
       openShortcutsOverlay();
       return;
     }
+    if (input === 'g') {
+      openStashOverlay();
+      return;
+    }
     if (!ctx || !selectedWt) {
       return;
     }
@@ -1012,6 +1142,11 @@ function App() {
               width={shortcutsDialogWidth(columns)}
               innerHeight={shortcutsMenuHeight}
             />
+          </DialogOverlay>
+        ) : null}
+        {stashOverlay ? (
+          <DialogOverlay width={columns} height={paneHeight}>
+            <StashOverlay state={stashOverlay} width={stashDialogWidth(columns)} />
           </DialogOverlay>
         ) : null}
       </Box>

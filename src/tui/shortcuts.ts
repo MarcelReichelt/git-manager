@@ -14,6 +14,7 @@ export type ShortcutActionId =
   | 'refresh'
   | 'change-repo'
   | 'settings'
+  | 'view-stashes'
   | 'shortcuts-menu'
   | 'quit';
 
@@ -38,6 +39,7 @@ export function tuiShortcutEntries(primaryBranch: string): ShortcutEntry[] {
     { keys: 'U', label: `Merge into ${primaryBranch}`, action: 'merge-into-primary' },
     { keys: 'w', label: 'Create worktree', action: 'create-worktree' },
     { keys: 'x', label: 'Remove selected worktree', action: 'remove-worktree' },
+    { keys: 'g', label: 'View stashes for selected worktree', action: 'view-stashes' },
     { keys: 'r', label: 'Refresh worktrees and changes', action: 'refresh' },
     { keys: 'R', label: 'Change repository', action: 'change-repo' },
     { keys: 'S', label: 'Global settings', action: 'settings' },

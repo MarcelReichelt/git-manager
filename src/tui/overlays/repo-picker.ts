@@ -1,5 +1,5 @@
 import {
-  listRepositories,
+  listRepositoriesByLastOpened,
   getRepositoryByName,
   type Repository,
 } from '../../core/registry.js';
@@ -7,7 +7,9 @@ import { getActiveRepository, activateRepository } from '../../core/active-sessi
 import { syncWorktreesFromGit } from '../../core/worktree-service.js';
 import { sliceScrollLines } from '../scroll.js';
 import {
+  initialRepoPickerState,
   type RepoPickerChoice,
+  type RepoPickerMode,
   type RepoPickerOverlayState,
 } from './RepoPickerOverlay.js';
 
@@ -17,7 +19,7 @@ export type ConfirmRepoPickerResult =
   | { action: 'error'; message: string };
 
 export function buildRepoPickerChoices(): RepoPickerChoice[] {
-  const repos = listRepositories();
+  const repos = listRepositoriesByLastOpened();
   const active = getActiveRepository();
   return [
     ...repos.map((repo) => ({
@@ -28,6 +30,10 @@ export function buildRepoPickerChoices(): RepoPickerChoice[] {
     { type: 'clone' as const },
     { type: 'add' as const },
   ];
+}
+
+export function createRepoPickerState(mode: RepoPickerMode = 'change'): RepoPickerOverlayState {
+  return initialRepoPickerState(buildRepoPickerChoices(), mode);
 }
 
 export function moveRepoPickerSelection(

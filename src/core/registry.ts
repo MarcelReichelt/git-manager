@@ -108,6 +108,15 @@ export function listRepositories(): Repository[] {
   return getDb().prepare('SELECT * FROM repositories ORDER BY name').all() as Repository[];
 }
 
+export function listRepositoriesByLastOpened(): Repository[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM repositories
+       ORDER BY (last_opened_at IS NULL), last_opened_at DESC, name`,
+    )
+    .all() as Repository[];
+}
+
 export function getRepository(id: number): Repository | undefined {
   return getDb().prepare('SELECT * FROM repositories WHERE id = ?').get(id) as Repository | undefined;
 }

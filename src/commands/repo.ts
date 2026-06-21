@@ -3,6 +3,7 @@ import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   listRepositories,
+  listRepositoriesByLastOpened,
   getRepositoryByName,
   deleteRepository,
   type Repository,
@@ -33,7 +34,7 @@ export async function repoPicker(options: {
     return switchToRepo(repo, options);
   }
 
-  const repos = listRepositories();
+  const repos = listRepositoriesByLastOpened();
   const active = getActiveRepository();
   const choices = [
     ...repos.map((r) => ({
@@ -48,6 +49,7 @@ export async function repoPicker(options: {
   const choice = await select<string>({
     message: 'Repository',
     choices: choices as Parameters<typeof select>[0]['choices'],
+    default: active?.name,
   });
 
   if (choice === '__clone__') {

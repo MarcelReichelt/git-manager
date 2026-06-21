@@ -37,14 +37,13 @@ import {
 } from './overlays/create-worktree.js';
 import {
   RepoPickerOverlay,
-  initialRepoPickerState,
   repoPickerDialogWidth,
   repoPickerInnerHeight,
   type RepoPickerOverlayState,
 } from './overlays/RepoPickerOverlay.js';
 import {
-  buildRepoPickerChoices,
   confirmRepoPicker,
+  createRepoPickerState,
   moveRepoPickerSelection,
 } from './overlays/repo-picker.js';
 import {
@@ -118,6 +117,7 @@ function App() {
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
+  const repoPickerRequiredRef = useRef(false);
   const dialogOpen =
     overlay !== null ||
     repoOverlay !== null ||
@@ -153,10 +153,17 @@ function App() {
   useEffect(() => {
     (async () => {
       await ensureSetup();
-      await ensureActiveRepository({ promptIfMissing: false });
-      setCtx(getActiveContext());
+      const { outsideRepo } = await ensureActiveRepository({ promptIfMissing: false });
+      const activeCtx = getActiveContext();
+      setCtx(activeCtx);
       setReady(true);
-      await refresh();
+      if (outsideRepo) {
+        repoPickerRequiredRef.current = !activeCtx;
+        setRepoOverlay(createRepoPickerState('select'));
+      }
+      if (activeCtx) {
+        await refresh();
+      }
     })();
     return () => {
       if (messageTimer.current) {
@@ -271,7 +278,7 @@ function App() {
   }, []);
 
   const openRepoOverlay = useCallback(() => {
-    setRepoOverlay(initialRepoPickerState(buildRepoPickerChoices()));
+    setRepoOverlay(createRepoPickerState('change'));
   }, []);
 
   const closeRepoOverlay = useCallback(() => {
@@ -369,6 +376,7 @@ function App() {
         return;
       }
       closeRepoOverlay();
+      repoPickerRequiredRef.current = false;
       setCtx(getActiveContext());
       showMessage(`Active repository: ${result.repository.name}`);
       await refresh();
@@ -713,7 +721,14 @@ function App() {
     }
 
     if (repoOverlay) {
+      if (input === 'q') {
+        exit();
+        return;
+      }
       if (key.escape) {
+        if (repoPickerRequiredRef.current) {
+          return;
+        }
         closeRepoOverlay();
         return;
       }
@@ -884,11 +899,35 @@ function App() {
     return <Text>Loading...</Text>;
   }
 
-  if (!ctx) {
+  if (!ctx && !repoOverlay) {
     return (
       <Box flexDirection="column">
-        <Text>No active repository. Run git-manager repo switch</Text>
+        <Text>No active repository.</Text>
         <Text color="gray">Press q to quit</Text>
+      </Box>
+    );
+  }
+
+  if (!ctx) {
+    return (
+      <Box flexDirection="column" height={rows} overflow="hidden">
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold>Select repository</Text>
+          <Text color="gray">Choose a repository to open</Text>
+        </Box>
+        <Box flexGrow={1} position="relative" justifyContent="center" alignItems="center">
+          {repoOverlay ? (
+            <DialogOverlay width={columns} height={Math.max(8, rows - FOOTER_HEIGHT - 3)}>
+              <RepoPickerOverlay
+                state={repoOverlay}
+                width={repoPickerDialogWidth(columns)}
+              />
+            </DialogOverlay>
+          ) : null}
+        </Box>
+        <Box height={FOOTER_HEIGHT} overflow="hidden">
+          <Footer message={message} width={columns} />
+        </Box>
       </Box>
     );
   }

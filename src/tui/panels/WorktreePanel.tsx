@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { WorktreeChanges } from '../../core/changes-service.js';
+import { panelBorderColor } from '../layout.js';
 import { sliceScrollLines, scrollIndicator } from '../scroll.js';
 
 interface WorktreePanelProps {
@@ -50,7 +51,8 @@ export function WorktreePanel({
       marginLeft={isRight ? 1 : undefined}
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : undefined}
+      borderColor={panelBorderColor(focused)}
+      dimColor={!focused}
       paddingX={1}
       height={height}
       overflow="hidden"

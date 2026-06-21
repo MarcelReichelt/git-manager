@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { sliceScrollLines, scrollIndicator } from '../scroll.js';
+import { sliceScrollLines, scrollIndicator, diffPanelViewport } from '../scroll.js';
+import { panelBorderColor } from '../layout.js';
 
 interface DiffPanelProps {
   lines: string[];
@@ -38,14 +39,14 @@ export function DiffPanel({
   scrollOffset,
   focused,
 }: DiffPanelProps) {
-  const innerHeight = Math.max(1, height - 2);
   const displayLines = loading
     ? ['Loading diff…']
     : lines.length === 0
       ? ['No diff to display']
       : lines;
+  const contentViewport = diffPanelViewport(height, scrollOffset, displayLines.length);
   const rows = displayLines.map((text, index) => ({ key: `${index}-${text}`, text }));
-  const { visible, hiddenAbove, hiddenBelow } = sliceScrollLines(rows, innerHeight, scrollOffset);
+  const { visible, hiddenAbove, hiddenBelow } = sliceScrollLines(rows, contentViewport, scrollOffset);
   const indicator = scrollIndicator(hiddenAbove, hiddenBelow);
 
   return (
@@ -53,7 +54,8 @@ export function DiffPanel({
       flexGrow={1}
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : undefined}
+      borderColor={panelBorderColor(focused)}
+      dimColor={!focused}
       paddingX={1}
       marginLeft={1}
       height={height}
@@ -66,7 +68,7 @@ export function DiffPanel({
         {visible.map((row) => {
           const { color, dim } = lineColor(row.text);
           return (
-            <Text key={row.key} color={color} dimColor={dim} wrap="truncate-end">
+            <Text key={row.key} color={color} dimColor={dim}>
               {row.text.length === 0 ? ' ' : row.text}
             </Text>
           );

@@ -11,6 +11,10 @@ export function truncateEnd(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+export function panelBorderColor(focused: boolean): 'cyan' | 'gray' {
+  return focused ? 'cyan' : 'gray';
+}
+
 import { STAGE_REPOS, STAGE_CHANGES, type Stage } from './carousel.js';
 
 export function footerActionsForStage(stage: Stage): string {

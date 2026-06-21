@@ -36,7 +36,8 @@ import {
   worktreeOpsAllowed,
   type Stage,
 } from './carousel.js';
-import { sliceScrollLines } from './scroll.js';
+import { sliceScrollLines, diffPanelViewport } from './scroll.js';
+import { jumpDiffHunkOffset } from './diff-hunk.js';
 import { resolveWorktreeSelectionIndex } from './selection.js';
 import { Footer } from './components/Footer.js';
 import { DialogOverlay } from './components/DialogOverlay.js';
@@ -148,7 +149,6 @@ function App() {
   const [ctx, setCtx] = useState<ActiveContext | undefined>(() => getActiveContext());
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorktreeIdRef = useRef<number | undefined>(undefined);
-  const repoPickerRequiredRef = useRef(false);
   const dialogOpen =
     overlay !== null ||
     repoOverlay !== null ||
@@ -189,10 +189,13 @@ function App() {
       const activeCtx = getActiveContext();
       setCtx(activeCtx);
       setReady(true);
-      setStage(activeCtx ? STAGE_WORKTREES : STAGE_REPOS);
-      if (outsideRepo) {
-        repoPickerRequiredRef.current = !activeCtx;
-        setRepoOverlay(createRepoPickerState('select'));
+      setStage(outsideRepo || !activeCtx ? STAGE_REPOS : STAGE_WORKTREES);
+      const lastRepoId = activeCtx?.repository.id ?? getGlobalState().active_repository_id;
+      if (lastRepoId) {
+        const idx = listRepositories().findIndex((r) => r.id === lastRepoId);
+        if (idx >= 0) {
+          setRepoIndex(idx);
+        }
       }
       if (activeCtx) {
         await refresh();
@@ -313,14 +316,15 @@ function App() {
   }, [changeFiles.length]);
 
   useEffect(() => {
-    if (!ctx) {
+    const repoId = ctx?.repository.id ?? activeRepoId;
+    if (!repoId) {
       return;
     }
-    const idx = repos.findIndex((r) => r.id === ctx.repository.id);
+    const idx = repos.findIndex((r) => r.id === repoId);
     if (idx >= 0) {
       setRepoIndex(idx);
     }
-  }, [ctx, repos]);
+  }, [ctx, repos, activeRepoId]);
 
   useEffect(() => {
     setRepoScroll((offset) => {
@@ -437,55 +441,41 @@ function App() {
   const scrollDiff = useCallback(
     (delta: number) => {
       setDiffScroll((offset) => {
-        const max = sliceScrollLines(diffLines, innerPaneHeight, 0).maxScroll;
-        return Math.min(Math.max(0, offset + delta), max);
+        const next = offset + delta;
+        const viewport = diffPanelViewport(paneHeight, Math.max(0, next), diffLines.length);
+        const max = sliceScrollLines(diffLines, viewport, 0).maxScroll;
+        return Math.min(Math.max(0, next), max);
       });
     },
-    [diffLines, innerPaneHeight],
+    [diffLines, paneHeight],
   );
 
   const jumpDiffHunk = useCallback(
     (direction: 1 | -1) => {
-      setDiffScroll((offset) => {
-        const max = sliceScrollLines(diffLines, innerPaneHeight, 0).maxScroll;
-        const headers: number[] = [];
-        for (let i = 0; i < diffLines.length; i++) {
-          if (diffLines[i].startsWith('@@')) {
-            headers.push(i);
-          }
-        }
-        if (headers.length === 0) {
-          return offset;
-        }
-        const target =
-          direction === 1
-            ? headers.find((index) => index > offset)
-            : [...headers].reverse().find((index) => index < offset);
-        if (target === undefined) {
-          return offset;
-        }
-        return Math.min(Math.max(0, target), max);
-      });
+      setDiffScroll((offset) => jumpDiffHunkOffset(diffLines, offset, direction, paneHeight));
     },
-    [diffLines, innerPaneHeight],
+    [diffLines, paneHeight],
   );
 
   const selectRepo = useCallback(
-    async (index: number) => {
+    async (index: number, force = false) => {
       const repo = repos[index];
-      if (!repo || repo.id === activeRepoId) {
+      if (!repo || (!force && ctx && repo.id === activeRepoId)) {
         return;
       }
       try {
         await syncWorktreesFromGit(repo);
         activateRepository(repo.id);
         setCtx(getActiveContext());
+        if (!ctx) {
+          setStage(STAGE_WORKTREES);
+        }
         await refresh();
       } catch (err) {
         showMessage((err as Error).message);
       }
     },
-    [repos, activeRepoId, refresh, showMessage],
+    [repos, ctx, activeRepoId, refresh, showMessage],
   );
 
   const moveRepoSelection = useCallback(
@@ -691,7 +681,6 @@ function App() {
         return;
       }
       closeRepoOverlay();
-      repoPickerRequiredRef.current = false;
       setCtx(getActiveContext());
       showMessage(`Active repository: ${result.repository.name}`);
       await refresh();
@@ -1077,9 +1066,6 @@ function App() {
         return;
       }
       if (key.escape) {
-        if (repoPickerRequiredRef.current) {
-          return;
-        }
         closeRepoOverlay();
         return;
       }
@@ -1168,6 +1154,9 @@ function App() {
     }
 
     if (key.tab && key.shift) {
+      if (!ctx) {
+        return;
+      }
       if (stage === STAGE_CHANGES && diffFocused) {
         setDiffFocused(false);
       } else {
@@ -1177,6 +1166,9 @@ function App() {
       return;
     }
     if (input === '\t' || key.tab) {
+      if (!ctx) {
+        return;
+      }
       if (stage === STAGE_CHANGES && !diffFocused) {
         setDiffFocused(true);
       } else {
@@ -1185,6 +1177,9 @@ function App() {
       return;
     }
     if (key.leftArrow) {
+      if (!ctx) {
+        return;
+      }
       if (stage === STAGE_CHANGES && diffFocused) {
         setDiffFocused(false);
       } else {
@@ -1194,6 +1189,9 @@ function App() {
       return;
     }
     if (key.rightArrow) {
+      if (!ctx) {
+        return;
+      }
       if (stage === STAGE_CHANGES && !diffFocused) {
         setDiffFocused(true);
       } else {
@@ -1253,6 +1251,10 @@ function App() {
       openShortcutsOverlay();
       return;
     }
+    if (key.return && stage === STAGE_REPOS && !ctx) {
+      void selectRepo(repoIndex, true);
+      return;
+    }
     if (!worktreeOpsAllowed(stage)) {
       return;
     }
@@ -1299,39 +1301,6 @@ function App() {
     return <Text>Loading...</Text>;
   }
 
-  if (!ctx && !repoOverlay) {
-    return (
-      <Box flexDirection="column">
-        <Text>No active repository.</Text>
-        <Text color="gray">Press q to quit</Text>
-      </Box>
-    );
-  }
-
-  if (!ctx) {
-    return (
-      <Box flexDirection="column" height={rows} overflow="hidden">
-        <Box flexDirection="column" paddingX={1}>
-          <Text bold>Select repository</Text>
-          <Text color="gray">Choose a repository to open</Text>
-        </Box>
-        <Box flexGrow={1} position="relative" justifyContent="center" alignItems="center">
-          {repoOverlay ? (
-            <DialogOverlay width={columns} height={Math.max(8, rows - FOOTER_HEIGHT - 3)}>
-              <RepoPickerOverlay
-                state={repoOverlay}
-                width={repoPickerDialogWidth(columns)}
-              />
-            </DialogOverlay>
-          ) : null}
-        </Box>
-        <Box height={FOOTER_HEIGHT} overflow="hidden">
-          <Footer message={message} width={columns} />
-        </Box>
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="column" height={rows} overflow="hidden">
       <Box height={HEADER_HEIGHT} flexDirection="column" overflow="hidden">
@@ -1347,9 +1316,15 @@ function App() {
           </Text>
         </Box>
         <Box height={1} overflow="hidden">
-          <Text wrap="truncate">
-            Active: {ctx.worktree.label ?? ctx.worktree.branch} ({ctx.worktree.branch})
-          </Text>
+          {ctx ? (
+            <Text wrap="truncate">
+              Active: {ctx.worktree.label ?? ctx.worktree.branch} ({ctx.worktree.branch})
+            </Text>
+          ) : (
+            <Text wrap="truncate" color="gray">
+              No active repository — select one and press Enter
+            </Text>
+          )}
         </Box>
       </Box>
 
@@ -1369,7 +1344,7 @@ function App() {
                 side="right"
                 worktrees={worktrees}
                 changes={changes}
-                activeWorktreeId={ctx.worktree.id}
+                activeWorktreeId={ctx?.worktree.id ?? -1}
                 selectedIndex={selectedIndex}
                 height={paneHeight}
                 scrollOffset={worktreeScroll}
@@ -1382,7 +1357,7 @@ function App() {
                 side="left"
                 worktrees={worktrees}
                 changes={changes}
-                activeWorktreeId={ctx.worktree.id}
+                activeWorktreeId={ctx!.worktree.id}
                 selectedIndex={selectedIndex}
                 height={paneHeight}
                 scrollOffset={worktreeScroll}

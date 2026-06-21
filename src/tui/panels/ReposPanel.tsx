@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { panelBorderColor } from '../layout.js';
 import { sliceScrollLines, scrollIndicator } from '../scroll.js';
 
 interface ReposPanelProps {
@@ -38,7 +39,8 @@ export function ReposPanel({
       width="35%"
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : undefined}
+      borderColor={panelBorderColor(focused)}
+      dimColor={!focused}
       paddingX={1}
       height={height}
       overflow="hidden"

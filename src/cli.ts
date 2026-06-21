@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
+
+const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 import { setGlobalOptions } from './core/global-options.js';
 import { ensureSetup } from './commands/setup.js';
 import { runDefaultCommand } from './commands/default.js';
@@ -47,7 +50,7 @@ const program = new Command();
 program
   .name('git-manager')
   .description('TypeScript git repository manager with worktrees, merge, and TUI')
-  .version('0.2.0')
+  .version(version)
   .option('--verbose', 'Show filesystem paths')
   .option('--no-hooks', 'Skip all hooks')
   .option('--no-pre-hooks', 'Skip pre hooks')

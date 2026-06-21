@@ -8,9 +8,10 @@ export function createTempDir(prefix = 'git-manager-test-'): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-export function initBareRepo(path: string): void {
+export function initBareRepo(path: string, options: { initialBranch?: string } = {}): void {
   mkdirSync(path, { recursive: true });
-  execSync('git init --bare', { cwd: path, stdio: 'ignore' });
+  const branch = options.initialBranch ?? 'main';
+  execSync(`git init --bare -b ${branch}`, { cwd: path, stdio: 'ignore' });
 }
 
 export function initRepo(path: string, options: { initialBranch?: string } = {}): void {
@@ -23,10 +24,49 @@ export function initRepo(path: string, options: { initialBranch?: string } = {})
 }
 
 /**
+ * Initialise a working repo wired to a fresh bare "origin" remote, with the
+ * initial branch pushed and tracking. This is the local stand-in for a real
+ * git server: git treats a local bare repo as a fully functional remote, so
+ * clone/fetch/push/pull all exercise the exact same code paths.
+ */
+export function initRepoWithRemote(
+  repoPath: string,
+  remotePath: string,
+  options: { initialBranch?: string } = {},
+): void {
+  const branch = options.initialBranch ?? 'main';
+  initBareRepo(remotePath, { initialBranch: branch });
+  initRepo(repoPath, { initialBranch: branch });
+  execSync(`git remote add origin "${remotePath}"`, { cwd: repoPath, stdio: 'ignore' });
+  execSync(`git push -u origin ${branch}`, { cwd: repoPath, stdio: 'ignore' });
+}
+
+/**
+ * Simulate another contributor pushing a commit to the remote by cloning it
+ * into a throwaway directory, committing, and pushing back.
+ */
+export function pushExternalCommit(
+  remotePath: string,
+  baseDir: string,
+  options: { fileName?: string; branch?: string } = {},
+): void {
+  const fileName = options.fileName ?? 'remote.txt';
+  const branch = options.branch ?? 'main';
+  const clone = join(baseDir, `external-clone-${Date.now()}`);
+  execSync(`git clone "${remotePath}" "${clone}"`, { stdio: 'ignore' });
+  configureTestIdentity(clone);
+  execSync(`git checkout ${branch}`, { cwd: clone, stdio: 'ignore' });
+  writeFileSync(join(clone, fileName), 'remote change\n');
+  execSync(`git add . && git commit -m "external commit"`, { cwd: clone, stdio: 'ignore' });
+  execSync(`git push origin ${branch}`, { cwd: clone, stdio: 'ignore' });
+  rmSync(clone, { recursive: true, force: true });
+}
+
+/**
  * Configure a repo-local git identity so tests are hermetic on machines
  * (e.g. fresh Windows installs) that have no global user.name/user.email set.
  */
-function configureTestIdentity(path: string): void {
+export function configureTestIdentity(path: string): void {
   execSync('git config user.name "git-manager test"', { cwd: path, stdio: 'ignore' });
   execSync('git config user.email "test@git-manager.local"', { cwd: path, stdio: 'ignore' });
   execSync('git config commit.gpgsign false', { cwd: path, stdio: 'ignore' });

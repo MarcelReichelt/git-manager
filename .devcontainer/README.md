@@ -45,4 +45,4 @@ yarn test
 - `node_modules` lives in a named Docker volume, so the Linux-built native
   binaries never clash with the Windows `node_modules` on your host.
 - No registry token is needed: all dependencies resolve from the public npm
-  registry (the private `@murakai` scope is only used for publishing).
+  registry (the private `@git-manager` scope is only used for publishing).

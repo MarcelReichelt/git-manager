@@ -11,7 +11,7 @@ RUN apt-get update \
 
 RUN corepack enable
 
-# .yarnrc.yml references ${NPM_TOKEN} for the private @murakai publish scope.
+# .yarnrc.yml references ${NPM_TOKEN} for the private @git-manager publish scope.
 # The e2e build only needs public deps, so a placeholder satisfies yarn's eager
 # environment-variable resolution.
 ENV NPM_TOKEN=unused

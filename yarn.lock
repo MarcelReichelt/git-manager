@@ -197,6 +197,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@git-manager/main@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@git-manager/main@workspace:."
+  dependencies:
+    "@iarna/toml": "npm:^2.2.5"
+    "@inquirer/prompts": "npm:^7.3.2"
+    "@types/better-sqlite3": "npm:^7.6.12"
+    "@types/node": "npm:^22.13.10"
+    "@types/react": "npm:^18.3.18"
+    better-sqlite3: "npm:^12.11.1"
+    commander: "npm:^13.1.0"
+    execa: "npm:^9.5.2"
+    ink: "npm:^5.2.0"
+    ink-testing-library: "npm:^4.0.0"
+    jiti: "npm:^2.4.2"
+    react: "npm:^18.3.1"
+    simple-git: "npm:^3.27.0"
+    tsup: "npm:^8.4.0"
+    typescript: "npm:^5.8.2"
+    vitest: "npm:^3.0.9"
+    zod: "npm:^3.24.2"
+  bin:
+    main: ./dist/cli.js
+  languageName: unknown
+  linkType: soft
+
 "@iarna/toml@npm:^2.2.5":
   version: 2.2.5
   resolution: "@iarna/toml@npm:2.2.5"
@@ -509,32 +535,6 @@ __metadata:
   checksum: 10c0/ef1ad3f1f50991e3bed352b175986d8b4bc684521698514a2ed63c1d1fc9848843da4f2bc2df961c9b148c94e1c34bf33f0da8a90ba2234e452481f2cc9937b1
   languageName: node
   linkType: hard
-
-"@murakai/git-manager@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@murakai/git-manager@workspace:."
-  dependencies:
-    "@iarna/toml": "npm:^2.2.5"
-    "@inquirer/prompts": "npm:^7.3.2"
-    "@types/better-sqlite3": "npm:^7.6.12"
-    "@types/node": "npm:^22.13.10"
-    "@types/react": "npm:^18.3.18"
-    better-sqlite3: "npm:^12.11.1"
-    commander: "npm:^13.1.0"
-    execa: "npm:^9.5.2"
-    ink: "npm:^5.2.0"
-    ink-testing-library: "npm:^4.0.0"
-    jiti: "npm:^2.4.2"
-    react: "npm:^18.3.1"
-    simple-git: "npm:^3.27.0"
-    tsup: "npm:^8.4.0"
-    typescript: "npm:^5.8.2"
-    vitest: "npm:^3.0.9"
-    zod: "npm:^3.24.2"
-  bin:
-    git-manager: ./dist/cli.js
-  languageName: unknown
-  linkType: soft
 
 "@rollup/rollup-android-arm-eabi@npm:4.62.0":
   version: 4.62.0

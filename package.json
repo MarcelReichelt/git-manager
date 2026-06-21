@@ -1,5 +1,5 @@
 {
-  "name": "@murakai/git-manager",
+  "name": "@git-manager/main",
   "version": "0.2.0",
   "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
   "type": "module",

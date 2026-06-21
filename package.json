@@ -1,6 +1,6 @@
 {
   "name": "@git-manager/main",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
   "type": "module",
   "bin": "./dist/cli.js",
@@ -15,6 +15,9 @@
     "test:all": "yarn test && yarn test:e2e:docker",
     "link:global": "node scripts/link-global.mjs",
     "unlink:global": "node scripts/unlink-global.mjs",
+    "bump": "yarn version patch --immediate",
+    "bump:minor": "yarn version minor --immediate",
+    "bump:major": "yarn version major --immediate",
     "publish": "yarn build && yarn link:global && yarn test:all && yarn npm publish"
   },
   "engines": {

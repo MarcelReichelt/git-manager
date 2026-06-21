@@ -47,7 +47,7 @@ const program = new Command();
 program
   .name('git-manager')
   .description('TypeScript git repository manager with worktrees, merge, and TUI')
-  .version('0.1.0')
+  .version('0.2.0')
   .option('--verbose', 'Show filesystem paths')
   .option('--no-hooks', 'Skip all hooks')
   .option('--no-pre-hooks', 'Skip pre hooks')

@@ -2,6 +2,8 @@
 
 A TypeScript CLI and TUI for managing git repositories with worktrees, push/pull, merges, hooks, and a global registry.
 
+Requires **Node.js 20** or later.
+
 ## Features
 
 - Global repository registry with active repo and worktree context
@@ -31,6 +33,8 @@ git-manager setup    # settings wizard
 On first run, the setup wizard asks for your editor, clone location, and default layout mode.
 
 ## Documentation
+
+Browse from the CLI: `git-manager docs [topic]` (e.g. `git-manager docs tui`).
 
 | Guide | Topic |
 | --- | --- |

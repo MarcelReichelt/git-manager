@@ -57,8 +57,11 @@ describe('tui shortcuts', () => {
   });
 
   it('returns the selected shortcut action', () => {
-    const state = { selectedIndex: 5, scroll: 0 };
-    expect(selectedShortcutAction(state, 'master')).toBe('open-editor');
-    expect(shortcutActionAt('master', 5)).toBe('open-editor');
+    const entries = tuiShortcutEntries('master');
+    const openIndex = entries.findIndex((entry) => entry.action === 'open-editor');
+    expect(selectedShortcutAction({ selectedIndex: openIndex, scroll: 0 }, 'master')).toBe(
+      'open-editor',
+    );
+    expect(shortcutActionAt('master', openIndex)).toBe('open-editor');
   });
 });

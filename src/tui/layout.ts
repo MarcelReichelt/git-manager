@@ -11,8 +11,20 @@ export function truncateEnd(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-export const FOOTER_ACTIONS =
-  'Tab focus · ↑/↓ navigate · o open · w worktree · g stashes · m menu · p/P sync · u/U primary · S settings · R repo · r refresh · q quit';
+import { STAGE_REPOS, STAGE_CHANGES, type Stage } from './carousel.js';
+
+export function footerActionsForStage(stage: Stage): string {
+  const nav = 'Tab/←/→ columns · ↑/↓ select';
+  const common = 'm menu · R repo · S settings · r refresh · q quit';
+  const ops = 'o open · w worktree · x remove · g stashes · p/P sync · u/U primary';
+  if (stage === STAGE_REPOS) {
+    return `${nav} · ${common}`;
+  }
+  if (stage === STAGE_CHANGES) {
+    return `${nav} · →/Tab diff · j/k scroll · J/K jump hunk · ${ops} · ${common}`;
+  }
+  return `${nav} · j/k scroll · ${ops} · ${common}`;
+}
 
 export function branchesAvailableForWorktree(
   remoteBranches: string[],

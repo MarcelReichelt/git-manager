@@ -121,7 +121,7 @@ export function saveSettingsEdit(state: SettingsOverlayState): SaveSettingsResul
       return { action: 'error', message: 'Enter a valid number' };
     }
     if (!Number.isInteger(num) || num < 0) {
-      return { action: 'error', message: 'Refresh interval must be a non-negative integer' };
+      return { action: 'error', message: `${field.label} must be a non-negative integer` };
     }
     parsed = num;
   } else {

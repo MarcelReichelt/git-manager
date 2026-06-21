@@ -29,6 +29,7 @@ export const globalConfigSchema = z.object({
   tui: z
     .object({
       refresh_interval_ms: z.number().int().min(0).default(2000),
+      diff_context_lines: z.number().int().min(0).default(3),
     })
     .default({}),
 });

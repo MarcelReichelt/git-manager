@@ -1,9 +1,12 @@
+import { STAGES, STAGE_CHANGES, type Stage } from './carousel.js';
+
 export type ShortcutActionId =
-  | 'focus-toggle'
-  | 'navigate-up'
-  | 'navigate-down'
-  | 'changes-down'
-  | 'changes-up'
+  | 'column-next'
+  | 'column-prev'
+  | 'select-up'
+  | 'select-down'
+  | 'diff-next-hunk'
+  | 'diff-prev-hunk'
   | 'open-editor'
   | 'pull'
   | 'push'
@@ -22,31 +25,82 @@ export type ShortcutEntry = {
   keys: string;
   label: string;
   action: ShortcutActionId;
+  stages: readonly Stage[];
 };
 
-export function tuiShortcutEntries(primaryBranch: string): ShortcutEntry[] {
-  return [
-    { keys: 'Tab', label: 'Switch focus (worktrees / changes)', action: 'focus-toggle' },
-    { keys: '↑', label: 'Move selection up or scroll changes up', action: 'navigate-up' },
-    { keys: '↓', label: 'Move selection down or scroll changes down', action: 'navigate-down' },
-    { keys: 'j', label: 'Focus changes panel, scroll down', action: 'changes-down' },
-    { keys: 'k', label: 'Focus changes panel, scroll up', action: 'changes-up' },
-    { keys: 'Enter', label: 'Set active worktree and open editor', action: 'open-editor' },
-    { keys: 'o', label: 'Set active worktree and open editor', action: 'open-editor' },
-    { keys: 'p', label: 'Pull selected worktree', action: 'pull' },
-    { keys: 'P', label: 'Push selected worktree', action: 'push' },
-    { keys: 'u', label: `Update from ${primaryBranch}`, action: 'update-from-primary' },
-    { keys: 'U', label: `Merge into ${primaryBranch}`, action: 'merge-into-primary' },
-    { keys: 'w', label: 'Create worktree', action: 'create-worktree' },
-    { keys: 'x', label: 'Remove selected worktree', action: 'remove-worktree' },
-    { keys: 'g', label: 'View stashes for selected worktree', action: 'view-stashes' },
-    { keys: 'r', label: 'Refresh worktrees and changes', action: 'refresh' },
-    { keys: 'R', label: 'Change repository', action: 'change-repo' },
-    { keys: 'S', label: 'Global settings', action: 'settings' },
-    { keys: ',', label: 'Global settings', action: 'settings' },
-    { keys: 'm', label: 'Show shortcuts (this menu)', action: 'shortcuts-menu' },
-    { keys: 'q', label: 'Quit', action: 'quit' },
+const ALL_STAGES: readonly Stage[] = STAGES;
+const WORKTREE_STAGES: readonly Stage[] = [1, 2];
+const CHANGES_STAGE: readonly Stage[] = [STAGE_CHANGES];
+
+export function tuiShortcutEntries(primaryBranch: string, stage?: Stage): ShortcutEntry[] {
+  const entries: ShortcutEntry[] = [
+    { keys: 'Tab/→', label: 'Next column', action: 'column-next', stages: ALL_STAGES },
+    { keys: 'S-Tab/←', label: 'Previous column', action: 'column-prev', stages: ALL_STAGES },
+    { keys: '↑', label: 'Move selection up', action: 'select-up', stages: ALL_STAGES },
+    { keys: '↓', label: 'Move selection down', action: 'select-down', stages: ALL_STAGES },
+    {
+      keys: 'J/⇧↓',
+      label: 'Jump to next change in diff',
+      action: 'diff-next-hunk',
+      stages: CHANGES_STAGE,
+    },
+    {
+      keys: 'K/⇧↑',
+      label: 'Jump to previous change in diff',
+      action: 'diff-prev-hunk',
+      stages: CHANGES_STAGE,
+    },
+    {
+      keys: 'Enter',
+      label: 'Set active worktree and open editor',
+      action: 'open-editor',
+      stages: WORKTREE_STAGES,
+    },
+    {
+      keys: 'o',
+      label: 'Set active worktree and open editor',
+      action: 'open-editor',
+      stages: WORKTREE_STAGES,
+    },
+    { keys: 'p', label: 'Pull selected worktree', action: 'pull', stages: WORKTREE_STAGES },
+    { keys: 'P', label: 'Push selected worktree', action: 'push', stages: WORKTREE_STAGES },
+    {
+      keys: 'u',
+      label: `Update from ${primaryBranch}`,
+      action: 'update-from-primary',
+      stages: WORKTREE_STAGES,
+    },
+    {
+      keys: 'U',
+      label: `Merge into ${primaryBranch}`,
+      action: 'merge-into-primary',
+      stages: WORKTREE_STAGES,
+    },
+    { keys: 'w', label: 'Create worktree', action: 'create-worktree', stages: WORKTREE_STAGES },
+    {
+      keys: 'x',
+      label: 'Remove selected worktree',
+      action: 'remove-worktree',
+      stages: WORKTREE_STAGES,
+    },
+    {
+      keys: 'g',
+      label: 'View stashes for selected worktree',
+      action: 'view-stashes',
+      stages: WORKTREE_STAGES,
+    },
+    { keys: 'r', label: 'Refresh worktrees and changes', action: 'refresh', stages: ALL_STAGES },
+    { keys: 'R', label: 'Change repository', action: 'change-repo', stages: ALL_STAGES },
+    { keys: 'S', label: 'Global settings', action: 'settings', stages: ALL_STAGES },
+    { keys: ',', label: 'Global settings', action: 'settings', stages: ALL_STAGES },
+    { keys: 'm', label: 'Show shortcuts (this menu)', action: 'shortcuts-menu', stages: ALL_STAGES },
+    { keys: 'q', label: 'Quit', action: 'quit', stages: ALL_STAGES },
   ];
+
+  if (stage === undefined) {
+    return entries;
+  }
+  return entries.filter((entry) => entry.stages.includes(stage));
 }
 
 export const SHORTCUT_KEY_WIDTH = 8;
@@ -59,6 +113,7 @@ export function formatShortcutLine(entry: ShortcutEntry): string {
 export function shortcutActionAt(
   primaryBranch: string,
   index: number,
+  stage?: Stage,
 ): ShortcutActionId | undefined {
-  return tuiShortcutEntries(primaryBranch)[index]?.action;
+  return tuiShortcutEntries(primaryBranch, stage)[index]?.action;
 }

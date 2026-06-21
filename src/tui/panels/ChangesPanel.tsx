@@ -8,7 +8,72 @@ export type ChangeDisplayLine = {
   text: string;
   color?: string;
   dim?: boolean;
+  fileIndex?: number;
 };
+
+export type ChangeFileEntry = {
+  path: string;
+  staged: boolean;
+  untracked: boolean;
+  originalPath?: string;
+};
+
+type ChangeSectionFile = { path: string; kind: string; originalPath?: string };
+
+type ChangeSection = {
+  title: string;
+  files: ChangeSectionFile[];
+  format: (file: ChangeSectionFile) => string;
+  staged: boolean;
+  untracked: boolean;
+};
+
+function buildSections(changes: WorktreeChanges): ChangeSection[] {
+  return [
+    {
+      title: 'Staged',
+      files: changes.staged,
+      format: (f) => `S  ${f.path}`,
+      staged: true,
+      untracked: false,
+    },
+    {
+      title: 'Modified',
+      files: changes.unstaged.filter((f) => f.kind === 'modified'),
+      format: (f) => `M  ${f.path}`,
+      staged: false,
+      untracked: false,
+    },
+    {
+      title: 'Added',
+      files: changes.unstaged.filter((f) => f.kind === 'added' || f.kind === 'deleted'),
+      format: (f) => `${f.kind === 'deleted' ? 'D' : 'A'}  ${f.path}`,
+      staged: false,
+      untracked: false,
+    },
+    {
+      title: 'Renamed',
+      files: changes.unstaged.filter((f) => f.kind === 'renamed'),
+      format: (f) => `R  ${f.originalPath ?? '?'} -> ${f.path}`,
+      staged: false,
+      untracked: false,
+    },
+    {
+      title: 'Untracked',
+      files: changes.untracked,
+      format: (f) => `?  ${f.path}`,
+      staged: false,
+      untracked: true,
+    },
+    {
+      title: 'Conflicted',
+      files: changes.conflicted,
+      format: (f) => `!  ${f.path}`,
+      staged: false,
+      untracked: false,
+    },
+  ];
+}
 
 export function flattenChanges(changes: WorktreeChanges | undefined): ChangeDisplayLine[] {
   if (!changes) {
@@ -19,44 +84,46 @@ export function flattenChanges(changes: WorktreeChanges | undefined): ChangeDisp
   }
 
   const lines: ChangeDisplayLine[] = [];
-  const sections: Array<
-    [
-      string,
-      Array<{ path: string; kind: string; originalPath?: string }>,
-      (f: { path: string; kind: string; originalPath?: string }) => string,
-    ]
-  > = [
-    ['Staged', changes.staged, (f) => `S  ${f.path}`],
-    ['Modified', changes.unstaged.filter((f) => f.kind === 'modified'), (f) => `M  ${f.path}`],
-    [
-      'Added',
-      changes.unstaged.filter((f) => f.kind === 'added' || f.kind === 'deleted'),
-      (f) => `${f.kind === 'deleted' ? 'D' : 'A'}  ${f.path}`,
-    ],
-    [
-      'Renamed',
-      changes.unstaged.filter((f) => f.kind === 'renamed'),
-      (f) => `R  ${f.originalPath ?? '?'} -> ${f.path}`,
-    ],
-    ['Untracked', changes.untracked, (f) => `?  ${f.path}`],
-    ['Conflicted', changes.conflicted, (f) => `!  ${f.path}`],
-  ];
+  let fileIndex = 0;
 
-  for (const [title, files, format] of sections) {
-    if (files.length === 0) {
+  for (const section of buildSections(changes)) {
+    if (section.files.length === 0) {
       continue;
     }
-    lines.push({ key: `header-${title}`, text: `${title} (${files.length})`, dim: true });
-    for (const file of files) {
+    lines.push({
+      key: `header-${section.title}`,
+      text: `${section.title} (${section.files.length})`,
+      dim: true,
+    });
+    for (const file of section.files) {
       lines.push({
-        key: `${title}-${file.path}`,
-        text: format(file),
-        color: title === 'Conflicted' ? 'red' : undefined,
+        key: `${section.title}-${file.path}`,
+        text: section.format(file),
+        color: section.title === 'Conflicted' ? 'red' : undefined,
+        fileIndex: fileIndex++,
       });
     }
   }
 
   return lines;
+}
+
+export function collectChangeFiles(changes: WorktreeChanges | undefined): ChangeFileEntry[] {
+  if (!changes || changes.isClean) {
+    return [];
+  }
+  const files: ChangeFileEntry[] = [];
+  for (const section of buildSections(changes)) {
+    for (const file of section.files) {
+      files.push({
+        path: file.path,
+        staged: section.staged,
+        untracked: section.untracked,
+        originalPath: file.originalPath,
+      });
+    }
+  }
+  return files;
 }
 
 interface ChangesPanelProps {
@@ -65,6 +132,9 @@ interface ChangesPanelProps {
   height: number;
   scrollOffset: number;
   focused: boolean;
+  selectable?: boolean;
+  selectedFileIndex?: number;
+  side?: 'left' | 'right';
 }
 
 export function ChangesPanel({
@@ -73,20 +143,25 @@ export function ChangesPanel({
   height,
   scrollOffset,
   focused,
+  selectable = false,
+  selectedFileIndex,
+  side = 'right',
 }: ChangesPanelProps) {
   const lines = flattenChanges(changes);
   const innerHeight = Math.max(1, height - 2);
   const { visible, hiddenAbove, hiddenBelow } = sliceScrollLines(lines, innerHeight, scrollOffset);
   const indicator = scrollIndicator(hiddenAbove, hiddenBelow);
+  const isRight = side === 'right';
 
   return (
     <Box
-      flexGrow={1}
+      width={isRight ? undefined : '35%'}
+      flexGrow={isRight ? 1 : undefined}
+      marginLeft={isRight ? 1 : undefined}
       flexDirection="column"
       borderStyle="single"
       borderColor={focused ? 'cyan' : undefined}
       paddingX={1}
-      marginLeft={1}
       height={height}
       overflow="hidden"
     >
@@ -94,11 +169,22 @@ export function ChangesPanel({
         Changes — {label}
       </Text>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
-        {visible.map((line) => (
-          <Text key={line.key} color={line.color} dimColor={line.dim}>
-            {line.text}
-          </Text>
-        ))}
+        {visible.map((line) => {
+          const isSelected =
+            selectable &&
+            line.fileIndex !== undefined &&
+            line.fileIndex === selectedFileIndex;
+          return (
+            <Text
+              key={line.key}
+              color={isSelected ? 'cyan' : line.color}
+              dimColor={line.dim}
+              inverse={isSelected}
+            >
+              {line.text}
+            </Text>
+          );
+        })}
       </Box>
       {indicator ? <Text color="gray">{indicator}</Text> : null}
     </Box>

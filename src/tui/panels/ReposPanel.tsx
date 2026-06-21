@@ -1,39 +1,31 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { WorktreeChanges } from '../../core/changes-service.js';
 import { sliceScrollLines, scrollIndicator } from '../scroll.js';
 
-interface WorktreePanelProps {
-  worktrees: Array<{ id: number; label: string | null; branch: string }>;
-  changes: WorktreeChanges[];
-  activeWorktreeId: number;
+interface ReposPanelProps {
+  repos: Array<{ id: number; name: string }>;
+  activeRepoId?: number | null;
   selectedIndex: number;
   height: number;
   scrollOffset: number;
   focused: boolean;
-  side?: 'left' | 'right';
 }
 
-export function WorktreePanel({
-  worktrees,
-  changes,
-  activeWorktreeId,
+export function ReposPanel({
+  repos,
+  activeRepoId,
   selectedIndex,
   height,
   scrollOffset,
   focused,
-  side = 'left',
-}: WorktreePanelProps) {
+}: ReposPanelProps) {
   const innerHeight = Math.max(1, height - 2);
-  const rows = worktrees.map((wt, i) => {
-    const ch = changes[i];
-    const marker = wt.id === activeWorktreeId ? '*' : ' ';
+  const rows = repos.map((repo, i) => {
+    const marker = repo.id === activeRepoId ? '*' : ' ';
     const sel = i === selectedIndex ? '>' : ' ';
-    const name = wt.label ?? wt.branch;
-    const count = ch?.totalCount ?? 0;
     return {
-      id: wt.id,
-      text: `${sel}${marker} ${name} [${count}]`,
+      id: repo.id,
+      text: `${sel}${marker} ${repo.name}`,
       selected: i === selectedIndex,
     };
   });
@@ -41,13 +33,9 @@ export function WorktreePanel({
   const { visible, hiddenAbove, hiddenBelow } = sliceScrollLines(rows, innerHeight, scrollOffset);
   const indicator = scrollIndicator(hiddenAbove, hiddenBelow);
 
-  const isRight = side === 'right';
-
   return (
     <Box
-      width={isRight ? undefined : '35%'}
-      flexGrow={isRight ? 1 : undefined}
-      marginLeft={isRight ? 1 : undefined}
+      width="35%"
       flexDirection="column"
       borderStyle="single"
       borderColor={focused ? 'cyan' : undefined}
@@ -56,7 +44,7 @@ export function WorktreePanel({
       overflow="hidden"
     >
       <Text bold color={focused ? 'cyan' : undefined}>
-        Worktrees
+        Repositories
       </Text>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {visible.map((row) => (

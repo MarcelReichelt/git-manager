@@ -5,13 +5,15 @@ import {
 } from './ShortcutsOverlay.js';
 import { sliceScrollLines } from '../scroll.js';
 import type { ShortcutActionId } from '../shortcuts.js';
+import type { Stage } from '../carousel.js';
 
 export function moveShortcutsSelection(
   state: ShortcutsOverlayState,
   delta: number,
   primaryBranch: string,
+  stage?: Stage,
 ): ShortcutsOverlayState {
-  const entries = tuiShortcutEntries(primaryBranch);
+  const entries = tuiShortcutEntries(primaryBranch, stage);
   if (entries.length === 0) {
     return state;
   }
@@ -33,6 +35,7 @@ export function moveShortcutsSelection(
 export function selectedShortcutAction(
   state: ShortcutsOverlayState,
   primaryBranch: string,
+  stage?: Stage,
 ): ShortcutActionId | undefined {
-  return tuiShortcutEntries(primaryBranch)[state.selectedIndex]?.action;
+  return tuiShortcutEntries(primaryBranch, stage)[state.selectedIndex]?.action;
 }

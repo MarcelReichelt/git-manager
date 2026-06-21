@@ -318,6 +318,53 @@ export async function dropStash(cwd: string, index: number): Promise<void> {
   await git(cwd).stash(['drop', stashRef(index)]);
 }
 
+export interface FileDiffOptions {
+  contextLines?: number;
+  staged?: boolean;
+  untracked?: boolean;
+}
+
+export async function getFileDiff(
+  cwd: string,
+  file: string,
+  options: FileDiffOptions = {},
+): Promise<string[]> {
+  const context = Math.max(0, options.contextLines ?? 3);
+  if (options.untracked) {
+    return readUntrackedAsDiff(cwd, file);
+  }
+  const args = [`--unified=${context}`];
+  if (options.staged) {
+    args.push('--staged');
+  }
+  args.push('--', file);
+  const output = await git(cwd).diff(args);
+  if (!output.trim()) {
+    return [];
+  }
+  return output.replace(/\n+$/, '').split('\n');
+}
+
+async function readUntrackedAsDiff(cwd: string, file: string): Promise<string[]> {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const { join: joinPath } = await import('node:path');
+  const full = joinPath(cwd, file);
+  if (!existsSync(full)) {
+    return [];
+  }
+  let content: string;
+  try {
+    content = readFileSync(full, 'utf8');
+  } catch {
+    return ['(binary or unreadable file)'];
+  }
+  if (content.includes('\u0000')) {
+    return ['(binary file)'];
+  }
+  const lines = content.replace(/\n+$/, '').split('\n');
+  return [`@@ new file: ${file} @@`, ...lines.map((line) => `+${line}`)];
+}
+
 export function repoNameFromUrl(url: string): string {
   const cleaned = url.replace(/\.git$/, '').replace(/\/$/, '');
   return basename(cleaned);

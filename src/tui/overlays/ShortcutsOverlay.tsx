@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { truncatePickerHint } from '../dialog.js';
 import { sliceScrollLines, scrollIndicator } from '../scroll.js';
 import { tuiShortcutEntries, type ShortcutEntry } from '../shortcuts.js';
+import type { Stage } from '../carousel.js';
 
 export type ShortcutsOverlayState = {
   selectedIndex: number;
@@ -22,6 +23,7 @@ interface ShortcutsOverlayProps {
   state: ShortcutsOverlayState;
   width: number;
   innerHeight: number;
+  stage?: Stage;
 }
 
 export function ShortcutsOverlay({
@@ -29,8 +31,9 @@ export function ShortcutsOverlay({
   state,
   width,
   innerHeight,
+  stage,
 }: ShortcutsOverlayProps) {
-  const entries = tuiShortcutEntries(primaryBranch);
+  const entries = tuiShortcutEntries(primaryBranch, stage);
   const rows = entries.map((entry, index) => ({
     entry,
     index,

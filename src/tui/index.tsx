@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import { ensureSetup } from '../commands/setup.js';
-import { getActiveContext, switchWorktree, type ActiveContext } from '../core/active-session.js';
+import {
+  getActiveContext,
+  switchWorktree,
+  activateRepository,
+  type ActiveContext,
+} from '../core/active-session.js';
 import { ensureActiveRepository } from '../core/startup-context.js';
 import {
   listRepositories,
@@ -11,13 +16,26 @@ import {
   type Worktree,
 } from '../core/registry.js';
 import { getChangesForWorktrees, type WorktreeChanges } from '../core/changes-service.js';
+import { getFileDiff } from '../core/git-service.js';
 import { loadGlobalConfig } from '../config/loader.js';
 import { openEditor } from '../core/editor-service.js';
 import { pullWorktree, pushWorktree } from '../core/sync-service.js';
 import { removeWorktreeEntry } from '../core/worktree-service.js';
 import { syncWorktreesFromGit } from '../core/worktree-service.js';
-import { ChangesPanel, flattenChanges } from './panels/ChangesPanel.js';
+import { ChangesPanel, flattenChanges, collectChangeFiles } from './panels/ChangesPanel.js';
 import { WorktreePanel } from './panels/WorktreePanel.js';
+import { ReposPanel } from './panels/ReposPanel.js';
+import { DiffPanel } from './panels/DiffPanel.js';
+import {
+  STAGE_REPOS,
+  STAGE_WORKTREES,
+  STAGE_CHANGES,
+  nextStage,
+  prevStage,
+  clampIndex,
+  worktreeOpsAllowed,
+  type Stage,
+} from './carousel.js';
 import { sliceScrollLines } from './scroll.js';
 import { resolveWorktreeSelectionIndex } from './selection.js';
 import { Footer } from './components/Footer.js';
@@ -92,8 +110,6 @@ import {
 import { loadStashOverlayList, moveStashSelection, runStashAction, runStashCreate } from './overlays/stash-overlay.js';
 import { tuiShortcutEntries, type ShortcutActionId } from './shortcuts.js';
 
-type PanelFocus = 'worktrees' | 'changes';
-
 const HEADER_HEIGHT = 2;
 const FOOTER_HEIGHT = 2;
 
@@ -109,10 +125,17 @@ function App() {
   const { exit } = useApp();
   const { rows, columns, paneHeight } = useTerminalLayout();
   const [ready, setReady] = useState(false);
-  const [focus, setFocus] = useState<PanelFocus>('worktrees');
+  const [stage, setStage] = useState<Stage>(STAGE_REPOS);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [repoIndex, setRepoIndex] = useState(0);
+  const [repoScroll, setRepoScroll] = useState(0);
   const [worktreeScroll, setWorktreeScroll] = useState(0);
   const [changesScroll, setChangesScroll] = useState(0);
+  const [changeFileIndex, setChangeFileIndex] = useState(0);
+  const [diffScroll, setDiffScroll] = useState(0);
+  const [diffLines, setDiffLines] = useState<string[]>([]);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffFocused, setDiffFocused] = useState(false);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [changes, setChanges] = useState<WorktreeChanges[]>([]);
   const [message, setMessage] = useState('');
@@ -166,6 +189,7 @@ function App() {
       const activeCtx = getActiveContext();
       setCtx(activeCtx);
       setReady(true);
+      setStage(activeCtx ? STAGE_WORKTREES : STAGE_REPOS);
       if (outsideRepo) {
         repoPickerRequiredRef.current = !activeCtx;
         setRepoOverlay(createRepoPickerState('select'));
@@ -255,10 +279,18 @@ function App() {
   const selectedWt = worktrees[selectedIndex];
   const innerPaneHeight = Math.max(1, paneHeight - 2);
 
+  const repos = useMemo(() => listRepositories(), [ctx, ready]);
+  const activeRepoId = getGlobalState().active_repository_id;
+
   const changeLines = useMemo(
     () => flattenChanges(selectedChanges),
     [selectedChanges],
   );
+  const changeFiles = useMemo(() => collectChangeFiles(selectedChanges), [selectedChanges]);
+  const selectedChangeFile = changeFiles[changeFileIndex];
+  const selectedFileKey = selectedChangeFile
+    ? `${selectedChangeFile.staged}:${selectedChangeFile.untracked}:${selectedChangeFile.path}`
+    : '';
   const maxWorktreeScroll = useMemo(
     () => sliceScrollLines(worktrees, innerPaneHeight, 0).maxScroll,
     [worktrees, innerPaneHeight],
@@ -273,7 +305,103 @@ function App() {
 
   useEffect(() => {
     setChangesScroll(0);
+    setChangeFileIndex(0);
   }, [selectedIndex]);
+
+  useEffect(() => {
+    setChangeFileIndex((index) => clampIndex(index, changeFiles.length));
+  }, [changeFiles.length]);
+
+  useEffect(() => {
+    if (!ctx) {
+      return;
+    }
+    const idx = repos.findIndex((r) => r.id === ctx.repository.id);
+    if (idx >= 0) {
+      setRepoIndex(idx);
+    }
+  }, [ctx, repos]);
+
+  useEffect(() => {
+    setRepoScroll((offset) => {
+      const max = sliceScrollLines(repos, innerPaneHeight, 0).maxScroll;
+      let next = Math.min(offset, max);
+      if (repoIndex < next) {
+        next = repoIndex;
+      }
+      if (repoIndex >= next + innerPaneHeight) {
+        next = Math.min(max, repoIndex - innerPaneHeight + 1);
+      }
+      return next;
+    });
+  }, [repoIndex, repos, innerPaneHeight]);
+
+  useEffect(() => {
+    if (stage !== STAGE_CHANGES) {
+      return;
+    }
+    const lineIndex = changeLines.findIndex((line) => line.fileIndex === changeFileIndex);
+    if (lineIndex < 0) {
+      return;
+    }
+    setChangesScroll((offset) => {
+      const max = sliceScrollLines(changeLines, innerPaneHeight, 0).maxScroll;
+      let next = Math.min(offset, max);
+      if (lineIndex < next) {
+        next = lineIndex;
+      }
+      if (lineIndex >= next + innerPaneHeight) {
+        next = Math.min(max, lineIndex - innerPaneHeight + 1);
+      }
+      return next;
+    });
+  }, [stage, changeFileIndex, changeLines, innerPaneHeight]);
+
+  useEffect(() => {
+    if (stage !== STAGE_CHANGES) {
+      return;
+    }
+    const worktreePath = selectedWt?.path;
+    const file = selectedChangeFile;
+    if (!worktreePath || !file) {
+      setDiffLines([]);
+      setDiffLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDiffScroll(0);
+    setDiffLoading(true);
+    void (async () => {
+      try {
+        const contextLines = loadGlobalConfig().tui.diff_context_lines;
+        const lines = await getFileDiff(worktreePath, file.path, {
+          contextLines,
+          staged: file.staged,
+          untracked: file.untracked,
+        });
+        if (!cancelled) {
+          setDiffLines(lines);
+          setDiffLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDiffLines([`Error: ${(err as Error).message}`]);
+          setDiffLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // selectedFileKey captures the file identity so refreshes don't reload an unchanged diff
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, selectedFileKey, selectedWt?.path]);
+
+  useEffect(() => {
+    if (stage !== STAGE_CHANGES) {
+      setDiffFocused(false);
+    }
+  }, [stage]);
 
   useEffect(() => {
     setWorktreeScroll((offset) => {
@@ -304,6 +432,105 @@ function App() {
       setSelectedIndex((index) => Math.min(Math.max(0, index + delta), worktrees.length - 1));
     },
     [worktrees.length],
+  );
+
+  const scrollDiff = useCallback(
+    (delta: number) => {
+      setDiffScroll((offset) => {
+        const max = sliceScrollLines(diffLines, innerPaneHeight, 0).maxScroll;
+        return Math.min(Math.max(0, offset + delta), max);
+      });
+    },
+    [diffLines, innerPaneHeight],
+  );
+
+  const jumpDiffHunk = useCallback(
+    (direction: 1 | -1) => {
+      setDiffScroll((offset) => {
+        const max = sliceScrollLines(diffLines, innerPaneHeight, 0).maxScroll;
+        const headers: number[] = [];
+        for (let i = 0; i < diffLines.length; i++) {
+          if (diffLines[i].startsWith('@@')) {
+            headers.push(i);
+          }
+        }
+        if (headers.length === 0) {
+          return offset;
+        }
+        const target =
+          direction === 1
+            ? headers.find((index) => index > offset)
+            : [...headers].reverse().find((index) => index < offset);
+        if (target === undefined) {
+          return offset;
+        }
+        return Math.min(Math.max(0, target), max);
+      });
+    },
+    [diffLines, innerPaneHeight],
+  );
+
+  const selectRepo = useCallback(
+    async (index: number) => {
+      const repo = repos[index];
+      if (!repo || repo.id === activeRepoId) {
+        return;
+      }
+      try {
+        await syncWorktreesFromGit(repo);
+        activateRepository(repo.id);
+        setCtx(getActiveContext());
+        await refresh();
+      } catch (err) {
+        showMessage((err as Error).message);
+      }
+    },
+    [repos, activeRepoId, refresh, showMessage],
+  );
+
+  const moveRepoSelection = useCallback(
+    (delta: number) => {
+      const nextIndex = clampIndex(repoIndex, repos.length, delta);
+      if (nextIndex === repoIndex) {
+        return;
+      }
+      setRepoIndex(nextIndex);
+      void selectRepo(nextIndex);
+    },
+    [repoIndex, repos.length, selectRepo],
+  );
+
+  const moveChangeFile = useCallback(
+    (delta: number) => {
+      setChangeFileIndex((index) => clampIndex(index, changeFiles.length, delta));
+    },
+    [changeFiles.length],
+  );
+
+  const navigateSelection = useCallback(
+    (delta: number) => {
+      if (stage === STAGE_REPOS) {
+        moveRepoSelection(delta);
+      } else if (stage === STAGE_WORKTREES) {
+        scrollWorktrees(delta);
+      } else if (diffFocused) {
+        scrollDiff(delta);
+      } else {
+        moveChangeFile(delta);
+      }
+    },
+    [stage, diffFocused, moveRepoSelection, scrollWorktrees, scrollDiff, moveChangeFile],
+  );
+
+  const scrollRightPreview = useCallback(
+    (delta: number) => {
+      if (stage === STAGE_WORKTREES) {
+        scrollChanges(delta);
+      } else if (stage === STAGE_CHANGES) {
+        scrollDiff(delta);
+      }
+    },
+    [stage, scrollChanges, scrollDiff],
   );
 
   const openCreateOverlay = useCallback(() => {
@@ -563,8 +790,8 @@ function App() {
   }, [ctx]);
 
   const shortcutsMenuHeight = useMemo(
-    () => shortcutsInnerHeight(tuiShortcutEntries(primaryBranch).length),
-    [primaryBranch],
+    () => shortcutsInnerHeight(tuiShortcutEntries(primaryBranch, stage).length),
+    [primaryBranch, stage],
   );
 
   const runShortcutAction = useCallback(
@@ -572,24 +799,23 @@ function App() {
       closeShortcutsOverlay();
 
       switch (action) {
-        case 'focus-toggle':
-          setFocus((current) => (current === 'worktrees' ? 'changes' : 'worktrees'));
+        case 'column-next':
+          setStage((current) => nextStage(current));
           return;
-        case 'navigate-up':
-          if (focus === 'changes') scrollChanges(-1);
-          else scrollWorktrees(-1);
+        case 'column-prev':
+          setStage((current) => prevStage(current));
           return;
-        case 'navigate-down':
-          if (focus === 'changes') scrollChanges(1);
-          else scrollWorktrees(1);
+        case 'select-up':
+          navigateSelection(-1);
           return;
-        case 'changes-down':
-          setFocus('changes');
-          scrollChanges(1);
+        case 'select-down':
+          navigateSelection(1);
           return;
-        case 'changes-up':
-          setFocus('changes');
-          scrollChanges(-1);
+        case 'diff-next-hunk':
+          jumpDiffHunk(1);
+          return;
+        case 'diff-prev-hunk':
+          jumpDiffHunk(-1);
           return;
         case 'refresh':
           await refresh();
@@ -655,9 +881,8 @@ function App() {
     },
     [
       closeShortcutsOverlay,
-      focus,
-      scrollChanges,
-      scrollWorktrees,
+      navigateSelection,
+      jumpDiffHunk,
       refresh,
       openRepoOverlay,
       openSettingsOverlay,
@@ -714,18 +939,18 @@ function App() {
       }
       if (key.upArrow) {
         setShortcutsOverlay((current) =>
-          current ? moveShortcutsSelection(current, -1, primaryBranch) : current,
+          current ? moveShortcutsSelection(current, -1, primaryBranch, stage) : current,
         );
         return;
       }
       if (key.downArrow) {
         setShortcutsOverlay((current) =>
-          current ? moveShortcutsSelection(current, 1, primaryBranch) : current,
+          current ? moveShortcutsSelection(current, 1, primaryBranch, stage) : current,
         );
         return;
       }
       if (key.return) {
-        const action = selectedShortcutAction(shortcutsOverlay, primaryBranch);
+        const action = selectedShortcutAction(shortcutsOverlay, primaryBranch, stage);
         if (action) {
           void runShortcutAction(action);
         }
@@ -942,28 +1167,70 @@ function App() {
       return;
     }
 
+    if (key.tab && key.shift) {
+      if (stage === STAGE_CHANGES && diffFocused) {
+        setDiffFocused(false);
+      } else {
+        setDiffFocused(false);
+        setStage((current) => prevStage(current));
+      }
+      return;
+    }
     if (input === '\t' || key.tab) {
-      setFocus((current) => (current === 'worktrees' ? 'changes' : 'worktrees'));
+      if (stage === STAGE_CHANGES && !diffFocused) {
+        setDiffFocused(true);
+      } else {
+        setStage((current) => nextStage(current));
+      }
+      return;
+    }
+    if (key.leftArrow) {
+      if (stage === STAGE_CHANGES && diffFocused) {
+        setDiffFocused(false);
+      } else {
+        setDiffFocused(false);
+        setStage((current) => prevStage(current));
+      }
+      return;
+    }
+    if (key.rightArrow) {
+      if (stage === STAGE_CHANGES && !diffFocused) {
+        setDiffFocused(true);
+      } else {
+        setStage((current) => nextStage(current));
+      }
       return;
     }
     if (key.upArrow) {
-      if (focus === 'changes') scrollChanges(-1);
-      else scrollWorktrees(-1);
+      if (key.shift && stage === STAGE_CHANGES) {
+        jumpDiffHunk(-1);
+      } else {
+        navigateSelection(-1);
+      }
       return;
     }
     if (key.downArrow) {
-      if (focus === 'changes') scrollChanges(1);
-      else scrollWorktrees(1);
+      if (key.shift && stage === STAGE_CHANGES) {
+        jumpDiffHunk(1);
+      } else {
+        navigateSelection(1);
+      }
+      return;
+    }
+    if (input === 'J' && stage === STAGE_CHANGES) {
+      jumpDiffHunk(1);
+      return;
+    }
+    if (input === 'K' && stage === STAGE_CHANGES) {
+      jumpDiffHunk(-1);
       return;
     }
     if (input === 'j') {
-      setFocus('changes');
-      scrollChanges(1);
+      scrollRightPreview(1);
       return;
     }
     if (input === 'k') {
-      setFocus('changes');
-      scrollChanges(-1);
+      scrollRightPreview(-1);
       return;
     }
     if (input === 'q') {
@@ -984,6 +1251,9 @@ function App() {
     }
     if (input === 'm') {
       openShortcutsOverlay();
+      return;
+    }
+    if (!worktreeOpsAllowed(stage)) {
       return;
     }
     if (input === 'g') {
@@ -1062,9 +1332,6 @@ function App() {
     );
   }
 
-  const repos = listRepositories();
-  const activeRepoId = getGlobalState().active_repository_id;
-
   return (
     <Box flexDirection="column" height={rows} overflow="hidden">
       <Box height={HEADER_HEIGHT} flexDirection="column" overflow="hidden">
@@ -1088,22 +1355,70 @@ function App() {
 
       <Box height={paneHeight} flexDirection="row" overflow="hidden" position="relative">
         <Box flexDirection="row" width={columns} height={paneHeight} dimColor={dialogOpen}>
-          <WorktreePanel
-            worktrees={worktrees}
-            changes={changes}
-            activeWorktreeId={ctx.worktree.id}
-            selectedIndex={selectedIndex}
-            height={paneHeight}
-            scrollOffset={worktreeScroll}
-            focused={focus === 'worktrees' && !dialogOpen}
-          />
-          <ChangesPanel
-            changes={selectedChanges}
-            label={selectedWt?.label ?? selectedWt?.branch ?? 'none'}
-            height={paneHeight}
-            scrollOffset={changesScroll}
-            focused={focus === 'changes' && !dialogOpen}
-          />
+          {stage === STAGE_REPOS ? (
+            <>
+              <ReposPanel
+                repos={repos}
+                activeRepoId={activeRepoId}
+                selectedIndex={repoIndex}
+                height={paneHeight}
+                scrollOffset={repoScroll}
+                focused={!dialogOpen}
+              />
+              <WorktreePanel
+                side="right"
+                worktrees={worktrees}
+                changes={changes}
+                activeWorktreeId={ctx.worktree.id}
+                selectedIndex={selectedIndex}
+                height={paneHeight}
+                scrollOffset={worktreeScroll}
+                focused={false}
+              />
+            </>
+          ) : stage === STAGE_WORKTREES ? (
+            <>
+              <WorktreePanel
+                side="left"
+                worktrees={worktrees}
+                changes={changes}
+                activeWorktreeId={ctx.worktree.id}
+                selectedIndex={selectedIndex}
+                height={paneHeight}
+                scrollOffset={worktreeScroll}
+                focused={!dialogOpen}
+              />
+              <ChangesPanel
+                side="right"
+                changes={selectedChanges}
+                label={selectedWt?.label ?? selectedWt?.branch ?? 'none'}
+                height={paneHeight}
+                scrollOffset={changesScroll}
+                focused={false}
+              />
+            </>
+          ) : (
+            <>
+              <ChangesPanel
+                side="left"
+                changes={selectedChanges}
+                label={selectedWt?.label ?? selectedWt?.branch ?? 'none'}
+                height={paneHeight}
+                scrollOffset={changesScroll}
+                focused={!diffFocused && !dialogOpen}
+                selectable
+                selectedFileIndex={changeFileIndex}
+              />
+              <DiffPanel
+                lines={diffLines}
+                label={selectedChangeFile?.path ?? 'none'}
+                loading={diffLoading}
+                height={paneHeight}
+                scrollOffset={diffScroll}
+                focused={diffFocused && !dialogOpen}
+              />
+            </>
+          )}
         </Box>
         {overlay ? (
           <DialogOverlay width={columns} height={paneHeight}>
@@ -1141,6 +1456,7 @@ function App() {
               state={shortcutsOverlay}
               width={shortcutsDialogWidth(columns)}
               innerHeight={shortcutsMenuHeight}
+              stage={stage}
             />
           </DialogOverlay>
         ) : null}
@@ -1152,7 +1468,7 @@ function App() {
       </Box>
 
       <Box height={FOOTER_HEIGHT} overflow="hidden">
-        <Footer message={message} width={columns} />
+        <Footer message={message} width={columns} stage={stage} />
       </Box>
     </Box>
   );

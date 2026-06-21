@@ -18,7 +18,10 @@
     "bump": "yarn version patch --immediate",
     "bump:minor": "yarn version minor --immediate",
     "bump:major": "yarn version major --immediate",
-    "publish": "yarn build && yarn link:global && yarn test:all && yarn npm publish"
+    "publish": "yarn build && yarn link:global && yarn test:all && yarn npm publish",
+    "publish:patch": "yarn bump && yarn publish",
+    "publish:minor": "yarn bump:minor && yarn publish",
+    "publish:major": "yarn bump:major && yarn publish"
   },
   "engines": {
     "node": ">=20"

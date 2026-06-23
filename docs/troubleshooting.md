@@ -33,6 +33,14 @@ working from a cloned repo:
 yarn rebuild better-sqlite3
 ```
 
+### `git-manager ui` fails with `Cannot find module .../dist/tui/index.js`
+
+Versions before `0.2.4` were published without the TUI bundle. Upgrade:
+
+```bash
+npm install -g @git-manager/main@latest
+```
+
 ## Doctor
 
 ```bash

@@ -30,6 +30,8 @@ export const globalConfigSchema = z.object({
     .object({
       refresh_interval_ms: z.number().int().min(0).default(2000),
       diff_context_lines: z.number().int().min(0).default(3),
+      diff_max_file_bytes: z.number().int().min(0).default(512_000),
+      diff_max_changed_lines: z.number().int().min(0).default(8_000),
     })
     .default({}),
 });

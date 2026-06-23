@@ -16,7 +16,7 @@ import {
   type Worktree,
 } from '../core/registry.js';
 import { getChangesForWorktrees, type WorktreeChanges } from '../core/changes-service.js';
-import { getFileDiff } from '../core/git-service.js';
+import { resolveFileDiff } from '../core/diff-load-policy.js';
 import { loadGlobalConfig } from '../config/loader.js';
 import { openEditor } from '../core/editor-service.js';
 import { pullWorktree, pushWorktree } from '../core/sync-service.js';
@@ -377,11 +377,13 @@ function App() {
     setDiffLoading(true);
     void (async () => {
       try {
-        const contextLines = loadGlobalConfig().tui.diff_context_lines;
-        const lines = await getFileDiff(worktreePath, file.path, {
-          contextLines,
+        const config = loadGlobalConfig().tui;
+        const lines = await resolveFileDiff(worktreePath, file.path, {
+          contextLines: config.diff_context_lines,
           staged: file.staged,
           untracked: file.untracked,
+          maxFileBytes: config.diff_max_file_bytes,
+          maxChangedLines: config.diff_max_changed_lines,
         });
         if (!cancelled) {
           setDiffLines(lines);

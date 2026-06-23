@@ -76,6 +76,24 @@ describe('DiffPanel', () => {
     expect(lastFrame()).toContain('No diff to display');
   });
 
+  it('shows an informational message for skipped diffs', () => {
+    const { lastFrame } = render(
+      <DiffPanel
+        lines={[
+          'Diff not loaded — file is too large (1.5 MB, limit 512 KB).',
+          'Open the file in your editor to view changes.',
+        ]}
+        label="feature"
+        loading={false}
+        height={10}
+        scrollOffset={0}
+        focused
+      />,
+    );
+    expect(lastFrame()).toContain('Diff not loaded');
+    expect(lastFrame()).toContain('Open the file in your editor');
+  });
+
   it('renders diff content with the label', () => {
     const { lastFrame } = render(
       <DiffPanel

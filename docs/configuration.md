@@ -16,6 +16,9 @@ layout_mode = "workspaces"
 
 [tui]
 refresh_interval_ms = 2000
+diff_context_lines = 3
+diff_max_file_bytes = 512000
+diff_max_changed_lines = 8000
 
 [hooks]
 global_modules = ["setup-db.js"]

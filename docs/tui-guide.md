@@ -40,3 +40,8 @@ Press `m` at any time to open the full shortcuts menu.
 | q | Quit |
 
 Auto-refresh interval: `[tui].refresh_interval_ms` in global config.
+
+Large diffs are not loaded inline. When a file exceeds `[tui].diff_max_file_bytes`
+(default 512 KB) or `[tui].diff_max_changed_lines` (default 8,000), the diff panel
+shows an informational message instead. Set either limit to `0` to disable that
+check. Adjust both in TUI settings (`S` / `,`) or global config.

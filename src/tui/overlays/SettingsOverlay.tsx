@@ -32,6 +32,8 @@ export const GLOBAL_SETTING_FIELDS: SettingFieldDef[] = [
   { key: 'defaults.layout_mode', label: 'Default layout', type: 'layout_mode' },
   { key: 'tui.refresh_interval_ms', label: 'Refresh interval (ms)', type: 'number' },
   { key: 'tui.diff_context_lines', label: 'Diff context lines', type: 'number' },
+  { key: 'tui.diff_max_file_bytes', label: 'Diff max file bytes (0 = no limit)', type: 'number' },
+  { key: 'tui.diff_max_changed_lines', label: 'Diff max changed lines (0 = no limit)', type: 'number' },
 ];
 
 export const LAYOUT_MODE_OPTIONS: LayoutMode[] = ['workspaces', 'sibling'];

@@ -12,7 +12,14 @@ interface DiffPanelProps {
   focused: boolean;
 }
 
+function isInformationalLine(line: string): boolean {
+  return line.startsWith('Diff not loaded') || line.startsWith('Open the file in your editor');
+}
+
 function lineColor(line: string): { color?: string; dim?: boolean } {
+  if (isInformationalLine(line)) {
+    return { color: 'yellow', dim: true };
+  }
   if (line.startsWith('@@')) {
     return { color: 'cyan' };
   }

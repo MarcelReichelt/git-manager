@@ -1,13 +1,17 @@
 {
   "name": "@git-manager/main",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
   "type": "module",
   "bin": {
     "git-manager": "./dist/cli.js"
   },
+  "files": [
+    "dist/**/*.js"
+  ],
   "scripts": {
     "build": "tsup",
+    "pack:check": "node scripts/check-pack.mjs",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
     "test": "vitest run",
@@ -20,7 +24,7 @@
     "bump": "yarn version patch --immediate",
     "bump:minor": "yarn version minor --immediate",
     "bump:major": "yarn version major --immediate",
-    "publish": "yarn build && yarn link:global && yarn test:all && yarn npm publish",
+    "publish": "yarn build && yarn pack:check && yarn link:global && yarn test:all && yarn npm publish",
     "publish:patch": "yarn bump && yarn publish",
     "publish:minor": "yarn bump:minor && yarn publish",
     "publish:major": "yarn bump:major && yarn publish"

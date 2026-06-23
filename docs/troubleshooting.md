@@ -1,5 +1,38 @@
 # Troubleshooting
 
+## npm install fails
+
+### `404 Not Found` for `@git-manager/main`
+
+npm is querying the public registry. Point the `@git-manager` scope at the
+project registry (once per machine or user):
+
+```bash
+npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+```
+
+You can also add this to `~/.npmrc` or a project `.npmrc`.
+
+### `better-sqlite3` / `node-gyp` errors
+
+The package depends on native SQLite bindings. On minimal Linux images, install
+build tools before `npm install -g`:
+
+```bash
+# Debian/Ubuntu
+apt-get install python3 make g++
+
+# Alpine
+apk add python3 make g++
+```
+
+After a Node upgrade, reinstall the package or rebuild the dependency. When
+working from a cloned repo:
+
+```bash
+yarn rebuild better-sqlite3
+```
+
 ## Doctor
 
 ```bash
@@ -37,11 +70,3 @@ Or export `GIT_MANAGER_EDITOR`.
 ## Plugin load errors
 
 Verify path in `[hooks].modules` is relative to layout root. Global plugins go in `~/.config/git-manager/plugins/`.
-
-## better-sqlite3 rebuild
-
-After Node upgrade:
-
-```bash
-yarn rebuild better-sqlite3
-```

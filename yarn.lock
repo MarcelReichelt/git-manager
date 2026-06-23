@@ -219,7 +219,7 @@ __metadata:
     vitest: "npm:^3.0.9"
     zod: "npm:^3.24.2"
   bin:
-    main: ./dist/cli.js
+    git-manager: ./dist/cli.js
   languageName: unknown
   linkType: soft
 

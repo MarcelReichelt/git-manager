@@ -16,21 +16,53 @@ Requires **Node.js 20** or later.
 - First-run setup wizard and in-tool settings
 - Registry health checks via `doctor`
 
-## Quick start
+## Install
+
+Requires **Node.js 20+** and **git** on your `PATH`.
 
 ```bash
-yarn install
-yarn build
-yarn link:global   # installs ~/.local/bin/git-manager
+npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+npm install -g @git-manager/main
 
 git-manager          # interactive menu
 git-manager ui       # Ink TUI
 git-manager setup    # settings wizard
 ```
 
-> **Note:** Yarn Berry’s `yarn link` does **not** install a global CLI (unlike npm link). Use `yarn link:global` for local development.
+Run without a global install:
+
+```bash
+npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+npx @git-manager/main setup
+```
+
+On minimal Linux (Alpine, slim images), you may need build tools for the
+`better-sqlite3` native dependency: `python3`, `make`, and `g++`. See
+[Troubleshooting](docs/troubleshooting.md#npm-install-fails).
 
 On first run, the setup wizard asks for your editor, clone location, and default layout mode.
+
+## Development
+
+Clone the repo and use the local toolchain:
+
+```bash
+yarn install
+yarn build
+yarn link:global   # installs ~/.local/bin/git-manager
+yarn test              # unit and integration tests
+yarn test:watch        # watch mode
+yarn test:e2e          # CLI e2e tests (needs a running Gitea; see docker-compose.e2e.yml)
+yarn test:e2e:docker   # full e2e stack in Docker (Gitea + runner)
+```
+
+> **Note:** Yarn Berry’s `yarn link` does **not** install a global CLI (unlike npm link). Use `yarn link:global` for local development.
+
+This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (see `packageManager` in `package.json`).
+
+Example plugins live in `plugins/`.
+
+For a reproducible Linux dev environment (including from Windows via Docker), see [.devcontainer/README.md](.devcontainer/README.md).
 
 ## Documentation
 
@@ -45,24 +77,7 @@ Browse from the CLI: `git-manager docs [topic]` (e.g. `git-manager docs tui`).
 | [Configuration](docs/configuration.md) | Global and per-repo TOML |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
 | [Plugins](docs/plugins.md) | Hook actions and plugin authoring |
-| [Troubleshooting](docs/troubleshooting.md) | Doctor, stale entries, editor issues |
-
-## Development
-
-```bash
-yarn install
-yarn build
-yarn test              # unit and integration tests
-yarn test:watch        # watch mode
-yarn test:e2e          # CLI e2e tests (needs a running Gitea; see docker-compose.e2e.yml)
-yarn test:e2e:docker   # full e2e stack in Docker (Gitea + runner)
-```
-
-This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (see `packageManager` in `package.json`).
-
-Example plugins live in `plugins/`.
-
-For a reproducible Linux dev environment (including from Windows via Docker), see [.devcontainer/README.md](.devcontainer/README.md).
+| [Troubleshooting](docs/troubleshooting.md) | Install issues, doctor, stale entries, editor issues |
 
 ## License
 

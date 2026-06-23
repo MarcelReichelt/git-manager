@@ -2,6 +2,33 @@
 
 ## Install
 
+Requires **Node.js 20+** and **git** on your `PATH`.
+
+### From the npm registry
+
+One-time registry setup (per machine or user):
+
+```bash
+npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+```
+
+Global install:
+
+```bash
+npm install -g @git-manager/main
+git-manager --version
+```
+
+Or run without installing:
+
+```bash
+npx @git-manager/main setup
+```
+
+### From source
+
+For contributors working in the cloned repository:
+
 ```bash
 yarn install
 yarn build

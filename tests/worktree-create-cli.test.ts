@@ -1,8 +1,8 @@
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createTempDir, initRepo, setupTestEnv } from './helpers.js';
+import { configureTestIdentity, createTempDir, initRepo, initRepoWithRemote, setupTestEnv } from './helpers.js';
 
 const cliPath = join(process.cwd(), 'dist', 'cli.js');
 
@@ -97,6 +97,48 @@ describe('git-manager worktree create', () => {
       const listed = execSync('git worktree list --porcelain', { cwd: repoPath, encoding: 'utf8' });
       expect(listed).not.toContain('feature-foo');
       expect(existsSync(join(repoPath, '.workspaces', 'feature-foo', '.git'))).toBe(false);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it('fetches a remote-only branch before the create hook runs', () => {
+    const env = setupTestEnv(createTempDir());
+    const base = join(env.configDir, '..');
+    const repoPath = join(base, 'harbor');
+    const other = join(base, 'other');
+    const logPath = join(base, 'hook.log');
+    initRepoWithRemote(repoPath, join(base, 'origin.git'), { initialBranch: 'main' });
+    execSync(`git clone "${join(base, 'origin.git')}" "${other}"`, { stdio: 'ignore' });
+    configureTestIdentity(other);
+    execSync('git checkout -b remote-only', { cwd: other, stdio: 'ignore' });
+    writeFileSync(join(other, 'remote.txt'), 'from origin\n');
+    execSync('git add remote.txt && git commit -m "remote only"', { cwd: other, stdio: 'ignore' });
+    execSync('git push -u origin remote-only', { cwd: other, stdio: 'ignore' });
+    writeFileSync(
+      join(repoPath, '.git-manager.toml'),
+      [
+        'layout = "workspaces"',
+        `create_hook = 'if git show-ref --verify --quiet refs/remotes/origin/remote-only; then printf "ref-present\\n" >> "${logPath}"; else printf "ref-missing\\n" >> "${logPath}"; fi'`,
+        '',
+      ].join('\n'),
+    );
+
+    try {
+      expect(() => {
+        execSync('git show-ref --verify --quiet refs/remotes/origin/remote-only', {
+          cwd: repoPath,
+          stdio: 'ignore',
+        });
+      }).toThrow();
+
+      const created = runCli(['worktree', 'create', '--path', repoPath, '--branch', 'remote-only'], repoPath);
+      expect(created.status).toBe(0);
+      expect(readFileSync(logPath, 'utf8')).toBe('ref-present\n');
+      expect(execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: join(repoPath, '.workspaces', 'remote-only'),
+        encoding: 'utf8',
+      }).trim()).toBe('remote-only');
     } finally {
       env.cleanup();
     }

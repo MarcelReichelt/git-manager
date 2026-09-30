@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { createRepositoryWorktree } from '../core/create-repository-worktree.js';
+import { mergeRepositoryBranch, type RepositoryMergeDirection } from '../core/merge-repository-branch.js';
 import { readRepositoryBranches } from '../core/read-repository-branches.js';
 import {
   addRegisteredRepository,
@@ -45,6 +46,23 @@ ipcMain.on('git-manager:create-repository-worktree', (event, path: unknown, bran
   });
 });
 
+ipcMain.on(
+  'git-manager:merge-repository-branch',
+  (event, path: unknown, branch: unknown, direction: unknown, squash: unknown) => {
+    event.returnValue = attempt(() => {
+      if (
+        typeof path !== 'string' ||
+        typeof branch !== 'string' ||
+        !isMergeDirection(direction) ||
+        typeof squash !== 'boolean'
+      ) {
+        throw new Error('Repository path, branch, and merge direction are required');
+      }
+      mergeRepositoryBranch(path, branch, direction, { squash });
+    }, 'Could not merge');
+  },
+);
+
 function openWorkspaceWindow(): void {
   const workspaceWindow = new BrowserWindow({
     width: 1280,
@@ -62,13 +80,20 @@ function openWorkspaceWindow(): void {
   void workspaceWindow.loadFile(uiIndex);
 }
 
-function attempt(action: () => void): { ok: true } | { ok: false; message: string } {
+function attempt(
+  action: () => void,
+  failure = 'Could not update the registry',
+): { ok: true } | { ok: false; message: string } {
   try {
     action();
     return { ok: true };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : 'Could not update the registry' };
+    return { ok: false, message: error instanceof Error ? error.message : failure };
   }
+}
+
+function isMergeDirection(value: unknown): value is RepositoryMergeDirection {
+  return value === 'update-from-master' || value === 'into-master';
 }
 
 void app.whenReady().then(() => {

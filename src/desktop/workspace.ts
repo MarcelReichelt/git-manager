@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { REPOSITORY_BRANCH_SOURCE } from './repository-branch-source.js';
 import { type Branch, type ListedBranch } from './repository-branches.js';
+import { REPOSITORY_BRANCH_MERGE } from './repository-branch-merge.js';
 import { REPOSITORY_WORKTREE_CREATE } from './repository-worktree-create.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY,
@@ -42,7 +43,16 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
               </span>
               @if (hoveredBranch() === branch.name) {
                 <div class="branch-menu" role="menu" aria-label="Branch actions" (click)="$event.stopPropagation()">
-                  <button type="button" role="menuitem">Merge</button>
+                  <label class="squash-merge">
+                    <input type="checkbox" [checked]="squashMerge()" (change)="setSquashMerge($event)" />
+                    Squash
+                  </label>
+                  <button type="button" role="menuitem" (click)="updateFromMaster(branch.name)">
+                    Update from master
+                  </button>
+                  <button type="button" role="menuitem" (click)="mergeIntoMaster(branch.name)">
+                    Merge into master
+                  </button>
                   <button type="button" role="menuitem">Remove</button>
                 </div>
               }
@@ -56,6 +66,9 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
           </label>
           <button type="submit" class="create-branch">Create</button>
         </form>
+        @if (mergeError(); as message) {
+          <p class="merge-error" role="alert">{{ message }}</p>
+        }
         @if (createError(); as message) {
           <p class="create-error" role="alert">{{ message }}</p>
         }
@@ -231,6 +244,18 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       border-radius: 6px;
       padding: 4px 8px;
       cursor: pointer;
+    }
+
+    .squash-merge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.8rem;
+    }
+
+    .merge-error {
+      margin: 8px 0 0;
+      color: #fecaca;
     }
 
     .branch-row {
@@ -434,6 +459,7 @@ export class Workspace {
   protected readonly repositories = signal(this.registry.list());
   private readonly branchSource = inject(REPOSITORY_BRANCH_SOURCE);
   private readonly worktreeCreate = inject(REPOSITORY_WORKTREE_CREATE);
+  private readonly branchMerge = inject(REPOSITORY_BRANCH_MERGE);
   protected readonly selected = signal<RegisteredRepository | null>(null);
   protected readonly branchDraft = signal('');
   protected readonly createError = signal<string | null>(null);
@@ -444,6 +470,8 @@ export class Workspace {
   protected readonly displayNameDraft = signal('');
   protected readonly addError = signal<string | null>(null);
   protected readonly hoveredBranch = signal<string | null>(null);
+  protected readonly squashMerge = signal(false);
+  protected readonly mergeError = signal<string | null>(null);
   private readonly selectedBranchName = signal<string | null>(null);
   protected readonly selectedBranch = computed(() => {
     const name = this.selectedBranchName();
@@ -499,6 +527,7 @@ export class Workspace {
     this.selectedBranchName.set(null);
     this.branchDraft.set('');
     this.createError.set(null);
+    this.mergeError.set(null);
     this.clearBranchDetail();
     this.branchList.set(this.branchSource.list(repository.path));
   }
@@ -582,6 +611,38 @@ export class Workspace {
       this.branchList.set([]);
     }
     this.reload();
+  }
+
+  protected setSquashMerge(event: Event): void {
+    const target: unknown = event.target;
+    if (typeof target !== 'object' || target === null || !('checked' in target)) {
+      this.squashMerge.set(false);
+      return;
+    }
+    this.squashMerge.set(target.checked === true);
+  }
+
+  protected updateFromMaster(branch: string): void {
+    this.mergeBranch(branch, 'update-from-master');
+  }
+
+  protected mergeIntoMaster(branch: string): void {
+    this.mergeBranch(branch, 'into-master');
+  }
+
+  private mergeBranch(branch: string, direction: 'update-from-master' | 'into-master'): void {
+    const repository = this.selected();
+    if (!repository) {
+      return;
+    }
+    try {
+      this.branchMerge.merge(repository.path, branch, direction, this.squashMerge());
+      this.mergeError.set(null);
+    } catch (error) {
+      this.mergeError.set(error instanceof Error ? error.message : 'Could not merge');
+      return;
+    }
+    this.branchList.set(this.branchSource.list(repository.path));
   }
 
   protected hoverBranch(name: string): void {

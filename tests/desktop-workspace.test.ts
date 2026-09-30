@@ -18,11 +18,16 @@ import {
 } from '../src/core/registered-repositories.js';
 import { listRepositories, upsertRepository } from '../src/core/registry.js';
 import { createRepositoryWorktree } from '../src/core/create-repository-worktree.js';
+import { mergeRepositoryBranch } from '../src/core/merge-repository-branch.js';
 import { readRepositoryBranches } from '../src/core/read-repository-branches.js';
 import {
   REPOSITORY_BRANCH_SOURCE_HOST,
   type RepositoryBranchSource,
 } from '../src/desktop/repository-branch-source.js';
+import {
+  REPOSITORY_BRANCH_MERGE_HOST,
+  type RepositoryBranchMerge,
+} from '../src/desktop/repository-branch-merge.js';
 import {
   REPOSITORY_WORKTREE_CREATE_HOST,
   type RepositoryWorktreeCreate,
@@ -56,6 +61,7 @@ describe('desktop workspace', () => {
     installRegisteredRepositoryRegistry();
     installRepositoryBranchSource();
     installRepositoryWorktreeCreate();
+    installRepositoryBranchMerge();
     TestBed.resetTestingModule();
   });
 
@@ -132,15 +138,15 @@ describe('desktop workspace', () => {
 
     await screen.hoverBranch('notes');
 
-    expect(screen.branchMenuActions('notes')).toEqual(['Merge', 'Remove']);
-    expect(screen.sidebarText()).not.toMatch(/squash/i);
+    expect(screen.branchMenuActions('notes')).toEqual(['Update from master', 'Merge into master', 'Remove']);
+    expect(screen.branchMenuActions('notes')).not.toContain('Squash');
 
     await screen.leaveBranch('notes');
 
     expect(screen.branchMenuActions('notes')).toEqual([]);
+    expect(screen.sidebarText()).not.toMatch(/squash/i);
 
     await screen.hoverBranch('notes');
-    await screen.clickBranchAction('notes', 'Merge');
     await screen.clickBranchAction('notes', 'Remove');
     await screen.clickCreate();
 
@@ -148,6 +154,55 @@ describe('desktop workspace', () => {
     expect(screen.branchNames()).toContain('notes');
     expect(screen.repositoryCardIsOpen()).toBe(false);
     expect(screen.branchContentIsOpen()).toBe(false);
+  });
+
+  it('updates a branch from master, merges it into master, and can squash that merge from the hover menu', async () => {
+    const baseDir = join(configDir, '..');
+    const updateRepo = join(baseDir, 'update-from-master');
+    const intoRepo = join(baseDir, 'into-master');
+    const squashRepo = join(baseDir, 'squash-into-master');
+    initDivergedMaster(updateRepo);
+    initDivergedMaster(intoRepo);
+    initDivergedMaster(squashRepo);
+    addRegisteredRepository(updateRepo, 'Update');
+    addRegisteredRepository(intoRepo, 'Into');
+    addRegisteredRepository(squashRepo, 'Squash');
+    const screen = await openWorkspace();
+
+    await screen.choose('Update');
+    expect(screen.commitsBehind('notes')).toBe(1);
+    await screen.hoverBranch('notes');
+    expect(screen.branchMenuActions('notes')).toEqual(['Update from master', 'Merge into master', 'Remove']);
+    expect(screen.branchMenuActions('notes')).not.toContain('Squash');
+
+    await screen.clickBranchAction('notes', 'Update from master');
+
+    expect(gitOutput(updateRepo, 'log notes')).toContain('Record the harbor tide');
+    expect(gitOutput(updateRepo, 'log notes')).toContain('Sketch the notes margin');
+    expect(screen.commitsBehind('notes')).toBe(0);
+
+    await screen.switchRepository();
+    await screen.choose('Into');
+    expect(screen.commitsAhead('notes')).toBe(1);
+    await screen.hoverBranch('notes');
+    await screen.clickBranchAction('notes', 'Merge into master');
+
+    expect(gitOutput(intoRepo, 'log master')).toContain('Sketch the notes margin');
+    expect(gitOutput(intoRepo, 'log master')).toContain('Record the harbor tide');
+    expect(screen.commitsAhead('notes')).toBe(0);
+
+    await screen.switchRepository();
+    await screen.choose('Squash');
+    expect(screen.commitsBehind('notes')).toBe(1);
+    await screen.hoverBranch('notes');
+    await screen.squashMerge('notes');
+    await screen.clickBranchAction('notes', 'Merge into master');
+
+    expect(gitOutput(squashRepo, 'log master')).toContain('Sketch the notes margin');
+    expect(gitOutput(squashRepo, 'log master --format=%s')).toContain('Squashed commit of the following:');
+    expect(gitOutput(squashRepo, 'log master --format=%s')).not.toContain('Sketch the notes margin');
+    expect(screen.commitsAhead('notes')).toBe(1);
+    expect(screen.commitsBehind('notes')).toBe(2);
   });
 
   it('refuses a worktree when the create plugin aborts, and leaves a copied file editable', async () => {
@@ -679,6 +734,14 @@ function commitOnOrigin(
   git(clone, `push origin ${branch}`);
 }
 
+function initDivergedMaster(repoPath: string): void {
+  initRepo(repoPath, { initialBranch: 'master' });
+  git(repoPath, 'checkout -b notes');
+  commitFile(repoPath, 'notes.txt', 'margin\n', 'Sketch the notes margin');
+  git(repoPath, 'checkout master');
+  commitFile(repoPath, 'tide.txt', 'tide\n', 'Record the harbor tide');
+}
+
 function commitFile(repoPath: string, file: string, contents: string, subject: string): void {
   const absolute = join(repoPath, file);
   mkdirSync(dirname(absolute), { recursive: true });
@@ -706,6 +769,15 @@ function installRepositoryBranchSource(): void {
     list: (path) => readRepositoryBranches(path),
   };
   Object.assign(globalThis, { [REPOSITORY_BRANCH_SOURCE_HOST]: source });
+}
+
+function installRepositoryBranchMerge(): void {
+  const merge: RepositoryBranchMerge = {
+    merge: (repositoryPath, branch, direction, squash) => {
+      mergeRepositoryBranch(repositoryPath, branch, direction, { squash });
+    },
+  };
+  Object.assign(globalThis, { [REPOSITORY_BRANCH_MERGE_HOST]: merge });
 }
 
 function installRepositoryWorktreeCreate(): void {
@@ -905,6 +977,20 @@ class WorkspaceScreen {
 
   async leaveBranch(name: string): Promise<void> {
     this.branchRow(name).dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  async squashMerge(name: string): Promise<void> {
+    const label = [...this.branchRow(name).querySelectorAll('label')].find((candidate) =>
+      candidate.textContent?.includes('Squash'),
+    );
+    const box = label?.querySelector('input');
+    if (!(box instanceof HTMLInputElement)) {
+      throw new Error(`No squash control on ${name}`);
+    }
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
     this.fixture.detectChanges();
     await this.fixture.whenStable();
   }

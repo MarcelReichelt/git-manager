@@ -55,7 +55,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
         @if (selectedBranch(); as branch) {
           <section aria-label="Branch">
             <h2>{{ branch.name }}</h2>
-            <ul class="changed-files" aria-label="Changed files">
+            <ul class="changed-files branch-files" aria-label="Changed files">
               @for (change of branch.changes; track change.path) {
                 <li class="changed-file">
                   <button type="button" (click)="selectChange(change.path)">
@@ -70,10 +70,10 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
             </ul>
             @if (selectedChange(); as change) {
               @if (change.kind !== 'binary') {
-                <pre aria-label="Diff">{{ change.diff }}</pre>
+                <pre class="file-diff" aria-label="Diff">{{ change.diff }}</pre>
               }
             }
-            <ul aria-label="Commits only on this branch">
+            <ul class="branch-commits" aria-label="Commits only on this branch">
               @for (commit of branch.commitsAhead; track commit.id) {
                 <li class="branch-commit">
                   <button type="button" (click)="selectCommit(commit.id)">{{ commit.subject }}</button>
@@ -261,6 +261,18 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       font-weight: 600;
     }
 
+    .branch-files,
+    .branch-commits {
+      list-style: none;
+      margin: 16px 0 0;
+      padding: 0;
+    }
+
+    .file-diff {
+      margin: 16px 0 0;
+      white-space: pre-wrap;
+    }
+
     .commit-view {
       display: grid;
       grid-template-columns: 16rem 1fr;
@@ -278,6 +290,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
     .commit-diff {
       grid-column-start: 2;
       margin: 0;
+      white-space: pre-wrap;
     }
 
     .content-sheet button {

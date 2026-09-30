@@ -7,9 +7,9 @@
  * ahead and behind as commit lists (the row counts those commits),
  * `runningTerminals` zero when none are running,
  * and a detached HEAD included on `branches` so the sidebar can omit it.
- * Each changed file carries its diff. Each commit that exists only on the branch
- * (`commitsAhead`) carries the files that commit touched. The sidebar still
- * counts changes and commits by list length.
+ * A text change carries its diff. A binary file does not.
+ * Each commit that exists only on the branch (`commitsAhead`) carries the files
+ * that commit touched. The sidebar still counts changes and commits by list length.
  */
 export type BranchTracking = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 

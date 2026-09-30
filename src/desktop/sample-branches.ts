@@ -136,7 +136,7 @@ export const sampleRepositoryBranches: readonly RepositoryBranchList[] = [
             diff: [
               '--- a/src/legacy.ts',
               '+++ b/src/legacy.ts',
-              '@@ -1,3 +1,7 @@',
+              '@@ -1,4 +1,8 @@',
               ' export function legacy() {',
               '-  return 0;',
               '-  return 1;',
@@ -177,7 +177,7 @@ export const sampleRepositoryBranches: readonly RepositoryBranchList[] = [
               textEdit('src/legacy.ts', 2, 1, [
                 '--- a/src/legacy.ts',
                 '+++ b/src/legacy.ts',
-                '@@ -2,2 +2,3 @@',
+                '@@ -2 +2,2 @@',
                 '-const attempt = 2;',
                 '+const attempt = 3;',
                 '+const kept = true;',

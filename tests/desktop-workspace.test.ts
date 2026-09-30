@@ -19,6 +19,7 @@ import {
 import { listRepositories, upsertRepository } from '../src/core/registry.js';
 import { createRepositoryWorktree } from '../src/core/create-repository-worktree.js';
 import { mergeRepositoryBranch } from '../src/core/merge-repository-branch.js';
+import { removeRepositoryWorktree } from '../src/core/remove-repository-worktree.js';
 import { readRepositoryBranches } from '../src/core/read-repository-branches.js';
 import {
   REPOSITORY_BRANCH_SOURCE_HOST,
@@ -32,6 +33,10 @@ import {
   REPOSITORY_WORKTREE_CREATE_HOST,
   type RepositoryWorktreeCreate,
 } from '../src/desktop/repository-worktree-create.js';
+import {
+  REPOSITORY_WORKTREE_REMOVE_HOST,
+  type RepositoryWorktreeRemove,
+} from '../src/desktop/repository-worktree-remove.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY_HOST,
   type RegisteredRepositoryRegistry,
@@ -61,6 +66,7 @@ describe('desktop workspace', () => {
     installRegisteredRepositoryRegistry();
     installRepositoryBranchSource();
     installRepositoryWorktreeCreate();
+    installRepositoryWorktreeRemove();
     installRepositoryBranchMerge();
     TestBed.resetTestingModule();
   });
@@ -537,6 +543,34 @@ describe('desktop workspace', () => {
 
     expect(screen.isCheckedOut('notes')).toBe(false);
   });
+
+  it('removes a branch worktree from the hover menu and leaves the branch', async () => {
+    const baseDir = join(configDir, '..');
+    const repoPath = join(baseDir, 'harbor');
+    const registryPath = join(configDir, 'registered-only.db');
+    closeRegisteredRepositoryRegistry();
+    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    initRepo(repoPath, { initialBranch: 'master' });
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\n');
+    git(repoPath, 'checkout -b notes');
+    git(repoPath, 'checkout master');
+    const checkout = createRepositoryWorktree(repoPath, 'notes');
+    addRegisteredRepository(repoPath, 'Harbor');
+
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.isCheckedOut('notes')).toBe(true);
+    expect(screen.branchNames()).toContain('notes');
+
+    await screen.hoverBranch('notes');
+    await screen.clickBranchAction('notes', 'Remove');
+
+    expect(screen.isCheckedOut('notes')).toBe(false);
+    expect(screen.branchNames()).toContain('notes');
+    expect(gitOutput(repoPath, 'worktree list')).not.toContain(checkout);
+    expect(registeredRepositoryRows(registryPath)).toEqual([{ path: repoPath, display_name: 'Harbor' }]);
+  });
 });
 
 function registeredRepositoryRows(path: string): readonly { path: string; display_name: string }[] {
@@ -787,6 +821,15 @@ function installRepositoryWorktreeCreate(): void {
     },
   };
   Object.assign(globalThis, { [REPOSITORY_WORKTREE_CREATE_HOST]: create });
+}
+
+function installRepositoryWorktreeRemove(): void {
+  const remove: RepositoryWorktreeRemove = {
+    remove: (repositoryPath, branch) => {
+      removeRepositoryWorktree(repositoryPath, branch);
+    },
+  };
+  Object.assign(globalThis, { [REPOSITORY_WORKTREE_REMOVE_HOST]: remove });
 }
 
 function installRegisteredRepositoryRegistry(): void {

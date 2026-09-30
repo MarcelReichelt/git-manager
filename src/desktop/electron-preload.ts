@@ -13,11 +13,14 @@ const addChannel = 'git-manager:add-registered-repository';
 const unregisterChannel = 'git-manager:unregister-registered-repository';
 const listBranchesChannel = 'git-manager:list-repository-branches';
 const createWorktreeChannel = 'git-manager:create-repository-worktree';
+const removeWorktreeChannel = 'git-manager:remove-repository-worktree';
 const mergeBranchChannel = 'git-manager:merge-repository-branch';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_BRANCH_SOURCE_HOST.
 const repositoryBranchSourceHost = 'gitManagerRepositoryBranches';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_WORKTREE_CREATE_HOST.
 const repositoryWorktreeCreateHost = 'gitManagerWorktreeCreate';
+// Sandboxed preloads can import electron only. This name matches REPOSITORY_WORKTREE_REMOVE_HOST.
+const repositoryWorktreeRemoveHost = 'gitManagerWorktreeRemove';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_BRANCH_MERGE_HOST.
 const repositoryBranchMergeHost = 'gitManagerBranchMerge';
 
@@ -42,6 +45,12 @@ contextBridge.exposeInMainWorld(repositoryBranchSourceHost, {
 contextBridge.exposeInMainWorld(repositoryWorktreeCreateHost, {
   create(repositoryPath: string, branch: string): void {
     throwIfFailed(ipcRenderer.sendSync(createWorktreeChannel, repositoryPath, branch));
+  },
+});
+
+contextBridge.exposeInMainWorld(repositoryWorktreeRemoveHost, {
+  remove(repositoryPath: string, branch: string): void {
+    throwIfFailed(ipcRenderer.sendSync(removeWorktreeChannel, repositoryPath, branch));
   },
 });
 

@@ -15,11 +15,7 @@ export function removeRepositoryWorktree(repositoryPath: string, branch: string)
 }
 
 function checkoutForBranch(repositoryPath: string, branch: string): string | undefined {
-  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
-    cwd: repositoryPath,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const output = gitOutput(repositoryPath, ['worktree', 'list', '--porcelain']);
   let path: string | undefined;
   let current: string | undefined;
   for (const line of `${output}\n`.split('\n')) {
@@ -40,8 +36,12 @@ function checkoutForBranch(repositoryPath: string, branch: string): string | und
 }
 
 function git(repositoryPath: string, args: readonly string[]): void {
+  gitOutput(repositoryPath, args);
+}
+
+function gitOutput(repositoryPath: string, args: readonly string[]): string {
   try {
-    execFileSync('git', [...args], {
+    return execFileSync('git', [...args], {
       cwd: repositoryPath,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

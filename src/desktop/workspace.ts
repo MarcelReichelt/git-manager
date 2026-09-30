@@ -3,6 +3,7 @@ import { REPOSITORY_BRANCH_SOURCE } from './repository-branch-source.js';
 import { type Branch, type ListedBranch } from './repository-branches.js';
 import { REPOSITORY_BRANCH_MERGE } from './repository-branch-merge.js';
 import { REPOSITORY_WORKTREE_CREATE } from './repository-worktree-create.js';
+import { REPOSITORY_WORKTREE_REMOVE } from './repository-worktree-remove.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY,
   type RegisteredRepository,
@@ -53,7 +54,9 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
                   <button type="button" role="menuitem" (click)="mergeIntoMaster(branch.name)">
                     Merge into master
                   </button>
-                  <button type="button" role="menuitem">Remove</button>
+                  <button type="button" role="menuitem" (click)="removeWorktree(branch.name)">
+                    Remove
+                  </button>
                 </div>
               }
             </li>
@@ -68,6 +71,9 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
         </form>
         @if (mergeError(); as message) {
           <p class="merge-error" role="alert">{{ message }}</p>
+        }
+        @if (removeError(); as message) {
+          <p class="remove-error" role="alert">{{ message }}</p>
         }
         @if (createError(); as message) {
           <p class="create-error" role="alert">{{ message }}</p>
@@ -253,7 +259,8 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       font-size: 0.8rem;
     }
 
-    .merge-error {
+    .merge-error,
+    .remove-error {
       margin: 8px 0 0;
       color: #fecaca;
     }
@@ -459,6 +466,7 @@ export class Workspace {
   protected readonly repositories = signal(this.registry.list());
   private readonly branchSource = inject(REPOSITORY_BRANCH_SOURCE);
   private readonly worktreeCreate = inject(REPOSITORY_WORKTREE_CREATE);
+  private readonly worktreeRemove = inject(REPOSITORY_WORKTREE_REMOVE);
   private readonly branchMerge = inject(REPOSITORY_BRANCH_MERGE);
   protected readonly selected = signal<RegisteredRepository | null>(null);
   protected readonly branchDraft = signal('');
@@ -472,6 +480,7 @@ export class Workspace {
   protected readonly hoveredBranch = signal<string | null>(null);
   protected readonly squashMerge = signal(false);
   protected readonly mergeError = signal<string | null>(null);
+  protected readonly removeError = signal<string | null>(null);
   private readonly selectedBranchName = signal<string | null>(null);
   protected readonly selectedBranch = computed(() => {
     const name = this.selectedBranchName();
@@ -528,6 +537,7 @@ export class Workspace {
     this.branchDraft.set('');
     this.createError.set(null);
     this.mergeError.set(null);
+    this.removeError.set(null);
     this.clearBranchDetail();
     this.branchList.set(this.branchSource.list(repository.path));
   }
@@ -628,6 +638,21 @@ export class Workspace {
 
   protected mergeIntoMaster(branch: string): void {
     this.mergeBranch(branch, 'into-master');
+  }
+
+  protected removeWorktree(branch: string): void {
+    const repository = this.selected();
+    if (!repository) {
+      return;
+    }
+    try {
+      this.worktreeRemove.remove(repository.path, branch);
+      this.removeError.set(null);
+    } catch (error) {
+      this.removeError.set(error instanceof Error ? error.message : 'Could not remove worktree');
+      return;
+    }
+    this.branchList.set(this.branchSource.list(repository.path));
   }
 
   private mergeBranch(branch: string, direction: 'update-from-master' | 'into-master'): void {

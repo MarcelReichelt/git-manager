@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { createRepositoryWorktree } from '../core/create-repository-worktree.js';
 import { mergeRepositoryBranch, type RepositoryMergeDirection } from '../core/merge-repository-branch.js';
+import { removeRepositoryWorktree } from '../core/remove-repository-worktree.js';
 import { readRepositoryBranches } from '../core/read-repository-branches.js';
 import {
   addRegisteredRepository,
@@ -44,6 +45,15 @@ ipcMain.on('git-manager:create-repository-worktree', (event, path: unknown, bran
     }
     createRepositoryWorktree(path, branch);
   });
+});
+
+ipcMain.on('git-manager:remove-repository-worktree', (event, path: unknown, branch: unknown) => {
+  event.returnValue = attempt(() => {
+    if (typeof path !== 'string' || typeof branch !== 'string') {
+      throw new Error('Repository path and branch are required');
+    }
+    removeRepositoryWorktree(path, branch);
+  }, 'Could not remove worktree');
 });
 
 ipcMain.on(

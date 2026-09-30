@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { BRANCH_TERMINALS, type BranchTerminalShell } from './branch-terminals.js';
+import { DESKTOP_PLATFORM } from './desktop-platform.js';
 import { REPOSITORY_BRANCH_SOURCE } from './repository-branch-source.js';
 import { type Branch, type ListedBranch } from './repository-branches.js';
 import { REPOSITORY_BRANCH_MERGE } from './repository-branch-merge.js';
@@ -133,6 +135,38 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
                   }
                 }
               </div>
+            }
+            @if (branch.hasWorktree) {
+              @if (tmuxTerminal) {
+                <section class="branch-terminal" aria-label="Terminal">
+                  <div class="terminal-sessions" role="tablist" aria-label="Terminal sessions">
+                    @for (session of terminalSessions(); track session) {
+                      <button
+                        type="button"
+                        role="tab"
+                        [attr.aria-selected]="session === selectedTerminal()"
+                        (click)="selectTerminal(session)"
+                      >
+                        {{ session }}
+                      </button>
+                    }
+                  </div>
+                  <div class="terminal-actions">
+                    <button type="button" (click)="newTerminal()">New</button>
+                    <button type="button" (click)="splitTerminal()">Split</button>
+                    <button type="button" (click)="killTerminal()">Kill</button>
+                  </div>
+                  <pre class="terminal-pane" aria-label="Terminal pane"></pre>
+                  @if (terminalError(); as message) {
+                    <p class="terminal-error" role="alert">{{ message }}</p>
+                  }
+                </section>
+              } @else if (terminalShell(); as shell) {
+                <section class="branch-terminal" aria-label="Terminal">
+                  <p class="terminal-shell">Shell</p>
+                  <p class="terminal-cwd">{{ shellDirectory(shell) }}</p>
+                </section>
+              }
             }
           </section>
         }
@@ -365,6 +399,34 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       white-space: pre-wrap;
     }
 
+    .branch-terminal {
+      margin-top: 16px;
+    }
+
+    .terminal-sessions,
+    .terminal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .terminal-pane {
+      margin: 8px 0 0;
+      min-height: 8rem;
+      background: #0c0a09;
+      color: #e7e5e4;
+    }
+
+    .terminal-shell,
+    .terminal-cwd {
+      margin: 0;
+    }
+
+    .terminal-error {
+      margin: 8px 0 0;
+      color: #fecaca;
+    }
+
     .content-sheet button {
       background: transparent;
       color: inherit;
@@ -468,6 +530,13 @@ export class Workspace {
   private readonly worktreeCreate = inject(REPOSITORY_WORKTREE_CREATE);
   private readonly worktreeRemove = inject(REPOSITORY_WORKTREE_REMOVE);
   private readonly branchMerge = inject(REPOSITORY_BRANCH_MERGE);
+  private readonly terminals = inject(BRANCH_TERMINALS);
+  private readonly platform = inject(DESKTOP_PLATFORM);
+  protected readonly tmuxTerminal = this.platform !== 'win32';
+  protected readonly terminalSessions = signal<readonly string[]>([]);
+  protected readonly selectedTerminal = signal<string | null>(null);
+  protected readonly terminalShell = signal<BranchTerminalShell | null>(null);
+  protected readonly terminalError = signal<string | null>(null);
   protected readonly selected = signal<RegisteredRepository | null>(null);
   protected readonly branchDraft = signal('');
   protected readonly createError = signal<string | null>(null);
@@ -566,6 +635,60 @@ export class Workspace {
   protected selectBranch(name: string): void {
     this.selectedBranchName.set(name);
     this.clearBranchDetail();
+    this.loadTerminal(name);
+  }
+
+  protected selectTerminal(session: string): void {
+    this.selectedTerminal.set(session);
+  }
+
+  protected shellDirectory(shell: BranchTerminalShell): string {
+    return shell.processes[0].cwd;
+  }
+
+  protected newTerminal(): void {
+    const target = this.terminalTarget();
+    if (!target) {
+      return;
+    }
+    try {
+      const session = this.terminals.create(target.repositoryPath, target.branch);
+      this.terminalError.set(null);
+      this.refreshBranches(target.repositoryPath);
+      this.refreshTerminalSessions(target.repositoryPath, target.branch, session);
+    } catch (error) {
+      this.terminalError.set(error instanceof Error ? error.message : 'Could not open a terminal');
+    }
+  }
+
+  protected splitTerminal(): void {
+    const target = this.terminalTarget();
+    const session = this.selectedTerminal();
+    if (!target || !session) {
+      return;
+    }
+    try {
+      this.terminals.split(target.repositoryPath, target.branch, session);
+      this.terminalError.set(null);
+    } catch (error) {
+      this.terminalError.set(error instanceof Error ? error.message : 'Could not split the terminal');
+    }
+  }
+
+  protected killTerminal(): void {
+    const target = this.terminalTarget();
+    const session = this.selectedTerminal();
+    if (!target || !session) {
+      return;
+    }
+    try {
+      this.terminals.kill(target.repositoryPath, target.branch, session);
+      this.terminalError.set(null);
+      this.refreshBranches(target.repositoryPath);
+      this.refreshTerminalSessions(target.repositoryPath, target.branch, null);
+    } catch (error) {
+      this.terminalError.set(error instanceof Error ? error.message : 'Could not close the terminal');
+    }
   }
 
   protected selectChange(path: string): void {
@@ -585,6 +708,46 @@ export class Workspace {
     this.selectedChangePath.set(null);
     this.selectedCommitId.set(null);
     this.selectedCommitFilePath.set(null);
+  }
+
+  private loadTerminal(name: string): void {
+    this.terminalSessions.set([]);
+    this.selectedTerminal.set(null);
+    this.terminalShell.set(null);
+    this.terminalError.set(null);
+    const repository = this.selected();
+    const branch = this.branches().find((candidate) => candidate.name === name);
+    if (!repository || !branch?.hasWorktree) {
+      return;
+    }
+    if (!this.tmuxTerminal) {
+      this.terminalShell.set(this.terminals.shell(repository.path, name));
+      return;
+    }
+    this.refreshTerminalSessions(repository.path, name, null);
+  }
+
+  private refreshTerminalSessions(repositoryPath: string, branch: string, select: string | null): void {
+    const sessions = this.terminals.sessions(repositoryPath, branch);
+    this.terminalSessions.set(sessions);
+    if (select && sessions.includes(select)) {
+      this.selectedTerminal.set(select);
+      return;
+    }
+    this.selectedTerminal.set(sessions.at(-1) ?? null);
+  }
+
+  private refreshBranches(repositoryPath: string): void {
+    this.branchList.set(this.branchSource.list(repositoryPath));
+  }
+
+  private terminalTarget(): { readonly repositoryPath: string; readonly branch: string } | null {
+    const repository = this.selected();
+    const branch = this.selectedBranch();
+    if (!repository || !branch?.hasWorktree || !this.tmuxTerminal) {
+      return null;
+    }
+    return { repositoryPath: repository.path, branch: branch.name };
   }
 
   protected openRepositoryList(): void {

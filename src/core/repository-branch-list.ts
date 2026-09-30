@@ -4,7 +4,7 @@
  * `readRepositoryBranches` fills this shape from git:
  * one `BranchChange` per changed file in that branch's checkout (a rename is one change, a binary is one change),
  * ahead and behind as commit lists (the row counts those commits),
- * `runningTerminals` zero when none are running,
+ * `runningTerminals` is the number of live tmux sessions for that branch's worktree, zero when none are running,
  * and a detached HEAD omitted from the list. The sidebar also drops a detached HEAD if one is present.
  * A text change carries its diff. A binary file does not.
  * Each commit that exists only on the branch (`commitsAhead`) carries an id, subject, and the files that commit changed.
@@ -51,7 +51,7 @@ export interface ListedBranch {
   readonly changes: readonly BranchChange[];
   readonly commitsAhead: readonly BranchCommit[];
   readonly commitsBehind: readonly BranchCommit[];
-  /** Running terminals for this branch. Zero means the row shows no terminal count. */
+  /** Live tmux sessions for this branch's worktree. Zero means the row shows no terminal count. */
   readonly runningTerminals: number;
 }
 

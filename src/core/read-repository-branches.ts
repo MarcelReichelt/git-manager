@@ -1,15 +1,12 @@
 import { execFileSync } from 'node:child_process';
+import { liveBranchTerminalCounts } from './branch-terminal.js';
 import type { Branch, BranchChange, BranchCommit, BranchTracking, ListedBranch } from './repository-branch-list.js';
+import { listRepositoryWorktrees, type RepositoryWorktree } from './repository-worktrees.js';
 
 interface GitRef {
   readonly refname: string;
   readonly upstream: string;
   readonly upstreamTrack: string;
-}
-
-interface Checkout {
-  readonly path: string;
-  readonly branch: string | null;
 }
 
 interface NumstatEntry {
@@ -35,7 +32,7 @@ export function readRepositoryBranches(repositoryPath: string): readonly Branch[
   );
   const remoteNames = new Set(remoteRefs.map((ref) => branchName(ref.refname) ?? ''));
   const localNames = localRefs.map((ref) => branchName(ref.refname) ?? '');
-  const checkouts = readCheckouts(repositoryPath);
+  const checkouts = listRepositoryWorktrees(repositoryPath);
   const checkoutByBranch = new Map<string, string>();
   for (const checkout of checkouts) {
     if (checkout.branch) {
@@ -43,6 +40,7 @@ export function readRepositoryBranches(repositoryPath: string): readonly Branch[
     }
   }
   const defaultRef = `refs/heads/${defaultBranchName(checkouts, localNames)}`;
+  const terminalCounts = liveBranchTerminalCounts([...checkoutByBranch.values()]);
   const branches: ListedBranch[] = [];
 
   for (const ref of localRefs) {
@@ -58,7 +56,7 @@ export function readRepositoryBranches(repositoryPath: string): readonly Branch[
       changes: checkout ? readChanges(checkout) : [],
       commitsAhead: readAheadCommits(repositoryPath, base, ref.refname),
       commitsBehind: readBehindCommits(repositoryPath, ref.refname, base),
-      runningTerminals: 0,
+      runningTerminals: checkout ? (terminalCounts.get(checkout) ?? 0) : 0,
     });
   }
 
@@ -114,7 +112,7 @@ function comparisonBase(
   return defaultRef;
 }
 
-function defaultBranchName(checkouts: readonly Checkout[], localNames: readonly string[]): string {
+function defaultBranchName(checkouts: readonly RepositoryWorktree[], localNames: readonly string[]): string {
   const main = checkouts[0];
   if (main?.branch) {
     return main.branch;
@@ -282,33 +280,6 @@ function readRefs(repositoryPath: string): readonly GitRef[] {
       const [refname = '', upstream = '', upstreamTrack = ''] = line.split('\0');
       return { refname, upstream, upstreamTrack };
     });
-}
-
-function readCheckouts(repositoryPath: string): readonly Checkout[] {
-  const output = git(repositoryPath, ['worktree', 'list', '--porcelain']);
-  const checkouts: Checkout[] = [];
-  let current: { path?: string; branch?: string; detached?: boolean } = {};
-  const push = (): void => {
-    if (!current.path) {
-      return;
-    }
-    checkouts.push({ path: current.path, branch: current.detached ? null : (current.branch ?? null) });
-    current = {};
-  };
-  for (const line of output.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      push();
-      current = { path: line.slice('worktree '.length) };
-    } else if (line.startsWith('branch refs/heads/')) {
-      current.branch = line.slice('branch refs/heads/'.length);
-    } else if (line === 'detached') {
-      current.detached = true;
-    } else if (line === '') {
-      push();
-    }
-  }
-  push();
-  return checkouts;
 }
 
 function branchName(refname: string): string | null {

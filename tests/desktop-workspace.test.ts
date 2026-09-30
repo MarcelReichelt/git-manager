@@ -3,7 +3,7 @@
  */
 import '@angular/compiler';
 import Database from 'better-sqlite3';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,6 +41,16 @@ import {
   REGISTERED_REPOSITORY_REGISTRY_HOST,
   type RegisteredRepositoryRegistry,
 } from '../src/desktop/registered-repository-registry.js';
+import {
+  BRANCH_TERMINAL_SESSION_NAME_PATTERN,
+  branchTerminalShell,
+  createBranchTerminalSession,
+  killBranchTerminalSession,
+  listBranchTerminalSessions,
+  splitBranchTerminalSession,
+} from '../src/core/branch-terminal.js';
+import { BRANCH_TERMINALS_HOST, type BranchTerminals } from '../src/desktop/branch-terminals.js';
+import { DESKTOP_PLATFORM_HOST } from '../src/desktop/desktop-platform.js';
 import { Workspace } from '../src/desktop/workspace.js';
 import { configureTestIdentity, createTempDir, initRepo, initRepoWithRemote, setupTestEnv } from './helpers.js';
 
@@ -51,8 +61,11 @@ const sampleDisplayNames = ['Harbor', 'Northwind', 'Papertrail'];
 describe('desktop workspace', () => {
   let cleanup: () => void;
   let configDir: string;
+  let tmuxSocketSerial = 0;
 
   beforeEach(() => {
+    process.env.GIT_MANAGER_TMUX_SOCKET = `gm-test-${process.pid}-${tmuxSocketSerial}`;
+    tmuxSocketSerial += 1;
     const env = setupTestEnv(createTempDir());
     cleanup = env.cleanup;
     configDir = env.configDir;
@@ -68,10 +81,21 @@ describe('desktop workspace', () => {
     installRepositoryWorktreeCreate();
     installRepositoryWorktreeRemove();
     installRepositoryBranchMerge();
+    installDesktopPlatform('linux');
+    installBranchTerminals();
     TestBed.resetTestingModule();
   });
 
   afterEach(() => {
+    const socket = process.env.GIT_MANAGER_TMUX_SOCKET;
+    if (socket && socket.startsWith('gm-test-')) {
+      try {
+        execFileSync('tmux', ['-L', socket, 'kill-server'], { stdio: 'ignore' });
+      } catch {
+        // This test did not start a tmux server.
+      }
+    }
+    delete process.env.GIT_MANAGER_TMUX_SOCKET;
     cleanup();
   });
 
@@ -131,6 +155,95 @@ describe('desktop workspace', () => {
     for (const name of screen.branchNames()) {
       expect(screen.branchRowText(name)).not.toMatch(/terminal/i);
     }
+  });
+
+  it('opens attachable tmux sessions from the branch terminal and counts them on the row', async () => {
+    const baseDir = join(configDir, '..');
+    const harbor = createHarborCheckout(baseDir);
+    addRegisteredRepository(harbor, 'Harbor');
+    const worktree = join(baseDir, 'worktrees', 'diverged');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+    await screen.selectBranch('diverged');
+
+    expect(screen.terminalControlLabels()).toEqual(['New', 'Split', 'Kill']);
+    expect(screen.terminalSessionTabs()).toEqual([]);
+    expect(screen.terminalIsDark()).toBe(true);
+    expect(screen.runningTerminalLabel('diverged')).toBeNull();
+
+    await screen.newTerminal();
+
+    const [session] = screen.terminalSessionTabs();
+    expect(BRANCH_TERMINAL_SESSION_NAME_PATTERN).toBe('gm-{worktreeKey}-{n}');
+    expect(session).toMatch(/^gm-[0-9a-f]{8}-1$/);
+    expect(screen.selectedTerminalSession()).toBe(session);
+    execFileSync('tmux', ['-L', tmuxSocket(), 'has-session', '-t', session], { stdio: 'ignore' });
+    expect(terminalPanePaths(session)).toEqual([worktree]);
+    expect(screen.runningTerminalLabel('diverged')).toBe('1 terminals');
+
+    await screen.newTerminal();
+    const second = screen.selectedTerminalSession();
+    expect(screen.terminalSessionTabs()).toEqual([session, second]);
+    expect(second).toMatch(/^gm-[0-9a-f]{8}-2$/);
+    expect(screen.runningTerminalLabel('diverged')).toBe('2 terminals');
+
+    await screen.selectTerminalSession(session);
+    await screen.splitTerminal();
+
+    expect(terminalPaneIndexes(session)).toEqual(['0', '1']);
+    expect(terminalPanePaths(session)).toEqual([worktree, worktree]);
+    expect(terminalPaneIndexes(second)).toEqual(['0']);
+
+    await screen.killTerminal();
+
+    expect(screen.terminalSessionTabs()).toEqual([second]);
+    expect(screen.runningTerminalLabel('diverged')).toBe('1 terminals');
+    expect(tmuxSessionExists(session)).toBe(false);
+    expect(tmuxSessionExists(second)).toBe(true);
+
+    await screen.killTerminal();
+
+    expect(screen.terminalSessionTabs()).toEqual([]);
+    expect(screen.runningTerminalLabel('diverged')).toBeNull();
+    expect(screen.branchRowText('diverged')).not.toMatch(/terminal/i);
+    expect(tmuxSessionExists(second)).toBe(false);
+
+    await screen.selectBranch('notes');
+
+    expect(screen.terminalIsOpen()).toBe(false);
+    expect(listTmuxSessionNames()).toEqual([]);
+  });
+
+  it('shows one in-app shell in the worktree directory on Windows', async () => {
+    installDesktopPlatform('win32');
+    const baseDir = join(configDir, '..');
+    const harbor = createHarborCheckout(baseDir);
+    addRegisteredRepository(harbor, 'Harbor');
+    const worktree = join(baseDir, 'worktrees', 'diverged');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+    await screen.selectBranch('diverged');
+
+    expect(screen.terminalIsOpen()).toBe(true);
+    expect(screen.inAppShells()).toBe(1);
+    expect(screen.shellDirectory()).toBe(worktree);
+    expect(screen.terminalSessionTabs()).toEqual([]);
+    expect(screen.terminalControlLabels()).toEqual([]);
+    expect(screen.terminalButtonLabels()).toEqual([]);
+    expect(screen.branchContentText()).not.toMatch(/tmux|attach/i);
+    expect(screen.runningTerminalLabel('diverged')).toBeNull();
+    expect(branchTerminalHost().shell(harbor, 'diverged')).toEqual({
+      processes: [{ cwd: worktree }],
+      usesTmux: false,
+    });
+    expect(listTmuxSessionNames()).toEqual([]);
+
+    await screen.selectBranch('notes');
+
+    expect(screen.terminalIsOpen()).toBe(false);
+    expect(screen.inAppShells()).toBe(0);
+    expect(branchTerminalHost().shell(harbor, 'notes')).toBeNull();
+    expect(listTmuxSessionNames()).toEqual([]);
   });
 
   it('puts Create at the bottom of the branch list, and Merge and Remove on the branch hover menu', async () => {
@@ -832,6 +945,46 @@ function installRepositoryWorktreeRemove(): void {
   Object.assign(globalThis, { [REPOSITORY_WORKTREE_REMOVE_HOST]: remove });
 }
 
+function installDesktopPlatform(platform: string): void {
+  Object.assign(globalThis, { [DESKTOP_PLATFORM_HOST]: platform });
+}
+
+function installBranchTerminals(): void {
+  const terminals: BranchTerminals = {
+    sessions: (repositoryPath, branch) =>
+      windowsTerminal() ? [] : listBranchTerminalSessions(repositoryPath, branch),
+    create: (repositoryPath, branch) => {
+      refuseWindowsTmux();
+      return createBranchTerminalSession(repositoryPath, branch);
+    },
+    kill: (repositoryPath, branch, session) => {
+      refuseWindowsTmux();
+      killBranchTerminalSession(repositoryPath, branch, session);
+    },
+    split: (repositoryPath, branch, session) => {
+      refuseWindowsTmux();
+      splitBranchTerminalSession(repositoryPath, branch, session);
+    },
+    shell: (repositoryPath, branch) => branchTerminalShell(repositoryPath, branch),
+  };
+  Object.assign(globalThis, { [BRANCH_TERMINALS_HOST]: terminals });
+}
+
+function windowsTerminal(): boolean {
+  return desktopPlatform() === 'win32';
+}
+
+function refuseWindowsTmux(): void {
+  if (windowsTerminal()) {
+    throw new Error('Windows terminals stay inside the app');
+  }
+}
+
+function desktopPlatform(): string {
+  const platform: unknown = Reflect.get(globalThis, DESKTOP_PLATFORM_HOST);
+  return typeof platform === 'string' ? platform : 'linux';
+}
+
 function installRegisteredRepositoryRegistry(): void {
   const registry: RegisteredRepositoryRegistry = {
     list: () => listRegisteredRepositories(),
@@ -1090,6 +1243,97 @@ class WorkspaceScreen {
     return this.root().querySelector('[aria-label="Workspace"] [aria-label="Branch"]') instanceof HTMLElement;
   }
 
+  terminalIsOpen(): boolean {
+    return this.terminal() instanceof HTMLElement;
+  }
+
+  terminalIsDark(): boolean {
+    const pane = this.terminal()?.querySelector('.terminal-pane');
+    if (!(pane instanceof HTMLElement)) {
+      return false;
+    }
+    return getComputedStyle(pane).backgroundColor === 'rgb(12, 10, 9)';
+  }
+
+  terminalSessionTabs(): string[] {
+    const list = this.terminal()?.querySelector('[aria-label="Terminal sessions"]');
+    if (!(list instanceof HTMLElement)) {
+      return [];
+    }
+    return [...list.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim() ?? '');
+  }
+
+  selectedTerminalSession(): string {
+    const selected = this.terminal()?.querySelector('[role="tab"][aria-selected="true"]');
+    if (!(selected instanceof HTMLElement)) {
+      throw new Error('No terminal session is selected');
+    }
+    return selected.textContent?.trim() ?? '';
+  }
+
+  terminalControlLabels(): string[] {
+    const terminal = this.terminal();
+    if (!terminal) {
+      return [];
+    }
+    return [...terminal.querySelectorAll('button')]
+      .map((button) => button.textContent?.trim() ?? '')
+      .filter((label) => label === 'New' || label === 'Split' || label === 'Kill');
+  }
+
+  runningTerminalLabel(name: string): string | null {
+    return this.branchRow(name).querySelector('.running-terminals')?.textContent?.trim() ?? null;
+  }
+
+  shellDirectory(): string {
+    return this.requireTerminal().querySelector('.terminal-cwd')?.textContent?.trim() ?? '';
+  }
+
+  inAppShells(): number {
+    if (!this.branchContentIsOpen()) {
+      return 0;
+    }
+    return this.branchContent().querySelectorAll('.terminal-shell').length;
+  }
+
+  terminalButtonLabels(): string[] {
+    const terminal = this.terminal();
+    if (!terminal) {
+      return [];
+    }
+    return [...terminal.querySelectorAll('button')].map((button) => button.textContent?.trim() ?? '');
+  }
+
+  async newTerminal(): Promise<void> {
+    this.terminalButton('New').click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  async splitTerminal(): Promise<void> {
+    this.terminalButton('Split').click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  async killTerminal(): Promise<void> {
+    this.terminalButton('Kill').click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  async selectTerminalSession(name: string): Promise<void> {
+    const tab = [...this.requireTerminal().querySelectorAll('[role="tab"]')].find(
+      (candidate) => candidate.textContent?.trim() === name,
+    );
+    if (!(tab instanceof HTMLElement)) {
+      throw new Error(`No terminal session ${name}`);
+    }
+    tab.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
   async selectCommit(subject: string): Promise<void> {
     const button = [...this.branchContent().querySelectorAll('.branch-commit button')].find(
       (candidate) => candidate.textContent?.trim() === subject,
@@ -1329,6 +1573,96 @@ class WorkspaceScreen {
     }
     return content;
   }
+
+  private terminal(): HTMLElement | null {
+    if (!this.branchContentIsOpen()) {
+      return null;
+    }
+    const terminal = this.branchContent().querySelector('[aria-label="Terminal"]');
+    return terminal instanceof HTMLElement ? terminal : null;
+  }
+
+  private requireTerminal(): HTMLElement {
+    const terminal = this.terminal();
+    if (!terminal) {
+      throw new Error('Terminal is not on screen');
+    }
+    return terminal;
+  }
+
+  private terminalButton(label: string): HTMLButtonElement {
+    const button = [...this.requireTerminal().querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`${label} is not on the terminal`);
+    }
+    return button;
+  }
+}
+
+function tmuxSocket(): string {
+  const socket = process.env.GIT_MANAGER_TMUX_SOCKET;
+  if (!socket) {
+    throw new Error('GIT_MANAGER_TMUX_SOCKET is unset');
+  }
+  return socket;
+}
+
+function tmux(args: readonly string[]): string {
+  return execFileSync('tmux', ['-L', tmuxSocket(), ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function branchTerminalHost(): BranchTerminals {
+  const host: unknown = Reflect.get(globalThis, BRANCH_TERMINALS_HOST);
+  if (!isBranchTerminalHost(host)) {
+    throw new Error('Branch terminals are unavailable');
+  }
+  return host;
+}
+
+function isBranchTerminalHost(host: unknown): host is BranchTerminals {
+  return (
+    typeof host === 'object' &&
+    host !== null &&
+    'shell' in host &&
+    typeof host.shell === 'function' &&
+    'sessions' in host &&
+    typeof host.sessions === 'function' &&
+    'create' in host &&
+    typeof host.create === 'function'
+  );
+}
+
+function listTmuxSessionNames(): string[] {
+  try {
+    const output = tmux(['list-sessions', '-F', '#{session_name}']);
+    return output === '' ? [] : output.split('\n');
+  } catch {
+    return [];
+  }
+}
+
+function tmuxSessionExists(session: string): boolean {
+  try {
+    execFileSync('tmux', ['-L', tmuxSocket(), 'has-session', '-t', session], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function terminalPanePaths(session: string): string[] {
+  const output = tmux(['list-panes', '-t', session, '-F', '#{pane_current_path}']);
+  return output === '' ? [] : output.split('\n');
+}
+
+function terminalPaneIndexes(session: string): string[] {
+  const output = tmux(['list-panes', '-t', session, '-F', '#{pane_index}']);
+  return output === '' ? [] : output.split('\n');
 }
 
 function lineCount(element: HTMLElement): number {

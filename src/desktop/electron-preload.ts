@@ -15,6 +15,15 @@ const listBranchesChannel = 'git-manager:list-repository-branches';
 const createWorktreeChannel = 'git-manager:create-repository-worktree';
 const removeWorktreeChannel = 'git-manager:remove-repository-worktree';
 const mergeBranchChannel = 'git-manager:merge-repository-branch';
+const listTerminalsChannel = 'git-manager:list-branch-terminal-sessions';
+const createTerminalChannel = 'git-manager:create-branch-terminal-session';
+const killTerminalChannel = 'git-manager:kill-branch-terminal-session';
+const splitTerminalChannel = 'git-manager:split-branch-terminal-session';
+const terminalShellChannel = 'git-manager:branch-terminal-shell';
+// Sandboxed preloads can import electron only. This name matches BRANCH_TERMINALS_HOST.
+const branchTerminalsHost = 'gitManagerBranchTerminals';
+// Sandboxed preloads can import electron only. This name matches DESKTOP_PLATFORM_HOST.
+const desktopPlatformHost = 'gitManagerDesktopPlatform';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_BRANCH_SOURCE_HOST.
 const repositoryBranchSourceHost = 'gitManagerRepositoryBranches';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_WORKTREE_CREATE_HOST.
@@ -51,6 +60,26 @@ contextBridge.exposeInMainWorld(repositoryWorktreeCreateHost, {
 contextBridge.exposeInMainWorld(repositoryWorktreeRemoveHost, {
   remove(repositoryPath: string, branch: string): void {
     throwIfFailed(ipcRenderer.sendSync(removeWorktreeChannel, repositoryPath, branch));
+  },
+});
+
+contextBridge.exposeInMainWorld(desktopPlatformHost, process.platform);
+
+contextBridge.exposeInMainWorld(branchTerminalsHost, {
+  sessions(repositoryPath: string, branch: string): readonly string[] {
+    return readSessions(ipcRenderer.sendSync(listTerminalsChannel, repositoryPath, branch));
+  },
+  create(repositoryPath: string, branch: string): string {
+    return readCreatedSession(ipcRenderer.sendSync(createTerminalChannel, repositoryPath, branch));
+  },
+  kill(repositoryPath: string, branch: string, session: string): void {
+    throwIfFailed(ipcRenderer.sendSync(killTerminalChannel, repositoryPath, branch, session));
+  },
+  split(repositoryPath: string, branch: string, session: string): void {
+    throwIfFailed(ipcRenderer.sendSync(splitTerminalChannel, repositoryPath, branch, session));
+  },
+  shell(repositoryPath: string, branch: string): BranchTerminalShell | null {
+    return readShell(ipcRenderer.sendSync(terminalShellChannel, repositoryPath, branch));
   },
 });
 
@@ -218,6 +247,66 @@ function isTextChange(value: object): value is TextChange {
     typeof value.linesDeleted === 'number' &&
     'diff' in value &&
     typeof value.diff === 'string'
+  );
+}
+
+interface BranchTerminalShell {
+  readonly processes: readonly [{ readonly cwd: string }];
+  readonly usesTmux: false;
+}
+
+function readSessions(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || !value.every((session) => typeof session === 'string')) {
+    throw new Error('Branch terminal sessions are unavailable');
+  }
+  return value;
+}
+
+function readCreatedSession(value: unknown): string {
+  if (isCreatedSession(value)) {
+    return value.session;
+  }
+  throwIfFailed(value);
+  throw new Error('Could not open a terminal');
+}
+
+function isCreatedSession(value: unknown): value is { readonly ok: true; readonly session: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'ok' in value &&
+    value.ok === true &&
+    'session' in value &&
+    typeof value.session === 'string'
+  );
+}
+
+function readShell(value: unknown): BranchTerminalShell | null {
+  if (value === null) {
+    return null;
+  }
+  if (!isShell(value)) {
+    throw new Error('Branch terminal shell is unavailable');
+  }
+  return {
+    processes: [{ cwd: value.processes[0].cwd }],
+    usesTmux: false,
+  };
+}
+
+function isShell(value: unknown): value is { readonly processes: readonly [{ readonly cwd: string }] } {
+  if (typeof value !== 'object' || value === null || !('processes' in value) || !('usesTmux' in value)) {
+    return false;
+  }
+  if (value.usesTmux !== false || !Array.isArray(value.processes) || value.processes.length !== 1) {
+    return false;
+  }
+  const processRecord: unknown = value.processes[0];
+  return (
+    typeof processRecord === 'object' &&
+    processRecord !== null &&
+    'cwd' in processRecord &&
+    typeof processRecord.cwd === 'string'
   );
 }
 

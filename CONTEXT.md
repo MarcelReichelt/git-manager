@@ -8,6 +8,10 @@ git-manager is the desktop app for working in one selected repository at a time,
 The desktop window for one selected repository.
 _Avoid_: workspaces
 
+**Registered repository**:
+A local git repository the app knows how to open.
+_Avoid_: project
+
 **Worktree**:
 A checkout of a single branch, in either the sibling layout or the workspaces layout.
 _Avoid_: workspace

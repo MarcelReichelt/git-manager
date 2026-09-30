@@ -50,6 +50,7 @@ import {
   unregisterRegisteredRepository,
 } from './core/registered-repositories.js';
 import { createRepositoryWorktree } from './core/create-repository-worktree.js';
+import { mergeRepositoryBranch, type RepositoryMergeDirection } from './core/merge-repository-branch.js';
 
 const program = new Command();
 
@@ -287,7 +288,26 @@ program
     await showChanges(opts);
   });
 
-const merge = program.command('merge').description('Merge between worktrees');
+const merge = program
+  .command('merge')
+  .description('Merge between worktrees')
+  .option('--path <path>', 'Path to the repository')
+  .option('--branch <name>', 'Branch to update from master or merge into master')
+  .option('--update-from-master', 'Bring commits from master into the branch')
+  .option('--into-master', 'Merge the branch into master')
+  .option('--squash', 'Squash that merge into one commit')
+  .action((opts: RepositoryMergeOptions) => {
+    if (!isRepositoryMerge(opts)) {
+      merge.help({ error: true });
+    }
+    try {
+      mergeRepositoryBranch(requiredPath(opts), requiredBranch(opts), mergeDirection(opts), {
+        squash: opts.squash === true,
+      });
+    } catch (err) {
+      handleError(err);
+    }
+  });
 merge
   .command('into-primary')
   .option('--from <label>')
@@ -345,6 +365,51 @@ program
       handleError(err);
     }
   });
+
+interface RepositoryMergeOptions {
+  readonly path?: string;
+  readonly branch?: string;
+  readonly updateFromMaster?: boolean;
+  readonly intoMaster?: boolean;
+  readonly squash?: boolean;
+}
+
+function isRepositoryMerge(opts: RepositoryMergeOptions): boolean {
+  return (
+    opts.path !== undefined ||
+    opts.branch !== undefined ||
+    opts.updateFromMaster === true ||
+    opts.intoMaster === true ||
+    opts.squash === true
+  );
+}
+
+function requiredPath(opts: RepositoryMergeOptions): string {
+  if (typeof opts.path !== 'string') {
+    throw new Error('Both --path and --branch are required');
+  }
+  return opts.path;
+}
+
+function requiredBranch(opts: RepositoryMergeOptions): string {
+  if (typeof opts.branch !== 'string') {
+    throw new Error('Both --path and --branch are required');
+  }
+  return opts.branch;
+}
+
+function mergeDirection(opts: RepositoryMergeOptions): RepositoryMergeDirection {
+  if (opts.updateFromMaster === true && opts.intoMaster === true) {
+    throw new Error('Choose either --update-from-master or --into-master');
+  }
+  if (opts.updateFromMaster === true) {
+    return 'update-from-master';
+  }
+  if (opts.intoMaster === true) {
+    return 'into-master';
+  }
+  throw new Error('Choose --update-from-master or --into-master');
+}
 
 function handleError(err: unknown): void {
   if (err instanceof HookAbortError) {

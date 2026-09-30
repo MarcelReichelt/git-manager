@@ -171,25 +171,9 @@ function readCommitFiles(repositoryPath: string, commitId: string): readonly Bra
 }
 
 function commitChange(repositoryPath: string, commitId: string, entry: NumstatEntry): BranchChange {
-  if (entry.added === '-' || entry.deleted === '-') {
-    return { kind: 'binary', path: entry.path };
-  }
-  const linesAdded = countLines(entry.added);
-  const linesDeleted = countLines(entry.deleted);
-  const diff = commitDiffText(repositoryPath, commitId, entry.path, entry.previousPath);
-  if (entry.previousPath) {
-    return { kind: 'rename', path: entry.path, previousPath: entry.previousPath, linesAdded, linesDeleted, diff };
-  }
-  return { kind: 'edit', path: entry.path, linesAdded, linesDeleted, diff };
-}
-
-function commitDiffText(repositoryPath: string, commitId: string, path: string, previousPath?: string): string {
-  const args = ['show', '-M', '--format=', commitId, '--'];
-  if (previousPath) {
-    args.push(previousPath);
-  }
-  args.push(path);
-  return git(repositoryPath, args).replace(/\n$/, '');
+  return toBranchChange(entry, () =>
+    textDiff(repositoryPath, ['show', '-M', '--format=', commitId, '--'], entry.path, entry.previousPath),
+  );
 }
 
 function readChanges(checkoutPath: string): readonly BranchChange[] {
@@ -206,12 +190,18 @@ function readChanges(checkoutPath: string): readonly BranchChange[] {
 }
 
 function trackedChange(checkoutPath: string, entry: NumstatEntry): BranchChange {
+  return toBranchChange(entry, () =>
+    textDiff(checkoutPath, ['diff', 'HEAD', '-M', '--'], entry.path, entry.previousPath),
+  );
+}
+
+function toBranchChange(entry: NumstatEntry, readDiff: () => string): BranchChange {
   if (entry.added === '-' || entry.deleted === '-') {
     return { kind: 'binary', path: entry.path };
   }
   const linesAdded = countLines(entry.added);
   const linesDeleted = countLines(entry.deleted);
-  const diff = diffText(checkoutPath, entry.path, entry.previousPath);
+  const diff = readDiff();
   if (entry.previousPath) {
     return { kind: 'rename', path: entry.path, previousPath: entry.previousPath, linesAdded, linesDeleted, diff };
   }
@@ -221,26 +211,23 @@ function trackedChange(checkoutPath: string, entry: NumstatEntry): BranchChange 
 function untrackedChange(checkoutPath: string, path: string): BranchChange {
   const numstat = gitAllowDiff(checkoutPath, ['diff', '--no-index', '--numstat', '--', '/dev/null', path]);
   const [added = '', deleted = ''] = numstat.split('\t');
-  if (added === '-' || deleted === '-') {
-    return { kind: 'binary', path };
-  }
-  const diff = gitAllowDiff(checkoutPath, ['diff', '--no-index', '--', '/dev/null', path]).replace(/\n$/, '');
-  return {
-    kind: 'edit',
-    path,
-    linesAdded: countLines(added),
-    linesDeleted: countLines(deleted),
-    diff,
-  };
+  return toBranchChange({ added, deleted, path }, () =>
+    gitAllowDiff(checkoutPath, ['diff', '--no-index', '--', '/dev/null', path]).replace(/\n$/, ''),
+  );
 }
 
-function diffText(checkoutPath: string, path: string, previousPath?: string): string {
-  const args = ['diff', 'HEAD', '-M', '--'];
+function textDiff(
+  repositoryPath: string,
+  args: readonly string[],
+  path: string,
+  previousPath?: string,
+): string {
+  const command = [...args];
   if (previousPath) {
-    args.push(previousPath);
+    command.push(previousPath);
   }
-  args.push(path);
-  return git(checkoutPath, args).replace(/\n$/, '');
+  command.push(path);
+  return git(repositoryPath, command).replace(/\n$/, '');
 }
 
 function parseNumstat(output: string): readonly NumstatEntry[] {

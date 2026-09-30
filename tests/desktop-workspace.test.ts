@@ -4,7 +4,7 @@
 import '@angular/compiler';
 import Database from 'better-sqlite3';
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
@@ -148,6 +148,50 @@ describe('desktop workspace', () => {
     expect(screen.branchNames()).toContain('notes');
     expect(screen.repositoryCardIsOpen()).toBe(false);
     expect(screen.branchContentIsOpen()).toBe(false);
+  });
+
+  it('refuses a worktree when the create plugin aborts, and leaves a copied file editable', async () => {
+    const repoPath = join(configDir, '..', 'harbor');
+    const copied = join(repoPath, '.workspaces', 'topic', '.env');
+    initRepo(repoPath, { initialBranch: 'main' });
+    execSync('git checkout -b notes', { cwd: repoPath, stdio: 'ignore' });
+    execSync('git checkout -b topic', { cwd: repoPath, stdio: 'ignore' });
+    execSync('git checkout main', { cwd: repoPath, stdio: 'ignore' });
+    writeFileSync(join(repoPath, '.env'), 'TOKEN=harbor\n');
+    writeFileSync(
+      join(repoPath, 'refuse-create.ts'),
+      [
+        'export default {',
+        "  name: 'refuse-create',",
+        "  onCreate(): 'abort' {",
+        "    return 'abort';",
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\ncreate_plugin = "refuse-create.ts"\n');
+    addRegisteredRepository(repoPath, 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.createBranch('notes');
+
+    expect(screen.createError()).toBe('refuse-create aborted worktree creation');
+    expect(screen.isCheckedOut('notes')).toBe(false);
+    expect(existsSync(join(repoPath, '.workspaces', 'notes', '.git'))).toBe(false);
+
+    writeFileSync(
+      join(repoPath, '.git-manager.toml'),
+      `layout = "workspaces"\ncreate_hook = "cp '${join(repoPath, '.env')}' '${copied}'"\n`,
+    );
+    await screen.createBranch('topic');
+
+    expect(screen.createError()).toBe('');
+    expect(screen.isCheckedOut('topic')).toBe(true);
+    expect(readFileSync(copied, 'utf8')).toBe('TOKEN=harbor\n');
+    writeFileSync(copied, 'TOKEN=edited\n');
+    expect(readFileSync(copied, 'utf8')).toBe('TOKEN=edited\n');
   });
 
   it('shows the selected repository display name in the sidebar', async () => {
@@ -881,6 +925,10 @@ class WorkspaceScreen {
     this.createButton().click();
     this.fixture.detectChanges();
     await this.fixture.whenStable();
+  }
+
+  createError(): string {
+    return this.sidebar().querySelector('.create-error')?.textContent?.trim() ?? '';
   }
 
   async createBranch(name: string): Promise<void> {

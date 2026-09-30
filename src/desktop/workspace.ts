@@ -518,10 +518,10 @@ export class Workspace {
       this.worktreeCreate.create(repository.path, branch);
       this.branchDraft.set('');
       this.createError.set(null);
-      this.branchList.set(this.branchSource.list(repository.path));
     } catch (error) {
       this.createError.set(error instanceof Error ? error.message : 'Could not create worktree');
     }
+    this.branchList.set(this.branchSource.list(repository.path));
   }
 
   protected selectBranch(name: string): void {

@@ -51,6 +51,7 @@ import {
 } from './core/registered-repositories.js';
 import { createRepositoryWorktree } from './core/create-repository-worktree.js';
 import { mergeRepositoryBranch, type RepositoryMergeDirection } from './core/merge-repository-branch.js';
+import { removeRepositoryWorktree } from './core/remove-repository-worktree.js';
 
 const program = new Command();
 
@@ -251,8 +252,22 @@ wt
   });
 wt
   .command('remove [label]')
+  .description('Remove a worktree for a branch')
   .option('--force')
-  .action(async (label, opts) => {
+  .option('--path <path>', 'Path to the repository')
+  .option('--branch <name>', 'Branch whose worktree to remove')
+  .action(async (label: string | undefined, opts: { force?: boolean; path?: string; branch?: string }) => {
+    if (opts.path !== undefined || opts.branch !== undefined) {
+      try {
+        if (typeof opts.path !== 'string' || typeof opts.branch !== 'string') {
+          throw new Error('Both --path and --branch are required');
+        }
+        removeRepositoryWorktree(opts.path, opts.branch);
+      } catch (err) {
+        handleError(err);
+      }
+      return;
+    }
     await ensureSetup();
     if (!label) {
       console.error('Label required');

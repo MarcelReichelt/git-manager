@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "outDir": "../../out",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "files": ["electron-main.ts"]
+}

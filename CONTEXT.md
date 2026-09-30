@@ -9,7 +9,7 @@ The desktop window for one selected repository.
 _Avoid_: workspaces
 
 **Registered repository**:
-A local git repository the app knows how to open.
+A local git repository the app knows how to open, recorded by its path and display name.
 _Avoid_: project
 
 **Worktree**:

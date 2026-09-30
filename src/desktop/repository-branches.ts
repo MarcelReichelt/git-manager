@@ -7,21 +7,40 @@
  * ahead and behind as commit lists (the row counts those commits),
  * `runningTerminals` zero when none are running,
  * and a detached HEAD included on `branches` so the sidebar can omit it.
- * File diffs and per-commit file lists can be added on these entries later
- * without changing how the sidebar counts.
+ * Each changed file carries its diff. Each commit that exists only on the branch
+ * (`commitsAhead`) carries the files that commit touched. The sidebar still
+ * counts changes and commits by list length.
  */
 export type BranchTracking = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
-/** One entry per changed file. A rename is one entry, not a delete plus an add. A binary file is one entry. */
+/** Lines added, lines deleted, and the diff text. A binary file does not carry this. */
+export interface TextChange {
+  readonly linesAdded: number;
+  readonly linesDeleted: number;
+  readonly diff: string;
+}
+
+/**
+ * One entry per changed file. A rename is one entry, not a delete plus an add.
+ * A binary file is one entry and has no line counts.
+ * A rename's `linesAdded` and `linesDeleted` are the edit after rename detection,
+ * not a full delete of the old path plus an add of the new path.
+ */
 export type BranchChange =
-  | { readonly kind: 'edit'; readonly path: string }
-  | { readonly kind: 'rename'; readonly path: string; readonly previousPath: string }
+  | (TextChange & { readonly kind: 'edit'; readonly path: string })
+  | (TextChange & { readonly kind: 'rename'; readonly path: string; readonly previousPath: string })
   | { readonly kind: 'binary'; readonly path: string };
 
-/** A commit counted by ahead or behind. Ahead and behind are the lengths of these lists, not file counts. */
+/**
+ * A commit counted by ahead or behind. Ahead and behind are the lengths of these lists, not file counts.
+ * `files` lists what that commit touched, using the same line-count rules as `BranchChange`.
+ * Commits that exist only on the branch are `commitsAhead`. The sample leaves `files` empty
+ * on `commitsBehind`, which branch content does not list.
+ */
 export interface BranchCommit {
   readonly id: string;
   readonly subject: string;
+  readonly files: readonly BranchChange[];
 }
 
 export interface ListedBranch {

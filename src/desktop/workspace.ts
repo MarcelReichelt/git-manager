@@ -22,6 +22,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
           @for (branch of branches(); track branch.name) {
             <li
               class="branch-row"
+              (click)="selectBranch(branch.name)"
               (mouseenter)="hoverBranch(branch.name)"
               (mouseleave)="leaveBranch()"
             >
@@ -36,7 +37,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
                 }
               </span>
               @if (hoveredBranch() === branch.name) {
-                <div class="branch-menu" role="menu" aria-label="Branch actions">
+                <div class="branch-menu" role="menu" aria-label="Branch actions" (click)="$event.stopPropagation()">
                   <button type="button" role="menuitem">Merge</button>
                   <button type="button" role="menuitem">Remove</button>
                 </div>
@@ -51,6 +52,58 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       @if (selected(); as repository) {
         <h1>{{ repository.displayName }}</h1>
         <button type="button" (click)="openRepositoryList()">Switch repository</button>
+        @if (selectedBranch(); as branch) {
+          <section aria-label="Branch">
+            <h2>{{ branch.name }}</h2>
+            <ul class="changed-files" aria-label="Changed files">
+              @for (change of branch.changes; track change.path) {
+                <li class="changed-file">
+                  <button type="button" (click)="selectChange(change.path)">
+                    <span class="changed-file-path">{{ change.path }}</span>
+                    @if (change.kind !== 'binary') {
+                      <span class="lines-added">+{{ change.linesAdded }}</span>
+                      <span class="lines-deleted">-{{ change.linesDeleted }}</span>
+                    }
+                  </button>
+                </li>
+              }
+            </ul>
+            @if (selectedChange(); as change) {
+              @if (change.kind !== 'binary') {
+                <pre aria-label="Diff">{{ change.diff }}</pre>
+              }
+            }
+            <ul aria-label="Commits only on this branch">
+              @for (commit of branch.commitsAhead; track commit.id) {
+                <li class="branch-commit">
+                  <button type="button" (click)="selectCommit(commit.id)">{{ commit.subject }}</button>
+                </li>
+              }
+            </ul>
+            @if (selectedCommit(); as commit) {
+              <div class="commit-view">
+                <ul class="commit-files" aria-label="Commit files">
+                  @for (file of commit.files; track file.path) {
+                    <li class="commit-file">
+                      <button type="button" (click)="selectCommitFile(file.path)">
+                        <span class="commit-file-path">{{ file.path }}</span>
+                        @if (file.kind !== 'binary') {
+                          <span class="lines-added">+{{ file.linesAdded }}</span>
+                          <span class="lines-deleted">-{{ file.linesDeleted }}</span>
+                        }
+                      </button>
+                    </li>
+                  }
+                </ul>
+                @if (selectedCommitFile(); as file) {
+                  @if (file.kind !== 'binary') {
+                    <pre class="commit-diff" aria-label="Commit diff">{{ file.diff }}</pre>
+                  }
+                }
+              </div>
+            }
+          </section>
+        }
       }
     </section>
     @if (showRepositoryCard()) {
@@ -208,6 +261,25 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       font-weight: 600;
     }
 
+    .commit-view {
+      display: grid;
+      grid-template-columns: 16rem 1fr;
+      column-gap: 16px;
+      align-items: start;
+    }
+
+    .commit-files {
+      grid-column-start: 1;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .commit-diff {
+      grid-column-start: 2;
+      margin: 0;
+    }
+
     .content-sheet button {
       background: transparent;
       color: inherit;
@@ -322,6 +394,26 @@ export class Workspace {
   protected readonly displayNameDraft = signal('');
   protected readonly addError = signal<string | null>(null);
   protected readonly hoveredBranch = signal<string | null>(null);
+  private readonly selectedBranchName = signal<string | null>(null);
+  protected readonly selectedBranch = computed(() => {
+    const name = this.selectedBranchName();
+    return this.branches().find((branch) => branch.name === name) ?? null;
+  });
+  private readonly selectedChangePath = signal<string | null>(null);
+  protected readonly selectedChange = computed(() => {
+    const path = this.selectedChangePath();
+    return this.selectedBranch()?.changes.find((change) => change.path === path) ?? null;
+  });
+  private readonly selectedCommitId = signal<string | null>(null);
+  protected readonly selectedCommit = computed(() => {
+    const id = this.selectedCommitId();
+    return this.selectedBranch()?.commitsAhead.find((commit) => commit.id === id) ?? null;
+  });
+  private readonly selectedCommitFilePath = signal<string | null>(null);
+  protected readonly selectedCommitFile = computed(() => {
+    const path = this.selectedCommitFilePath();
+    return this.selectedCommit()?.files.find((file) => file.path === path) ?? null;
+  });
   protected readonly showRepositoryCard = computed(
     () => this.selected() === null || this.repositoryListOpen(),
   );
@@ -354,6 +446,32 @@ export class Workspace {
   protected choose(repository: RegisteredRepository): void {
     this.selected.set(repository);
     this.repositoryListOpen.set(false);
+    this.selectedBranchName.set(null);
+    this.clearBranchDetail();
+  }
+
+  protected selectBranch(name: string): void {
+    this.selectedBranchName.set(name);
+    this.clearBranchDetail();
+  }
+
+  protected selectChange(path: string): void {
+    this.selectedChangePath.set(path);
+  }
+
+  protected selectCommit(id: string): void {
+    this.selectedCommitId.set(id);
+    this.selectedCommitFilePath.set(null);
+  }
+
+  protected selectCommitFile(path: string): void {
+    this.selectedCommitFilePath.set(path);
+  }
+
+  private clearBranchDetail(): void {
+    this.selectedChangePath.set(null);
+    this.selectedCommitId.set(null);
+    this.selectedCommitFilePath.set(null);
   }
 
   protected openRepositoryList(): void {
@@ -385,6 +503,8 @@ export class Workspace {
     this.registry.unregister(repository.path);
     if (this.selected()?.path === repository.path) {
       this.selected.set(null);
+      this.selectedBranchName.set(null);
+      this.clearBranchDetail();
     }
     this.reload();
   }

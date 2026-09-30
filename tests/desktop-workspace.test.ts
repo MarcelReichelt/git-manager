@@ -29,6 +29,60 @@ TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 
 const sampleDisplayNames = ['Harbor', 'Northwind', 'Papertrail'];
 
+const notesTodayDiff = [
+  '--- a/notes/today.md',
+  '+++ b/notes/today.md',
+  '@@ -1,2 +1,5 @@',
+  ' # Today',
+  '-Tide chart',
+  '+Harbor tide chart',
+  '+Mooring notes',
+  '+Weather',
+  '+Crew',
+].join('\n');
+
+const notesTodoDiff = [
+  '--- a/notes/todo.md',
+  '+++ b/notes/todo.md',
+  '@@ -1 +1,3 @@',
+  ' # Todo',
+  '+Paint the hull',
+  '+Check the lines',
+].join('\n');
+
+const draftNotesTodayDiff = [
+  '--- a/notes/today.md',
+  '+++ b/notes/today.md',
+  '@@ -1,2 +1,4 @@',
+  ' # Today',
+  '-Tide chart',
+  '+Harbor tide chart',
+  '+Mooring notes',
+  '+Weather',
+].join('\n');
+
+const guideRenameDiff = [
+  'diff --git a/docs/old-guide.md b/docs/guide.md',
+  'rename from docs/old-guide.md',
+  'rename to docs/guide.md',
+  '--- a/docs/old-guide.md',
+  '+++ b/docs/guide.md',
+  '@@ -1,3 +1,4 @@',
+  ' # Guide',
+  ' Keep the berth notes.',
+  '-Old heading',
+  '+New heading',
+  '+One more line',
+].join('\n');
+
+const draftNotesTodoDiff = [
+  '--- a/notes/todo.md',
+  '+++ b/notes/todo.md',
+  '@@ -1 +1,2 @@',
+  ' # Todo',
+  '+Paint the hull',
+].join('\n');
+
 describe('desktop workspace', () => {
   let cleanup: () => void;
   let configDir: string;
@@ -170,7 +224,14 @@ describe('desktop workspace', () => {
 
     const rename = listedHarborBranch('rename-docs');
     expect(rename.changes).toEqual([
-      { kind: 'rename', path: 'docs/guide.md', previousPath: 'docs/old-guide.md' },
+      {
+        kind: 'rename',
+        path: 'docs/guide.md',
+        previousPath: 'docs/old-guide.md',
+        linesAdded: 2,
+        linesDeleted: 1,
+        diff: guideRenameDiff,
+      },
     ]);
     expect(rename.commitsAhead).toHaveLength(3);
     expect(rename.commitsBehind).toHaveLength(2);
@@ -194,6 +255,120 @@ describe('desktop workspace', () => {
     expect(screen.changedFileCount('main')).toBe(0);
     expect(screen.commitsAhead('main')).toBe(0);
     expect(screen.commitsBehind('main')).toBe(0);
+  });
+
+  it('shows lines added and lines deleted for each changed file when a branch is selected', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('notes');
+
+    expect(screen.changedFiles()).toEqual([
+      { path: 'notes/today.md', linesAdded: 4, linesDeleted: 1 },
+      { path: 'notes/todo.md', linesAdded: 2, linesDeleted: 0 },
+    ]);
+  });
+
+  it('shows the commits that exist only on the selected branch', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('abandoned');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual([
+      'Start the experiment',
+      'Adjust the experiment',
+      'Keep the experiment',
+      'Leave the experiment',
+    ]);
+    expect(screen.branchContentText()).not.toContain('Upstream moved on');
+
+    await screen.selectBranch('assets');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual([]);
+    expect(screen.branchContentText()).not.toContain('Add the first asset');
+  });
+
+  it('opens the diff for a selected changed file', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+    await screen.selectBranch('notes');
+
+    await screen.selectChangedFile('notes/today.md');
+
+    expect(screen.fileDiff()).toBe(notesTodayDiff);
+
+    await screen.selectChangedFile('notes/todo.md');
+
+    expect(screen.fileDiff()).toBe(notesTodoDiff);
+  });
+
+  it('opens a changed file diff and a commit file list with the diff beside it', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+    await screen.selectBranch('notes');
+
+    await screen.selectChangedFile('notes/today.md');
+    expect(screen.fileDiff()).toBe(notesTodayDiff);
+
+    await screen.selectCommit('Draft notes');
+    expect(screen.commitFiles()).toEqual([
+      { path: 'notes/today.md', linesAdded: 3, linesDeleted: 1 },
+      { path: 'notes/todo.md', linesAdded: 1, linesDeleted: 0 },
+    ]);
+
+    await screen.selectCommitFile('notes/today.md');
+    expect(screen.commitFileDiff()).toBe(draftNotesTodayDiff);
+    expect(screen.commitDiffIsBesideTheFileList()).toBe(true);
+
+    await screen.selectCommitFile('notes/todo.md');
+    expect(screen.commitFileDiff()).toBe(draftNotesTodoDiff);
+    expect(screen.commitDiffIsBesideTheFileList()).toBe(true);
+  });
+
+  it('shows a rename as the lines added and deleted after rename detection', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('rename-docs');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 2, linesDeleted: 1 }]);
+
+    await screen.selectChangedFile('docs/guide.md');
+
+    expect(screen.fileDiff()).toBe(guideRenameDiff);
+
+    await screen.selectCommit('Rename the guide');
+
+    expect(screen.commitFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 0, linesDeleted: 0 }]);
+  });
+
+  it('lists a binary file without added or deleted line counts', async () => {
+    rememberSampleRepositories();
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('assets');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'assets/logo.png' }]);
+    expect(screen.changedFileText('assets/logo.png')).toBe('assets/logo.png');
+
+    await screen.selectChangedFile('assets/logo.png');
+
+    expect(screen.fileDiffIsOpen()).toBe(false);
+
+    await screen.selectBranch('review');
+    await screen.selectCommit('Open the review');
+
+    expect(screen.commitFiles()).toEqual([
+      { path: 'src/review.ts', linesAdded: 7, linesDeleted: 1 },
+      { path: 'assets/badge.bin' },
+    ]);
   });
 
   it('shows a terminal count only while terminals for that branch are running', async () => {
@@ -239,6 +414,7 @@ describe('desktop workspace', () => {
     expect(screen.workspaceTitle()).toBe('Harbor');
     expect(screen.branchNames()).toContain('review');
     expect(screen.repositoryCardIsOpen()).toBe(false);
+    expect(screen.branchContentIsOpen()).toBe(false);
   });
 
   it('shows the selected repository display name in the sidebar', async () => {
@@ -596,6 +772,119 @@ class WorkspaceScreen {
     await this.fixture.whenStable();
   }
 
+  async selectBranch(name: string): Promise<void> {
+    this.branchRow(name).click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  commitsOnlyOnTheBranch(): string[] {
+    const list = this.branchContent().querySelector('[aria-label="Commits only on this branch"]');
+    if (!(list instanceof HTMLElement)) {
+      throw new Error('Commits only on this branch are not on screen');
+    }
+    return [...list.querySelectorAll('.branch-commit')].map((commit) => commit.textContent?.trim() ?? '');
+  }
+
+  branchContentText(): string {
+    return this.branchContent().textContent ?? '';
+  }
+
+  branchContentIsOpen(): boolean {
+    return this.root().querySelector('[aria-label="Workspace"] [aria-label="Branch"]') instanceof HTMLElement;
+  }
+
+  async selectChangedFile(path: string): Promise<void> {
+    const button = this.changedFileRow(path).querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No changed file ${path}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  fileDiff(): string {
+    const diff = this.fileDiffElement();
+    if (!diff) {
+      throw new Error('Diff is not on screen');
+    }
+    return diff.textContent ?? '';
+  }
+
+  fileDiffIsOpen(): boolean {
+    return this.fileDiffElement() !== null;
+  }
+
+  changedFileText(path: string): string {
+    return this.changedFileRow(path).textContent?.trim() ?? '';
+  }
+
+  async selectCommit(subject: string): Promise<void> {
+    const commit = [...this.branchContent().querySelectorAll('.branch-commit')].find(
+      (candidate) => candidate.textContent?.trim() === subject,
+    );
+    const button = commit?.querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No commit ${subject}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  commitFiles(): readonly { path: string; linesAdded?: number; linesDeleted?: number }[] {
+    const list = this.branchContent().querySelector('[aria-label="Commit files"]');
+    if (!(list instanceof HTMLElement)) {
+      throw new Error('Commit files are not on screen');
+    }
+    return [...list.querySelectorAll('.commit-file')].map((row) => fileLineCounts(row, '.commit-file-path'));
+  }
+
+  async selectCommitFile(path: string): Promise<void> {
+    const row = [...this.commitFileList().querySelectorAll('.commit-file')].find(
+      (candidate) => candidate.querySelector('.commit-file-path')?.textContent?.trim() === path,
+    );
+    const button = row?.querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No commit file ${path}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  commitFileDiff(): string {
+    const diff = this.branchContent().querySelector('[aria-label="Commit diff"]');
+    if (!(diff instanceof HTMLElement)) {
+      throw new Error('Commit diff is not on screen');
+    }
+    return diff.textContent ?? '';
+  }
+
+  commitDiffIsBesideTheFileList(): boolean {
+    const list = this.commitFileList();
+    const diff = this.branchContent().querySelector('[aria-label="Commit diff"]');
+    const view = list.parentElement;
+    if (!(diff instanceof HTMLElement) || !(view instanceof HTMLElement) || diff.parentElement !== view) {
+      return false;
+    }
+    const viewStyle = getComputedStyle(view);
+    const columns = viewStyle.gridTemplateColumns.split(' ').filter((column) => column.length > 0);
+    return (
+      viewStyle.display === 'grid' &&
+      columns.length === 2 &&
+      getComputedStyle(list).gridColumnStart === '1' &&
+      getComputedStyle(diff).gridColumnStart === '2'
+    );
+  }
+
+  changedFiles(): readonly { path: string; linesAdded?: number; linesDeleted?: number }[] {
+    return [...this.branchContent().querySelectorAll('.changed-file')].map((row) =>
+      fileLineCounts(row, '.changed-file-path'),
+    );
+  }
+
   cardIsCenteredInTheWindow(): boolean {
     const layer = this.card().parentElement;
     if (!layer) {
@@ -690,4 +979,60 @@ class WorkspaceScreen {
     }
     return sidebar;
   }
+
+  private fileDiffElement(): HTMLElement | null {
+    const diff = this.branchContent().querySelector('[aria-label="Diff"]');
+    return diff instanceof HTMLElement ? diff : null;
+  }
+
+  private commitFileList(): HTMLElement {
+    const list = this.branchContent().querySelector('[aria-label="Commit files"]');
+    if (!(list instanceof HTMLElement)) {
+      throw new Error('Commit files are not on screen');
+    }
+    return list;
+  }
+
+  private changedFileRow(path: string): HTMLElement {
+    const row = [...this.branchContent().querySelectorAll('.changed-file')].find(
+      (candidate) => candidate.querySelector('.changed-file-path')?.textContent?.trim() === path,
+    );
+    if (!(row instanceof HTMLElement)) {
+      throw new Error(`No changed file ${path}`);
+    }
+    return row;
+  }
+
+  private branchContent(): HTMLElement {
+    const content = this.root().querySelector('[aria-label="Workspace"] [aria-label="Branch"]');
+    if (!(content instanceof HTMLElement)) {
+      throw new Error('Branch content is not on screen');
+    }
+    return content;
+  }
+}
+
+function lineCount(element: HTMLElement): number {
+  const match = element.textContent?.trim().match(/(\d+)/);
+  if (!match) {
+    throw new Error(`No line count in ${element.textContent ?? ''}`);
+  }
+  return Number(match[1]);
+}
+
+function fileLineCounts(
+  row: Element,
+  pathClass: string,
+): { path: string; linesAdded?: number; linesDeleted?: number } {
+  const path = row.querySelector(pathClass)?.textContent?.trim() ?? '';
+  const added = row.querySelector('.lines-added');
+  const deleted = row.querySelector('.lines-deleted');
+  if (!(added instanceof HTMLElement) || !(deleted instanceof HTMLElement)) {
+    return { path };
+  }
+  return {
+    path,
+    linesAdded: lineCount(added),
+    linesDeleted: lineCount(deleted),
+  };
 }

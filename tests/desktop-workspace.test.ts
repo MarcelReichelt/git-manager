@@ -299,6 +299,44 @@ describe('desktop workspace', () => {
     expect(screen.fileDiffIsOpen()).toBe(false);
   });
 
+  it('opens a changed file diff and the selected commit file list from the repository', async () => {
+    addRegisteredRepository(createRewriteCheckout(join(configDir, '..')), 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('rewrite');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 1, linesDeleted: 0 }]);
+
+    await screen.selectChangedFile('docs/guide.md');
+
+    expect(screen.fileDiff()).toContain('+Dirty line');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual(['Retitle the guide', 'Add the logo']);
+
+    await screen.selectCommit('Retitle the guide');
+
+    expect(screen.commitFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 2, linesDeleted: 1 }]);
+
+    await screen.selectCommitFile('docs/guide.md');
+
+    expect(screen.commitDiff()).toContain('rename from docs/old-guide.md');
+    expect(screen.commitDiff()).toContain('rename to docs/guide.md');
+    expect(screen.commitDiff()).toContain('-Old heading');
+    expect(screen.commitDiff()).toContain('+New heading');
+    expect(screen.commitDiff()).toContain('+One more line');
+    expect(screen.commitDiffIsInTheColumnToTheRight()).toBe(true);
+
+    await screen.selectCommit('Add the logo');
+
+    expect(screen.commitFiles()).toEqual([{ path: 'assets/logo.png' }]);
+    expect(screen.commitFileText('assets/logo.png')).toBe('assets/logo.png');
+
+    await screen.selectCommitFile('assets/logo.png');
+
+    expect(screen.commitDiffIsOpen()).toBe(false);
+  });
+
   it('shows changed-file line counts and the commits only on the selected branch', async () => {
     addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
     const screen = await openWorkspace();
@@ -501,6 +539,35 @@ function createHarborCheckout(baseDir: string): string {
   git(repoPath, 'branch -D discard-me');
   git(repoPath, `worktree add --detach "${join(worktrees, 'detached')}" ${detachedCommit}`);
 
+  return repoPath;
+}
+
+function createRewriteCheckout(baseDir: string): string {
+  const repoPath = join(baseDir, 'harbor');
+  const worktrees = join(baseDir, 'worktrees');
+  mkdirSync(worktrees);
+  initRepo(repoPath, { initialBranch: 'master' });
+  commitFile(repoPath, 'docs/old-guide.md', '# Guide\nKeep the berth notes.\nOld heading\n', 'Add the guide');
+  git(repoPath, 'checkout -b rewrite');
+  git(repoPath, 'mv docs/old-guide.md docs/guide.md');
+  commitFile(
+    repoPath,
+    'docs/guide.md',
+    '# Guide\nKeep the berth notes.\nNew heading\nOne more line\n',
+    'Retitle the guide',
+  );
+  const logo = join(repoPath, 'assets', 'logo.png');
+  mkdirSync(dirname(logo), { recursive: true });
+  writeFileSync(logo, Buffer.from([0x50, 0x4e, 0x47, 0x00, 0x01]));
+  git(repoPath, 'add -- assets/logo.png');
+  git(repoPath, 'commit -m "Add the logo"');
+  git(repoPath, 'checkout master');
+  const rewrite = join(worktrees, 'rewrite');
+  git(repoPath, `worktree add "${rewrite}" rewrite`);
+  writeFileSync(
+    join(rewrite, 'docs', 'guide.md'),
+    '# Guide\nKeep the berth notes.\nNew heading\nOne more line\nDirty line\n',
+  );
   return repoPath;
 }
 
@@ -781,6 +848,63 @@ class WorkspaceScreen {
     return this.root().querySelector('[aria-label="Workspace"] [aria-label="Branch"]') instanceof HTMLElement;
   }
 
+  async selectCommit(subject: string): Promise<void> {
+    const button = [...this.branchContent().querySelectorAll('.branch-commit button')].find(
+      (candidate) => candidate.textContent?.trim() === subject,
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No commit ${subject}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  commitFiles(): readonly { path: string; linesAdded?: number; linesDeleted?: number }[] {
+    return [...this.commitFileList().querySelectorAll('.commit-file')].map((row) =>
+      fileLineCounts(row, '.commit-file-path'),
+    );
+  }
+
+  async selectCommitFile(path: string): Promise<void> {
+    const button = this.commitFileRow(path).querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`No commit file ${path}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  commitDiff(): string {
+    const diff = this.commitDiffElement();
+    if (!diff) {
+      throw new Error('Commit diff is not on screen');
+    }
+    return diff.textContent ?? '';
+  }
+
+  commitDiffIsOpen(): boolean {
+    return this.commitDiffElement() !== null;
+  }
+
+  commitDiffIsInTheColumnToTheRight(): boolean {
+    const files = this.commitFileList();
+    const diff = this.commitDiffElement();
+    const view = this.branchContent().querySelector('.commit-view');
+    if (!diff || !(view instanceof HTMLElement)) {
+      return false;
+    }
+    const viewStyle = getComputedStyle(view);
+    const filesStyle = getComputedStyle(files);
+    const diffStyle = getComputedStyle(diff);
+    return viewStyle.display === 'grid' && filesStyle.gridColumnStart === '1' && diffStyle.gridColumnStart === '2';
+  }
+
+  commitFileText(path: string): string {
+    return this.commitFileRow(path).textContent?.trim() ?? '';
+  }
+
   async selectChangedFile(path: string): Promise<void> {
     const button = this.changedFileRow(path).querySelector('button');
     if (!(button instanceof HTMLButtonElement)) {
@@ -910,6 +1034,29 @@ class WorkspaceScreen {
 
   private fileDiffElement(): HTMLElement | null {
     const diff = this.branchContent().querySelector('[aria-label="Diff"]');
+    return diff instanceof HTMLElement ? diff : null;
+  }
+
+  private commitFileList(): HTMLElement {
+    const list = this.branchContent().querySelector('[aria-label="Commit files"]');
+    if (!(list instanceof HTMLElement)) {
+      throw new Error('Commit files are not on screen');
+    }
+    return list;
+  }
+
+  private commitFileRow(path: string): HTMLElement {
+    const row = [...this.commitFileList().querySelectorAll('.commit-file')].find(
+      (candidate) => candidate.querySelector('.commit-file-path')?.textContent?.trim() === path,
+    );
+    if (!(row instanceof HTMLElement)) {
+      throw new Error(`No commit file ${path}`);
+    }
+    return row;
+  }
+
+  private commitDiffElement(): HTMLElement | null {
+    const diff = this.branchContent().querySelector('[aria-label="Commit diff"]');
     return diff instanceof HTMLElement ? diff : null;
   }
 

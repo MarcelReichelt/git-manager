@@ -19,6 +19,11 @@ interface NumstatEntry {
   readonly previousPath?: string;
 }
 
+interface CommitSummary {
+  readonly id: string;
+  readonly subject: string;
+}
+
 export function readRepositoryBranches(repositoryPath: string): readonly Branch[] {
   if (!isGitRepository(repositoryPath)) {
     return [];
@@ -51,8 +56,8 @@ export function readRepositoryBranches(repositoryPath: string): readonly Branch[
       tracking,
       hasWorktree: checkout !== undefined,
       changes: checkout ? readChanges(checkout) : [],
-      commitsAhead: readCommits(repositoryPath, base, ref.refname),
-      commitsBehind: readCommits(repositoryPath, ref.refname, base),
+      commitsAhead: readAheadCommits(repositoryPath, base, ref.refname),
+      commitsBehind: readBehindCommits(repositoryPath, ref.refname, base),
       runningTerminals: 0,
     });
   }
@@ -69,8 +74,8 @@ export function readRepositoryBranches(repositoryPath: string): readonly Branch[
       tracking: 'remote-only',
       hasWorktree: false,
       changes: [],
-      commitsAhead: readCommits(repositoryPath, defaultRef, ref.refname),
-      commitsBehind: readCommits(repositoryPath, ref.refname, defaultRef),
+      commitsAhead: readAheadCommits(repositoryPath, defaultRef, ref.refname),
+      commitsBehind: readBehindCommits(repositoryPath, ref.refname, defaultRef),
       runningTerminals: 0,
     });
   }
@@ -123,7 +128,23 @@ function defaultBranchName(checkouts: readonly Checkout[], localNames: readonly 
   return localNames[0] ?? 'master';
 }
 
-function readCommits(repositoryPath: string, fromRef: string, toRef: string): readonly BranchCommit[] {
+function readAheadCommits(repositoryPath: string, fromRef: string, toRef: string): readonly BranchCommit[] {
+  return listCommits(repositoryPath, fromRef, toRef).map((commit) => ({
+    id: commit.id,
+    subject: commit.subject,
+    files: readCommitFiles(repositoryPath, commit.id),
+  }));
+}
+
+function readBehindCommits(repositoryPath: string, fromRef: string, toRef: string): readonly BranchCommit[] {
+  return listCommits(repositoryPath, fromRef, toRef).map((commit) => ({
+    id: commit.id,
+    subject: commit.subject,
+    files: [],
+  }));
+}
+
+function listCommits(repositoryPath: string, fromRef: string, toRef: string): readonly CommitSummary[] {
   if (fromRef === toRef) {
     return [];
   }
@@ -136,9 +157,39 @@ function readCommits(repositoryPath: string, fromRef: string, toRef: string): re
     return {
       id: line.slice(0, separator),
       subject: line.slice(separator + 1),
-      files: [],
     };
   });
+}
+
+function readCommitFiles(repositoryPath: string, commitId: string): readonly BranchChange[] {
+  const entries = parseNumstat(
+    git(repositoryPath, ['diff-tree', '-M', '-r', '--numstat', '-z', '--root', '--no-commit-id', commitId]),
+  );
+  const changes = entries.map((entry) => commitChange(repositoryPath, commitId, entry));
+  changes.sort((left, right) => compareNames(left.path, right.path));
+  return changes;
+}
+
+function commitChange(repositoryPath: string, commitId: string, entry: NumstatEntry): BranchChange {
+  if (entry.added === '-' || entry.deleted === '-') {
+    return { kind: 'binary', path: entry.path };
+  }
+  const linesAdded = countLines(entry.added);
+  const linesDeleted = countLines(entry.deleted);
+  const diff = commitDiffText(repositoryPath, commitId, entry.path, entry.previousPath);
+  if (entry.previousPath) {
+    return { kind: 'rename', path: entry.path, previousPath: entry.previousPath, linesAdded, linesDeleted, diff };
+  }
+  return { kind: 'edit', path: entry.path, linesAdded, linesDeleted, diff };
+}
+
+function commitDiffText(repositoryPath: string, commitId: string, path: string, previousPath?: string): string {
+  const args = ['show', '-M', '--format=', commitId, '--'];
+  if (previousPath) {
+    args.push(previousPath);
+  }
+  args.push(path);
+  return git(repositoryPath, args).replace(/\n$/, '');
 }
 
 function readChanges(checkoutPath: string): readonly BranchChange[] {

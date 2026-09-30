@@ -7,8 +7,8 @@
  * `runningTerminals` zero when none are running,
  * and a detached HEAD omitted from the list. The sidebar also drops a detached HEAD if one is present.
  * A text change carries its diff. A binary file does not.
- * Each commit that exists only on the branch (`commitsAhead`) carries an id and subject.
- * Per-commit `files` stay empty until they are read from that commit.
+ * Each commit that exists only on the branch (`commitsAhead`) carries an id, subject, and the files that commit changed.
+ * `commitsBehind` keeps empty `files`; branch content does not list those commits.
  * The sidebar still counts changes and commits by list length.
  */
 export type BranchTracking = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
@@ -34,8 +34,8 @@ export type BranchChange =
 /**
  * A commit counted by ahead or behind. Ahead and behind are the lengths of these lists, not file counts.
  * `files` lists what that commit touched, using the same line-count rules as `BranchChange`.
- * Commits that exist only on the branch are `commitsAhead`. Branch content does not list `commitsBehind`.
- * `files` is empty until each commit's files are read from git.
+ * Commits that exist only on the branch are `commitsAhead`, and those files are read from git.
+ * Branch content does not list `commitsBehind`, so those `files` stay empty.
  */
 export interface BranchCommit {
   readonly id: string;

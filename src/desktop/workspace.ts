@@ -27,12 +27,14 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
             >
               <span class="status" [class]="statusClass(branch)"></span>
               <span class="branch-name">{{ branch.name }}</span>
-              <span class="changed-file-count">{{ changedFileCount(branch) }} changed</span>
-              <span class="commits-ahead">{{ commitsAhead(branch) }} ahead</span>
-              <span class="commits-behind">{{ commitsBehind(branch) }} behind</span>
-              @if (branch.runningTerminals > 0) {
-                <span class="running-terminals">{{ branch.runningTerminals }} terminals</span>
-              }
+              <span class="branch-counts">
+                <span class="changed-file-count">{{ changedFileCount(branch) }} changed</span>
+                <span class="commits-ahead">{{ commitsAhead(branch) }} ahead</span>
+                <span class="commits-behind">{{ commitsBehind(branch) }} behind</span>
+                @if (branch.runningTerminals > 0) {
+                  <span class="running-terminals">{{ branch.runningTerminals }} terminals</span>
+                }
+              </span>
               @if (hoveredBranch() === branch.name) {
                 <div class="branch-menu" role="menu" aria-label="Branch actions">
                   <button type="button" role="menuitem">Merge</button>
@@ -108,6 +110,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
     }
 
     .branch-menu {
+      grid-column: 1 / -1;
       display: flex;
       gap: 8px;
     }
@@ -122,15 +125,29 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
     }
 
     .branch-row {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 8px;
+      row-gap: 2px;
       align-items: center;
-      gap: 8px;
       padding: 6px 0;
     }
 
+    .branch-name {
+      grid-column: 2;
+    }
+
+    .branch-counts {
+      grid-column: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: #a8a29e;
+      font-size: 0.8rem;
+    }
+
     .status {
-      flex: 0 0 auto;
+      grid-row: 1 / span 2;
       width: 0.75rem;
       height: 0.75rem;
       border-radius: 999px;

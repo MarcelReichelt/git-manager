@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { REPOSITORY_BRANCH_SOURCE } from './repository-branch-source.js';
 import { type Branch, type ListedBranch } from './repository-branches.js';
+import { REPOSITORY_WORKTREE_CREATE } from './repository-worktree-create.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY,
   type RegisteredRepository,
@@ -48,7 +49,16 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
             </li>
           }
         </ul>
-        <button type="button" class="create-branch">Create</button>
+        <form class="create-worktree" (submit)="createWorktree($event)">
+          <label>
+            Branch
+            <input [value]="branchDraft()" (input)="setBranchDraft($event)" />
+          </label>
+          <button type="submit" class="create-branch">Create</button>
+        </form>
+        @if (createError(); as message) {
+          <p class="create-error" role="alert">{{ message }}</p>
+        }
       </aside>
     }
     <section class="content-sheet" [class.has-sidebar]="selected() !== null" aria-label="Workspace">
@@ -171,14 +181,41 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       min-height: 0;
     }
 
-    .create-branch {
+    .create-worktree {
       margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .create-worktree label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+    }
+
+    .create-worktree input {
+      font: inherit;
+      color: inherit;
+      background: #1c1917;
+      border: 1px solid #78716c;
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .create-branch {
       background: transparent;
       color: inherit;
       border: 1px solid #78716c;
       border-radius: 8px;
       padding: 8px 12px;
       cursor: pointer;
+    }
+
+    .create-error {
+      margin: 8px 0 0;
+      color: #fecaca;
     }
 
     .branch-menu {
@@ -396,7 +433,10 @@ export class Workspace {
   private readonly registry = inject(REGISTERED_REPOSITORY_REGISTRY);
   protected readonly repositories = signal(this.registry.list());
   private readonly branchSource = inject(REPOSITORY_BRANCH_SOURCE);
+  private readonly worktreeCreate = inject(REPOSITORY_WORKTREE_CREATE);
   protected readonly selected = signal<RegisteredRepository | null>(null);
+  protected readonly branchDraft = signal('');
+  protected readonly createError = signal<string | null>(null);
   private readonly branchList = signal<readonly Branch[]>([]);
   protected readonly branches = computed(() => this.branchList().filter(isListedBranch));
   private readonly repositoryListOpen = signal(false);
@@ -457,8 +497,31 @@ export class Workspace {
     this.selected.set(repository);
     this.repositoryListOpen.set(false);
     this.selectedBranchName.set(null);
+    this.branchDraft.set('');
+    this.createError.set(null);
     this.clearBranchDetail();
     this.branchList.set(this.branchSource.list(repository.path));
+  }
+
+  protected setBranchDraft(event: Event): void {
+    this.branchDraft.set(inputValue(event));
+  }
+
+  protected createWorktree(event: Event): void {
+    event.preventDefault();
+    const repository = this.selected();
+    const branch = this.branchDraft().trim();
+    if (!repository || branch === '') {
+      return;
+    }
+    try {
+      this.worktreeCreate.create(repository.path, branch);
+      this.branchDraft.set('');
+      this.createError.set(null);
+      this.branchList.set(this.branchSource.list(repository.path));
+    } catch (error) {
+      this.createError.set(error instanceof Error ? error.message : 'Could not create worktree');
+    }
   }
 
   protected selectBranch(name: string): void {

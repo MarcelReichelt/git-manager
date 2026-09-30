@@ -17,11 +17,16 @@ import {
   unregisterRegisteredRepository,
 } from '../src/core/registered-repositories.js';
 import { listRepositories, upsertRepository } from '../src/core/registry.js';
+import { createRepositoryWorktree } from '../src/core/create-repository-worktree.js';
 import { readRepositoryBranches } from '../src/core/read-repository-branches.js';
 import {
   REPOSITORY_BRANCH_SOURCE_HOST,
   type RepositoryBranchSource,
 } from '../src/desktop/repository-branch-source.js';
+import {
+  REPOSITORY_WORKTREE_CREATE_HOST,
+  type RepositoryWorktreeCreate,
+} from '../src/desktop/repository-worktree-create.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY_HOST,
   type RegisteredRepositoryRegistry,
@@ -50,6 +55,7 @@ describe('desktop workspace', () => {
     });
     installRegisteredRepositoryRegistry();
     installRepositoryBranchSource();
+    installRepositoryWorktreeCreate();
     TestBed.resetTestingModule();
   });
 
@@ -390,6 +396,48 @@ describe('desktop workspace', () => {
     expect(screen.isCheckedOut('sketch')).toBe(false);
     expect(registeredRepositoryRows(registryPath)).toEqual([{ path: harbor, display_name: 'Harbor' }]);
   });
+
+  it('creates a worktree from the button at the bottom of the branch list', async () => {
+    const repoPath = join(configDir, '..', 'harbor');
+    initRepo(repoPath, { initialBranch: 'main' });
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\n');
+    git(repoPath, 'checkout -b notes');
+    git(repoPath, 'checkout main');
+    addRegisteredRepository(repoPath, 'Harbor');
+
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.isCheckedOut('main')).toBe(true);
+    expect(screen.isCheckedOut('notes')).toBe(false);
+    expect(screen.createFollowsTheBranchList()).toBe(true);
+
+    await screen.createBranch('notes');
+
+    expect(screen.isCheckedOut('notes')).toBe(true);
+    expect(screen.branchNames()).toEqual(['main', 'notes']);
+  });
+
+  it('shows a failure on the workspace when the worktree folder already exists', async () => {
+    const repoPath = join(configDir, '..', 'harbor');
+    initRepo(repoPath, { initialBranch: 'main' });
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\n');
+    git(repoPath, 'checkout -b notes');
+    git(repoPath, 'checkout main');
+    mkdirSync(join(repoPath, '.workspaces', 'notes'), { recursive: true });
+    addRegisteredRepository(repoPath, 'Harbor');
+
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+    await screen.createBranch('notes');
+
+    expect(screen.text()).toContain('already exists');
+    expect(screen.isCheckedOut('notes')).toBe(false);
+
+    await screen.reopen('Harbor');
+
+    expect(screen.isCheckedOut('notes')).toBe(false);
+  });
 });
 
 function registeredRepositoryRows(path: string): readonly { path: string; display_name: string }[] {
@@ -616,6 +664,15 @@ function installRepositoryBranchSource(): void {
   Object.assign(globalThis, { [REPOSITORY_BRANCH_SOURCE_HOST]: source });
 }
 
+function installRepositoryWorktreeCreate(): void {
+  const create: RepositoryWorktreeCreate = {
+    create: (repositoryPath, branch) => {
+      createRepositoryWorktree(repositoryPath, branch);
+    },
+  };
+  Object.assign(globalThis, { [REPOSITORY_WORKTREE_CREATE_HOST]: create });
+}
+
 function installRegisteredRepositoryRegistry(): void {
   const registry: RegisteredRepositoryRegistry = {
     list: () => listRegisteredRepositories(),
@@ -826,6 +883,14 @@ class WorkspaceScreen {
     await this.fixture.whenStable();
   }
 
+  async createBranch(name: string): Promise<void> {
+    const input = this.createBranchInput();
+    input.value = name;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    this.fixture.detectChanges();
+    await this.clickCreate();
+  }
+
   async selectBranch(name: string): Promise<void> {
     this.branchRow(name).click();
     this.fixture.detectChanges();
@@ -993,6 +1058,16 @@ class WorkspaceScreen {
       throw new Error('Registered repositories card is not on screen');
     }
     return card;
+  }
+
+  private createBranchInput(): HTMLInputElement {
+    const input = [...this.sidebar().querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.includes('Branch'))
+      ?.querySelector('input');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error('No Branch field on the create control');
+    }
+    return input;
   }
 
   private createButton(): HTMLButtonElement {

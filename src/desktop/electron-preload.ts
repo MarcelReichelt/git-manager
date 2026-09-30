@@ -12,8 +12,11 @@ const listChannel = 'git-manager:list-registered-repositories';
 const addChannel = 'git-manager:add-registered-repository';
 const unregisterChannel = 'git-manager:unregister-registered-repository';
 const listBranchesChannel = 'git-manager:list-repository-branches';
+const createWorktreeChannel = 'git-manager:create-repository-worktree';
 // Sandboxed preloads can import electron only. This name matches REPOSITORY_BRANCH_SOURCE_HOST.
 const repositoryBranchSourceHost = 'gitManagerRepositoryBranches';
+// Sandboxed preloads can import electron only. This name matches REPOSITORY_WORKTREE_CREATE_HOST.
+const repositoryWorktreeCreateHost = 'gitManagerWorktreeCreate';
 
 contextBridge.exposeInMainWorld(registeredRepositoryRegistryHost, {
   list(): readonly RegisteredRepository[] {
@@ -30,6 +33,12 @@ contextBridge.exposeInMainWorld(registeredRepositoryRegistryHost, {
 contextBridge.exposeInMainWorld(repositoryBranchSourceHost, {
   list(repositoryPath: string): readonly Branch[] {
     return readBranches(ipcRenderer.sendSync(listBranchesChannel, repositoryPath));
+  },
+});
+
+contextBridge.exposeInMainWorld(repositoryWorktreeCreateHost, {
+  create(repositoryPath: string, branch: string): void {
+    throwIfFailed(ipcRenderer.sendSync(createWorktreeChannel, repositoryPath, branch));
   },
 });
 

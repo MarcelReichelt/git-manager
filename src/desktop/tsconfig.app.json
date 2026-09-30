@@ -15,7 +15,13 @@
     "types": [],
     "noEmit": true
   },
-  "files": ["bootstrap.ts", "workspace.ts", "sample-registered-repositories.ts"],
+  "files": [
+    "bootstrap.ts",
+    "workspace.ts",
+    "sample-registered-repositories.ts",
+    "repository-branches.ts",
+    "sample-branches.ts"
+  ],
   "angularCompilerOptions": {
     "strictTemplates": true,
     "strictInjectionParameters": true,

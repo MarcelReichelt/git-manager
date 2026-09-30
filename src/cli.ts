@@ -49,6 +49,7 @@ import {
   listRegisteredRepositories,
   unregisterRegisteredRepository,
 } from './core/registered-repositories.js';
+import { createRepositoryWorktree } from './core/create-repository-worktree.js';
 
 const program = new Command();
 
@@ -223,10 +224,28 @@ wt
     await openWorktree(label, opts.editor);
   });
 wt
-  .command('create <branch>')
-  .option('--new')
-  .action(async (branchName, opts) => {
+  .command('create [branch]')
+  .description('Create a worktree for a branch')
+  .option('--new', 'Create a new branch in the active repository')
+  .option('--path <path>', 'Path to the main repository')
+  .option('--branch <name>', 'Branch to check out in that repository')
+  .action(async (branchName: string | undefined, opts: { new?: boolean; path?: string; branch?: string }) => {
+    if (opts.path !== undefined || opts.branch !== undefined) {
+      try {
+        if (typeof opts.path !== 'string' || typeof opts.branch !== 'string') {
+          throw new Error('Both --path and --branch are required');
+        }
+        console.log(createRepositoryWorktree(opts.path, opts.branch));
+      } catch (err) {
+        handleError(err);
+      }
+      return;
+    }
     await ensureSetup();
+    if (!branchName) {
+      console.error('Branch is required');
+      process.exit(1);
+    }
     await createWorktreeCmd(branchName, { newBranch: opts.new });
   });
 wt

@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { REPOSITORY_BRANCH_SOURCE } from './repository-branch-source.js';
 import { type Branch, type ListedBranch } from './repository-branches.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY,
   type RegisteredRepository,
 } from './registered-repository-registry.js';
-import { REPOSITORY_BRANCHES } from './sample-branches.js';
 
 function isListedBranch(branch: Branch): branch is ListedBranch {
   return branch.detached === false;
@@ -29,6 +29,9 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
               <span class="status" [class]="statusClass(branch)"></span>
               <span class="branch-name">{{ branch.name }}</span>
               <span class="branch-counts">
+                @if (branch.hasWorktree) {
+                  <span class="checked-out">Checked out</span>
+                }
                 <span class="changed-file-count">{{ changedFileCount(branch) }} changed</span>
                 <span class="commits-ahead">{{ commitsAhead(branch) }} ahead</span>
                 <span class="commits-behind">{{ commitsBehind(branch) }} behind</span>
@@ -392,16 +395,10 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
 export class Workspace {
   private readonly registry = inject(REGISTERED_REPOSITORY_REGISTRY);
   protected readonly repositories = signal(this.registry.list());
-  private readonly repositoryBranches = inject(REPOSITORY_BRANCHES);
+  private readonly branchSource = inject(REPOSITORY_BRANCH_SOURCE);
   protected readonly selected = signal<RegisteredRepository | null>(null);
-  protected readonly branches = computed(() => {
-    const repository = this.selected();
-    if (!repository) {
-      return [];
-    }
-    const list = this.repositoryBranches.find((entry) => entry.repositoryPath === repository.path);
-    return (list?.branches ?? []).filter(isListedBranch);
-  });
+  private readonly branchList = signal<readonly Branch[]>([]);
+  protected readonly branches = computed(() => this.branchList().filter(isListedBranch));
   private readonly repositoryListOpen = signal(false);
   protected readonly pathDraft = signal('');
   protected readonly displayNameDraft = signal('');
@@ -461,6 +458,7 @@ export class Workspace {
     this.repositoryListOpen.set(false);
     this.selectedBranchName.set(null);
     this.clearBranchDetail();
+    this.branchList.set(this.branchSource.list(repository.path));
   }
 
   protected selectBranch(name: string): void {
@@ -518,6 +516,7 @@ export class Workspace {
       this.selected.set(null);
       this.selectedBranchName.set(null);
       this.clearBranchDetail();
+      this.branchList.set([]);
     }
     this.reload();
   }

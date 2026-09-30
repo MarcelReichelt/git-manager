@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
+import { readRepositoryBranches } from '../core/read-repository-branches.js';
 import {
   addRegisteredRepository,
   listRegisteredRepositories,
@@ -28,6 +29,10 @@ ipcMain.on('git-manager:unregister-registered-repository', (event, path: unknown
     }
     unregisterRegisteredRepository(path);
   });
+});
+
+ipcMain.on('git-manager:list-repository-branches', (event, path: unknown) => {
+  event.returnValue = typeof path === 'string' ? readRepositoryBranches(path) : [];
 });
 
 function openWorkspaceWindow(): void {

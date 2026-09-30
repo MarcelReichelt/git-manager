@@ -20,7 +20,7 @@
     "workspace.ts",
     "registered-repository-registry.ts",
     "repository-branches.ts",
-    "sample-branches.ts"
+    "repository-branch-source.ts"
   ],
   "angularCompilerOptions": {
     "strictTemplates": true,

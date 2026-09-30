@@ -3,8 +3,9 @@
  */
 import '@angular/compiler';
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { execSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
@@ -16,72 +17,21 @@ import {
   unregisterRegisteredRepository,
 } from '../src/core/registered-repositories.js';
 import { listRepositories, upsertRepository } from '../src/core/registry.js';
-import type { ListedBranch } from '../src/desktop/repository-branches.js';
+import { readRepositoryBranches } from '../src/core/read-repository-branches.js';
+import {
+  REPOSITORY_BRANCH_SOURCE_HOST,
+  type RepositoryBranchSource,
+} from '../src/desktop/repository-branch-source.js';
 import {
   REGISTERED_REPOSITORY_REGISTRY_HOST,
   type RegisteredRepositoryRegistry,
 } from '../src/desktop/registered-repository-registry.js';
-import { REPOSITORY_BRANCHES } from '../src/desktop/sample-branches.js';
 import { Workspace } from '../src/desktop/workspace.js';
-import { createTempDir, initRepo, setupTestEnv } from './helpers.js';
+import { configureTestIdentity, createTempDir, initRepo, initRepoWithRemote, setupTestEnv } from './helpers.js';
 
 TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 
 const sampleDisplayNames = ['Harbor', 'Northwind', 'Papertrail'];
-
-const notesTodayDiff = [
-  '--- a/notes/today.md',
-  '+++ b/notes/today.md',
-  '@@ -1,2 +1,5 @@',
-  ' # Today',
-  '-Tide chart',
-  '+Harbor tide chart',
-  '+Mooring notes',
-  '+Weather',
-  '+Crew',
-].join('\n');
-
-const notesTodoDiff = [
-  '--- a/notes/todo.md',
-  '+++ b/notes/todo.md',
-  '@@ -1 +1,3 @@',
-  ' # Todo',
-  '+Paint the hull',
-  '+Check the lines',
-].join('\n');
-
-const draftNotesTodayDiff = [
-  '--- a/notes/today.md',
-  '+++ b/notes/today.md',
-  '@@ -1,2 +1,4 @@',
-  ' # Today',
-  '-Tide chart',
-  '+Harbor tide chart',
-  '+Mooring notes',
-  '+Weather',
-].join('\n');
-
-const guideRenameDiff = [
-  'diff --git a/docs/old-guide.md b/docs/guide.md',
-  'rename from docs/old-guide.md',
-  'rename to docs/guide.md',
-  '--- a/docs/old-guide.md',
-  '+++ b/docs/guide.md',
-  '@@ -1,3 +1,4 @@',
-  ' # Guide',
-  ' Keep the berth notes.',
-  '-Old heading',
-  '+New heading',
-  '+One more line',
-].join('\n');
-
-const draftNotesTodoDiff = [
-  '--- a/notes/todo.md',
-  '+++ b/notes/todo.md',
-  '@@ -1 +1,2 @@',
-  ' # Todo',
-  '+Paint the hull',
-].join('\n');
 
 describe('desktop workspace', () => {
   let cleanup: () => void;
@@ -99,6 +49,7 @@ describe('desktop workspace', () => {
       layoutMode: 'workspaces',
     });
     installRegisteredRepositoryRegistry();
+    installRepositoryBranchSource();
     TestBed.resetTestingModule();
   });
 
@@ -154,242 +105,18 @@ describe('desktop workspace', () => {
     expect(screen.contentSheetIsFlushWithTheWindow()).toBe(true);
   });
 
-  it('lists every sample branch for the selected repository, including one with no worktree', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    const harbor = TestBed.inject(REPOSITORY_BRANCHES).find((entry) => entry.repositoryPath === '/samples/harbor');
-    const sketch = harbor?.branches.find((branch) => branch.name === 'sketch');
-    const detached = harbor?.branches.find((branch) => branch.detached);
-
-    expect(sketch?.detached).toBe(false);
-    if (!sketch || sketch.detached) {
-      throw new Error('Harbor sample is missing the sketch branch');
-    }
-    expect(sketch.hasWorktree).toBe(false);
-    if (!detached?.detached) {
-      throw new Error('Harbor sample is missing a detached HEAD');
-    }
-    expect(detached.subject).toBe('Detached experiment');
-    expect(screen.branchNames()).toEqual([
-      'notes',
-      'main',
-      'release',
-      'abandoned',
-      'sketch',
-      'rename-docs',
-      'assets',
-      'review',
-    ]);
-    expect(screen.text()).not.toContain('Detached experiment');
-    expect(screen.branchNames()).not.toContain('HEAD');
-
-    await screen.switchRepository();
-    await screen.choose('Northwind');
-
-    expect(screen.branchNames()).toEqual(['ledger']);
-  });
-
-  it('shows a status color and no text badge for each branch tracking state', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    expect(listedHarborBranch('notes').tracking).toBe('local-only');
-    expect(screen.statusColor('notes')).toBe('rgb(125, 211, 252)');
-    expect(listedHarborBranch('main').tracking).toBe('local-and-remote');
-    expect(screen.statusColor('main')).toBe('rgb(34, 197, 94)');
-    expect(listedHarborBranch('release').tracking).toBe('remote-only');
-    expect(screen.statusColor('release')).toBe('rgb(250, 204, 21)');
-    expect(listedHarborBranch('abandoned').tracking).toBe('remote-deleted');
-    expect(screen.statusColor('abandoned')).toBe('rgb(239, 68, 68)');
-
-    for (const name of ['notes', 'main', 'release', 'abandoned']) {
-      expect(screen.statusText(name)).toBe('');
-      expect(screen.branchRowText(name)).not.toMatch(/local only|remote only|remote deleted|tracking/i);
-    }
-  });
-
-  it('shows a changed-file count and commits ahead and behind on each branch', async () => {
-    rememberSampleRepositories();
+  it('shows no terminal count while no terminals are running', async () => {
+    addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
     for (const name of screen.branchNames()) {
-      expect(screen.branchRowText(name)).toMatch(/\d+ changed/);
-      expect(screen.branchRowText(name)).toMatch(/\d+ ahead/);
-      expect(screen.branchRowText(name)).toMatch(/\d+ behind/);
-    }
-
-    const rename = listedHarborBranch('rename-docs');
-    expect(rename.changes).toEqual([
-      {
-        kind: 'rename',
-        path: 'docs/guide.md',
-        previousPath: 'docs/old-guide.md',
-        linesAdded: 2,
-        linesDeleted: 1,
-        diff: guideRenameDiff,
-      },
-    ]);
-    expect(rename.commitsAhead).toHaveLength(3);
-    expect(rename.commitsBehind).toHaveLength(2);
-    expect(screen.changedFileCount('rename-docs')).toBe(1);
-    expect(screen.commitsAhead('rename-docs')).toBe(3);
-    expect(screen.commitsBehind('rename-docs')).toBe(2);
-
-    const assets = listedHarborBranch('assets');
-    expect(assets.changes).toEqual([{ kind: 'binary', path: 'assets/logo.png' }]);
-    expect(assets.commitsBehind).toHaveLength(5);
-    expect(screen.changedFileCount('assets')).toBe(1);
-    expect(screen.commitsAhead('assets')).toBe(0);
-    expect(screen.commitsBehind('assets')).toBe(5);
-
-    expect(listedHarborBranch('notes').changes).toHaveLength(2);
-    expect(listedHarborBranch('notes').commitsAhead).toHaveLength(1);
-    expect(screen.changedFileCount('notes')).toBe(2);
-    expect(screen.commitsAhead('notes')).toBe(1);
-    expect(screen.commitsBehind('notes')).toBe(0);
-
-    expect(screen.changedFileCount('main')).toBe(0);
-    expect(screen.commitsAhead('main')).toBe(0);
-    expect(screen.commitsBehind('main')).toBe(0);
-  });
-
-  it('shows lines added and lines deleted for each changed file when a branch is selected', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    await screen.selectBranch('notes');
-
-    expect(screen.changedFiles()).toEqual([
-      { path: 'notes/today.md', linesAdded: 4, linesDeleted: 1 },
-      { path: 'notes/todo.md', linesAdded: 2, linesDeleted: 0 },
-    ]);
-  });
-
-  it('shows the commits that exist only on the selected branch', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    await screen.selectBranch('abandoned');
-
-    expect(screen.commitsOnlyOnTheBranch()).toEqual([
-      'Start the experiment',
-      'Adjust the experiment',
-      'Keep the experiment',
-      'Leave the experiment',
-    ]);
-    expect(screen.branchContentText()).not.toContain('Upstream moved on');
-
-    await screen.selectBranch('assets');
-
-    expect(screen.commitsOnlyOnTheBranch()).toEqual([]);
-    expect(screen.branchContentText()).not.toContain('Add the first asset');
-  });
-
-  it('opens the diff for a selected changed file', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-    await screen.selectBranch('notes');
-
-    await screen.selectChangedFile('notes/today.md');
-
-    expect(screen.fileDiff()).toBe(notesTodayDiff);
-
-    await screen.selectChangedFile('notes/todo.md');
-
-    expect(screen.fileDiff()).toBe(notesTodoDiff);
-  });
-
-  it('opens a changed file diff and a commit file list with the diff beside it', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-    await screen.selectBranch('notes');
-
-    await screen.selectChangedFile('notes/today.md');
-    expect(screen.fileDiff()).toBe(notesTodayDiff);
-
-    await screen.selectCommit('Draft notes');
-    expect(screen.commitFiles()).toEqual([
-      { path: 'notes/today.md', linesAdded: 3, linesDeleted: 1 },
-      { path: 'notes/todo.md', linesAdded: 1, linesDeleted: 0 },
-    ]);
-
-    await screen.selectCommitFile('notes/today.md');
-    expect(screen.commitFileDiff()).toBe(draftNotesTodayDiff);
-    expect(screen.commitDiffIsBesideTheFileList()).toBe(true);
-
-    await screen.selectCommitFile('notes/todo.md');
-    expect(screen.commitFileDiff()).toBe(draftNotesTodoDiff);
-    expect(screen.commitDiffIsBesideTheFileList()).toBe(true);
-  });
-
-  it('shows a rename as the lines added and deleted after rename detection', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    await screen.selectBranch('rename-docs');
-
-    expect(screen.changedFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 2, linesDeleted: 1 }]);
-
-    await screen.selectChangedFile('docs/guide.md');
-
-    expect(screen.fileDiff()).toBe(guideRenameDiff);
-
-    await screen.selectCommit('Rename the guide');
-
-    expect(screen.commitFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 0, linesDeleted: 0 }]);
-  });
-
-  it('lists a binary file without added or deleted line counts', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    await screen.selectBranch('assets');
-
-    expect(screen.changedFiles()).toEqual([{ path: 'assets/logo.png' }]);
-    expect(screen.changedFileText('assets/logo.png')).toBe('assets/logo.png');
-
-    await screen.selectChangedFile('assets/logo.png');
-
-    expect(screen.fileDiffIsOpen()).toBe(false);
-
-    await screen.selectBranch('review');
-    await screen.selectCommit('Open the review');
-
-    expect(screen.commitFiles()).toEqual([
-      { path: 'src/review.ts', linesAdded: 7, linesDeleted: 1 },
-      { path: 'assets/badge.bin' },
-    ]);
-  });
-
-  it('shows a terminal count only while terminals for that branch are running', async () => {
-    rememberSampleRepositories();
-    const screen = await openWorkspace();
-    await screen.choose('Harbor');
-
-    expect(listedHarborBranch('review').runningTerminals).toBe(2);
-    expect(screen.terminalCount('review')).toBe(2);
-
-    for (const name of screen.branchNames()) {
-      if (name === 'review') {
-        continue;
-      }
-      expect(listedHarborBranch(name).runningTerminals).toBe(0);
       expect(screen.branchRowText(name)).not.toMatch(/terminal/i);
     }
   });
 
   it('puts Create at the bottom of the branch list, and Merge and Remove on the branch hover menu', async () => {
-    rememberSampleRepositories();
+    addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -406,13 +133,13 @@ describe('desktop workspace', () => {
 
     expect(screen.branchMenuActions('notes')).toEqual([]);
 
-    await screen.hoverBranch('review');
-    await screen.clickBranchAction('review', 'Merge');
-    await screen.clickBranchAction('review', 'Remove');
+    await screen.hoverBranch('notes');
+    await screen.clickBranchAction('notes', 'Merge');
+    await screen.clickBranchAction('notes', 'Remove');
     await screen.clickCreate();
 
     expect(screen.workspaceTitle()).toBe('Harbor');
-    expect(screen.branchNames()).toContain('review');
+    expect(screen.branchNames()).toContain('notes');
     expect(screen.repositoryCardIsOpen()).toBe(false);
     expect(screen.branchContentIsOpen()).toBe(false);
   });
@@ -467,6 +194,163 @@ describe('desktop workspace', () => {
     await screen.unregister('Harbor Checkout');
     expect(screen.repositoryNames()).toEqual([]);
     expect(registryColumnNames(registryPath)).toEqual(['path', 'display_name']);
+  });
+
+  it('lists every local and remote branch of the selected repository', async () => {
+    const baseDir = join(configDir, '..');
+    const harbor = createHarborCheckout(baseDir);
+    const northwind = join(baseDir, 'northwind');
+    initRepo(northwind, { initialBranch: 'ledger' });
+    addRegisteredRepository(harbor, 'Harbor');
+    addRegisteredRepository(northwind, 'Northwind');
+
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.branchNames()).toEqual([
+      'abandoned',
+      'assets',
+      'diverged',
+      'master',
+      'notes',
+      'release',
+      'rename-docs',
+      'sketch',
+    ]);
+    expect(screen.branchNames()).not.toContain('HEAD');
+    expect(screen.text()).not.toContain('Detached experiment');
+
+    await screen.switchRepository();
+    await screen.choose('Northwind');
+
+    expect(screen.branchNames()).toEqual(['ledger']);
+  });
+
+  it('shows git tracking colors and commit counts for ahead and behind', async () => {
+    addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.statusColor('notes')).toBe('rgb(125, 211, 252)');
+    expect(screen.statusColor('master')).toBe('rgb(34, 197, 94)');
+    expect(screen.statusColor('diverged')).toBe('rgb(34, 197, 94)');
+    expect(screen.statusColor('release')).toBe('rgb(250, 204, 21)');
+    expect(screen.statusColor('abandoned')).toBe('rgb(239, 68, 68)');
+
+    for (const name of screen.branchNames()) {
+      expect(screen.branchRowText(name)).toMatch(/\d+ changed/);
+      expect(screen.branchRowText(name)).toMatch(/\d+ ahead/);
+      expect(screen.branchRowText(name)).toMatch(/\d+ behind/);
+    }
+
+    for (const name of ['notes', 'master', 'release', 'abandoned']) {
+      expect(screen.statusText(name)).toBe('');
+      expect(screen.branchRowText(name)).not.toMatch(/local only|remote only|remote deleted|tracking/i);
+    }
+
+    expect(screen.commitsAhead('notes')).toBe(1);
+    expect(screen.commitsBehind('notes')).toBe(0);
+    expect(screen.commitsAhead('master')).toBe(0);
+    expect(screen.commitsBehind('master')).toBe(0);
+    expect(screen.changedFileCount('master')).toBe(0);
+    expect(screen.commitsAhead('diverged')).toBe(2);
+    expect(screen.commitsBehind('diverged')).toBe(1);
+    expect(screen.changedFileCount('diverged')).toBe(1);
+    expect(screen.commitsAhead('release')).toBe(2);
+    expect(screen.commitsBehind('release')).toBe(0);
+    expect(screen.commitsAhead('abandoned')).toBe(2);
+    expect(screen.commitsBehind('abandoned')).toBe(1);
+    expect(screen.commitsAhead('sketch')).toBe(2);
+    expect(screen.commitsBehind('sketch')).toBe(0);
+    expect(screen.changedFileCount('sketch')).toBe(0);
+  });
+
+  it('counts a rename as one changed file and a binary file as one changed file', async () => {
+    addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.changedFileCount('rename-docs')).toBe(1);
+    expect(screen.commitsAhead('rename-docs')).toBe(1);
+    expect(screen.commitsBehind('rename-docs')).toBe(0);
+    expect(screen.changedFileCount('assets')).toBe(1);
+    expect(screen.commitsAhead('assets')).toBe(0);
+    expect(screen.commitsBehind('assets')).toBe(0);
+
+    await screen.selectBranch('rename-docs');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'docs/guide.md', linesAdded: 2, linesDeleted: 1 }]);
+
+    await screen.selectChangedFile('docs/guide.md');
+
+    expect(screen.fileDiff()).toContain('rename from docs/old-guide.md');
+    expect(screen.fileDiff()).toContain('rename to docs/guide.md');
+    expect(screen.fileDiff()).toContain('-Old heading');
+    expect(screen.fileDiff()).toContain('+New heading');
+    expect(screen.fileDiff()).toContain('+One more line');
+
+    await screen.selectBranch('assets');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'assets/logo.png' }]);
+    expect(screen.changedFileText('assets/logo.png')).toBe('assets/logo.png');
+
+    await screen.selectChangedFile('assets/logo.png');
+
+    expect(screen.fileDiffIsOpen()).toBe(false);
+  });
+
+  it('shows changed-file line counts and the commits only on the selected branch', async () => {
+    addRegisteredRepository(createHarborCheckout(join(configDir, '..')), 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    await screen.selectBranch('diverged');
+
+    expect(screen.changedFiles()).toEqual([{ path: 'diverged.txt', linesAdded: 1, linesDeleted: 0 }]);
+
+    await screen.selectChangedFile('diverged.txt');
+
+    expect(screen.fileDiff()).toContain('+dirty');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual(['Local ahead one', 'Local ahead two']);
+    expect(screen.branchContentText()).not.toContain('Remote behind one');
+
+    await screen.selectBranch('abandoned');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual(['Start the experiment', 'Continue the experiment']);
+    expect(screen.branchContentText()).not.toContain('Master moved');
+
+    await screen.selectBranch('assets');
+
+    expect(screen.commitsOnlyOnTheBranch()).toEqual([]);
+  });
+
+  it('shows a worktree added or removed outside the app without editing the registry', async () => {
+    const baseDir = join(configDir, '..');
+    const harbor = createHarborCheckout(baseDir);
+    const registryPath = join(configDir, 'registered-only.db');
+    closeRegisteredRepositoryRegistry();
+    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    addRegisteredRepository(harbor, 'Harbor');
+    const screen = await openWorkspace();
+    await screen.choose('Harbor');
+
+    expect(screen.isCheckedOut('master')).toBe(true);
+    expect(screen.isCheckedOut('release')).toBe(false);
+    expect(screen.isCheckedOut('sketch')).toBe(false);
+
+    const sketch = join(baseDir, 'worktrees', 'sketch');
+    git(harbor, `worktree add "${sketch}" sketch`);
+    await screen.reopen('Harbor');
+
+    expect(screen.isCheckedOut('sketch')).toBe(true);
+    expect(registeredRepositoryRows(registryPath)).toEqual([{ path: harbor, display_name: 'Harbor' }]);
+
+    git(harbor, `worktree remove "${sketch}"`);
+    await screen.reopen('Harbor');
+
+    expect(screen.isCheckedOut('sketch')).toBe(false);
+    expect(registeredRepositoryRows(registryPath)).toEqual([{ path: harbor, display_name: 'Harbor' }]);
   });
 });
 
@@ -552,10 +436,117 @@ function isStoredRepository(value: unknown): value is { path: string; display_na
   );
 }
 
+function createHarborCheckout(baseDir: string): string {
+  const origin = join(baseDir, 'origin.git');
+  const repoPath = join(baseDir, 'harbor');
+  const worktrees = join(baseDir, 'worktrees');
+  mkdirSync(worktrees);
+  initRepoWithRemote(repoPath, origin, { initialBranch: 'master' });
+
+  git(repoPath, 'checkout -b abandoned');
+  commitFile(repoPath, 'abandoned.txt', 'start\n', 'Start the experiment');
+  git(repoPath, 'push -u origin abandoned');
+  git(repoPath, 'checkout master');
+  commitFile(repoPath, 'master-only.txt', 'moved\n', 'Master moved');
+  git(repoPath, 'push origin master');
+  git(repoPath, 'checkout abandoned');
+  commitFile(repoPath, 'abandoned.txt', 'start\nmore\n', 'Continue the experiment');
+  git(repoPath, 'checkout master');
+  git(repoPath, 'push origin --delete abandoned');
+  git(repoPath, 'fetch --prune origin');
+
+  git(repoPath, 'checkout -b release');
+  commitFile(repoPath, 'release.txt', 'cut\n', 'Cut the release');
+  commitFile(repoPath, 'release.txt', 'cut\nbump\n', 'Bump the version');
+  git(repoPath, 'push -u origin release');
+  git(repoPath, 'checkout master');
+  git(repoPath, 'branch -D release');
+
+  git(repoPath, 'checkout -b diverged');
+  git(repoPath, 'push -u origin diverged');
+  commitFile(repoPath, 'diverged.txt', 'one\n', 'Local ahead one');
+  commitFile(repoPath, 'diverged.txt', 'one\ntwo\n', 'Local ahead two');
+  commitOnOrigin(origin, baseDir, 'diverged', 'remote-on-diverged.txt', 'remote change\n', 'Remote behind one');
+  git(repoPath, 'fetch origin');
+  git(repoPath, 'checkout master');
+  git(repoPath, `worktree add "${join(worktrees, 'diverged')}" diverged`);
+  writeFileSync(join(worktrees, 'diverged', 'diverged.txt'), 'one\ntwo\ndirty\n');
+
+  git(repoPath, 'checkout -b notes');
+  commitFile(repoPath, 'notes.txt', 'notes\n', 'Draft notes');
+  git(repoPath, 'checkout master');
+
+  git(repoPath, 'checkout -b rename-docs');
+  commitFile(repoPath, 'docs/old-guide.md', '# Guide\nKeep the berth notes.\nOld heading\n', 'Add the guide');
+  git(repoPath, 'checkout master');
+  const renameDocs = join(worktrees, 'rename-docs');
+  git(repoPath, `worktree add "${renameDocs}" rename-docs`);
+  git(renameDocs, 'mv docs/old-guide.md docs/guide.md');
+  writeFileSync(join(renameDocs, 'docs', 'guide.md'), '# Guide\nKeep the berth notes.\nNew heading\nOne more line\n');
+
+  const assets = join(worktrees, 'assets');
+  git(repoPath, `worktree add -b assets "${assets}" master`);
+  mkdirSync(join(assets, 'assets'));
+  writeFileSync(join(assets, 'assets', 'logo.png'), Buffer.from([0x50, 0x4e, 0x47, 0x00, 0x01]));
+
+  git(repoPath, 'checkout -b sketch');
+  commitFile(repoPath, 'sketch.txt', 'sketch\n', 'Sketch the idea');
+  commitFile(repoPath, 'sketch.txt', 'sketch\nmore\n', 'Sketch the follow-up');
+  git(repoPath, 'checkout master');
+
+  git(repoPath, 'checkout -b discard-me');
+  commitFile(repoPath, 'detached.txt', 'detached\n', 'Detached experiment');
+  const detachedCommit = gitOutput(repoPath, 'rev-parse HEAD');
+  git(repoPath, 'checkout master');
+  git(repoPath, 'branch -D discard-me');
+  git(repoPath, `worktree add --detach "${join(worktrees, 'detached')}" ${detachedCommit}`);
+
+  return repoPath;
+}
+
+function commitOnOrigin(
+  origin: string,
+  baseDir: string,
+  branch: string,
+  file: string,
+  contents: string,
+  subject: string,
+): void {
+  const clone = join(baseDir, `origin-clone-${branch}`);
+  execSync(`git clone "${origin}" "${clone}"`, { stdio: 'ignore' });
+  configureTestIdentity(clone);
+  git(clone, `checkout ${branch}`);
+  commitFile(clone, file, contents, subject);
+  git(clone, `push origin ${branch}`);
+}
+
+function commitFile(repoPath: string, file: string, contents: string, subject: string): void {
+  const absolute = join(repoPath, file);
+  mkdirSync(dirname(absolute), { recursive: true });
+  writeFileSync(absolute, contents);
+  git(repoPath, `add -- "${file}"`);
+  git(repoPath, `commit -m "${subject}"`);
+}
+
+function git(repoPath: string, args: string): void {
+  execSync(`git ${args}`, { cwd: repoPath, stdio: 'ignore' });
+}
+
+function gitOutput(repoPath: string, args: string): string {
+  return execSync(`git ${args}`, { cwd: repoPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+}
+
 function rememberSampleRepositories(): void {
   rememberRegisteredRepository('/samples/harbor', 'Harbor');
   rememberRegisteredRepository('/samples/northwind', 'Northwind');
   rememberRegisteredRepository('/samples/papertrail', 'Papertrail');
+}
+
+function installRepositoryBranchSource(): void {
+  const source: RepositoryBranchSource = {
+    list: (path) => readRepositoryBranches(path),
+  };
+  Object.assign(globalThis, { [REPOSITORY_BRANCH_SOURCE_HOST]: source });
 }
 
 function installRegisteredRepositoryRegistry(): void {
@@ -569,15 +560,6 @@ function installRegisteredRepositoryRegistry(): void {
     },
   };
   Object.assign(globalThis, { [REGISTERED_REPOSITORY_REGISTRY_HOST]: registry });
-}
-
-function listedHarborBranch(name: string): ListedBranch {
-  const harbor = TestBed.inject(REPOSITORY_BRANCHES).find((entry) => entry.repositoryPath === '/samples/harbor');
-  const branch = harbor?.branches.find((candidate) => candidate.name === name);
-  if (!branch || branch.detached) {
-    throw new Error(`Harbor sample is missing ${name}`);
-  }
-  return branch;
 }
 
 async function openWorkspace(): Promise<WorkspaceScreen> {
@@ -637,6 +619,15 @@ class WorkspaceScreen {
     button.click();
     this.fixture.detectChanges();
     await this.fixture.whenStable();
+  }
+
+  async reopen(displayName: string): Promise<void> {
+    await this.switchRepository();
+    await this.choose(displayName);
+  }
+
+  isCheckedOut(name: string): boolean {
+    return this.branchRow(name).querySelector('.checked-out') instanceof HTMLElement;
   }
 
   async switchRepository(): Promise<void> {
@@ -716,10 +707,6 @@ class WorkspaceScreen {
 
   commitsBehind(name: string): number {
     return this.countInRow(name, 'commits-behind');
-  }
-
-  terminalCount(name: string): number {
-    return this.countInRow(name, 'running-terminals');
   }
 
   sidebarText(): string {
@@ -818,65 +805,6 @@ class WorkspaceScreen {
 
   changedFileText(path: string): string {
     return this.changedFileRow(path).textContent?.trim() ?? '';
-  }
-
-  async selectCommit(subject: string): Promise<void> {
-    const commit = [...this.branchContent().querySelectorAll('.branch-commit')].find(
-      (candidate) => candidate.textContent?.trim() === subject,
-    );
-    const button = commit?.querySelector('button');
-    if (!(button instanceof HTMLButtonElement)) {
-      throw new Error(`No commit ${subject}`);
-    }
-    button.click();
-    this.fixture.detectChanges();
-    await this.fixture.whenStable();
-  }
-
-  commitFiles(): readonly { path: string; linesAdded?: number; linesDeleted?: number }[] {
-    const list = this.branchContent().querySelector('[aria-label="Commit files"]');
-    if (!(list instanceof HTMLElement)) {
-      throw new Error('Commit files are not on screen');
-    }
-    return [...list.querySelectorAll('.commit-file')].map((row) => fileLineCounts(row, '.commit-file-path'));
-  }
-
-  async selectCommitFile(path: string): Promise<void> {
-    const row = [...this.commitFileList().querySelectorAll('.commit-file')].find(
-      (candidate) => candidate.querySelector('.commit-file-path')?.textContent?.trim() === path,
-    );
-    const button = row?.querySelector('button');
-    if (!(button instanceof HTMLButtonElement)) {
-      throw new Error(`No commit file ${path}`);
-    }
-    button.click();
-    this.fixture.detectChanges();
-    await this.fixture.whenStable();
-  }
-
-  commitFileDiff(): string {
-    const diff = this.branchContent().querySelector('[aria-label="Commit diff"]');
-    if (!(diff instanceof HTMLElement)) {
-      throw new Error('Commit diff is not on screen');
-    }
-    return diff.textContent ?? '';
-  }
-
-  commitDiffIsBesideTheFileList(): boolean {
-    const list = this.commitFileList();
-    const diff = this.branchContent().querySelector('[aria-label="Commit diff"]');
-    const view = list.parentElement;
-    if (!(diff instanceof HTMLElement) || !(view instanceof HTMLElement) || diff.parentElement !== view) {
-      return false;
-    }
-    const viewStyle = getComputedStyle(view);
-    const columns = viewStyle.gridTemplateColumns.split(' ').filter((column) => column.length > 0);
-    return (
-      viewStyle.display === 'grid' &&
-      columns.length === 2 &&
-      getComputedStyle(list).gridColumnStart === '1' &&
-      getComputedStyle(diff).gridColumnStart === '2'
-    );
   }
 
   changedFiles(): readonly { path: string; linesAdded?: number; linesDeleted?: number }[] {
@@ -983,14 +911,6 @@ class WorkspaceScreen {
   private fileDiffElement(): HTMLElement | null {
     const diff = this.branchContent().querySelector('[aria-label="Diff"]');
     return diff instanceof HTMLElement ? diff : null;
-  }
-
-  private commitFileList(): HTMLElement {
-    const list = this.branchContent().querySelector('[aria-label="Commit files"]');
-    if (!(list instanceof HTMLElement)) {
-      throw new Error('Commit files are not on screen');
-    }
-    return list;
   }
 
   private changedFileRow(path: string): HTMLElement {

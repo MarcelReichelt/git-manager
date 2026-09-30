@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createTempDir, initRepo, setupTestEnv } from './helpers.js';
@@ -76,6 +76,27 @@ describe('git-manager worktree create', () => {
         cwd: join(repoPath, '.workspaces', 'quote-name'),
         encoding: 'utf8',
       }).trim()).toBe('quote"name');
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it('stops when the sanitized worktree folder already exists', () => {
+    const env = setupTestEnv(createTempDir());
+    const repoPath = join(env.configDir, '..', 'harbor');
+    initRepo(repoPath, { initialBranch: 'main' });
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\n');
+    execSync('git checkout -b feature/foo', { cwd: repoPath, stdio: 'ignore' });
+    execSync('git checkout main', { cwd: repoPath, stdio: 'ignore' });
+    mkdirSync(join(repoPath, '.workspaces', 'feature-foo'), { recursive: true });
+
+    try {
+      const created = runCli(['worktree', 'create', '--path', repoPath, '--branch', 'feature/foo'], repoPath);
+      expect(created.status).not.toBe(0);
+      expect(created.stderr).toContain('already exists');
+      const listed = execSync('git worktree list --porcelain', { cwd: repoPath, encoding: 'utf8' });
+      expect(listed).not.toContain('feature-foo');
+      expect(existsSync(join(repoPath, '.workspaces', 'feature-foo', '.git'))).toBe(false);
     } finally {
       env.cleanup();
     }

@@ -13,6 +13,9 @@ export function createRepositoryWorktree(repositoryPath: string, branch: string)
   const root = resolve(repositoryPath);
   const layout = readLayout(root);
   const destination = worktreeDestination(root, layout, branch);
+  if (existsSync(destination)) {
+    throw new Error(`Worktree folder already exists: ${destination}`);
+  }
   mkdirSync(dirname(destination), { recursive: true });
   execFileSync('git', ['worktree', 'add', destination, branch], {
     cwd: root,

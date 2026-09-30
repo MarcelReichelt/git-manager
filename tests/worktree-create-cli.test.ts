@@ -51,6 +51,35 @@ describe('git-manager worktree create', () => {
       env.cleanup();
     }
   });
+
+  it('sanitizes path separators and other illegal directory characters without renaming the git branch', () => {
+    const env = setupTestEnv(createTempDir());
+    const repoPath = join(env.configDir, '..', 'harbor');
+    initRepo(repoPath, { initialBranch: 'main' });
+    writeFileSync(join(repoPath, '.git-manager.toml'), 'layout = "workspaces"\n');
+    execSync('git checkout -b feature/foo', { cwd: repoPath, stdio: 'ignore' });
+    execSync('git checkout -b \'quote"name\'', { cwd: repoPath, stdio: 'ignore' });
+    execSync('git checkout main', { cwd: repoPath, stdio: 'ignore' });
+
+    try {
+      const slash = runCli(['worktree', 'create', '--path', repoPath, '--branch', 'feature/foo'], repoPath);
+      expect(slash.status).toBe(0);
+      expect(execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: join(repoPath, '.workspaces', 'feature-foo'),
+        encoding: 'utf8',
+      }).trim()).toBe('feature/foo');
+      expect(existsSync(join(repoPath, '.workspaces', 'feature', 'foo'))).toBe(false);
+
+      const quote = runCli(['worktree', 'create', '--path', repoPath, '--branch', 'quote"name'], repoPath);
+      expect(quote.status).toBe(0);
+      expect(execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: join(repoPath, '.workspaces', 'quote-name'),
+        encoding: 'utf8',
+      }).trim()).toBe('quote"name');
+    } finally {
+      env.cleanup();
+    }
+  });
 });
 
 function runCli(

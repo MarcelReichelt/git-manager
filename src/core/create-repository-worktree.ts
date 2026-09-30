@@ -22,10 +22,15 @@ export function createRepositoryWorktree(repositoryPath: string, branch: string)
 }
 
 function worktreeDestination(repositoryPath: string, layout: 'workspaces' | 'sibling', branch: string): string {
+  const directoryName = worktreeDirectoryName(branch);
   if (layout === 'workspaces') {
-    return join(repositoryPath, '.workspaces', branch);
+    return join(repositoryPath, '.workspaces', directoryName);
   }
-  return join(dirname(repositoryPath), branch);
+  return join(dirname(repositoryPath), directoryName);
+}
+
+function worktreeDirectoryName(branch: string): string {
+  return branch.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-');
 }
 
 function readLayout(repositoryPath: string): 'workspaces' | 'sibling' {

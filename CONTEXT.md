@@ -16,6 +16,10 @@ _Avoid_: project
 A checkout of a single branch, in either the sibling layout or the workspaces layout.
 _Avoid_: workspace
 
+**Terminal**:
+The shell shown in a branch's content. On Windows it is a single shell, with no sessions.
+_Avoid_: multiplexer
+
 **Sibling**:
 The worktree layout where the branch checkout is a folder next to the main repo folder, named from the branch.
 _Avoid_: side-by-side

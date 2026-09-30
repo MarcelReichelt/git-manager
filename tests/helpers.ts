@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
+import { closeRegisteredRepositoryRegistry } from '../src/core/registered-repositories.js';
 import { closeDb } from '../src/core/registry.js';
 
 export function createTempDir(prefix = 'git-manager-test-'): string {
@@ -88,6 +89,7 @@ export function setupTestEnv(baseDir: string): {
     registryPath,
     cleanup: () => {
       closeDb();
+      closeRegisteredRepositoryRegistry();
       delete process.env.GIT_MANAGER_CONFIG_DIR;
       delete process.env.GIT_MANAGER_REGISTRY_PATH;
       rmSync(baseDir, { recursive: true, force: true });

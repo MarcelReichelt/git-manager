@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsup",
     "build:desktop": "ng build desktop && tsc -p src/desktop/tsconfig.electron.json",
-    "desktop": "yarn build:desktop && electron out/electron-main.js",
+    "desktop": "yarn build:desktop && electron out/desktop/electron-main.js",
     "pack:check": "node scripts/check-pack.mjs",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",

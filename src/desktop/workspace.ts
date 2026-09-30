@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { type Branch, type ListedBranch } from './repository-branches.js';
-import { REPOSITORY_BRANCHES } from './sample-branches.js';
 import {
-  SAMPLE_REGISTERED_REPOSITORIES,
-  type SampleRegisteredRepository,
-} from './sample-registered-repositories.js';
+  REGISTERED_REPOSITORY_REGISTRY,
+  type RegisteredRepository,
+} from './registered-repository-registry.js';
+import { REPOSITORY_BRANCHES } from './sample-branches.js';
 
 function isListedBranch(branch: Branch): branch is ListedBranch {
   return branch.detached === false;
@@ -58,12 +58,27 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
         <section class="repository-card" aria-label="Registered repositories">
           <h2>Registered repositories</h2>
           <ul>
-            @for (repository of repositories; track repository.path) {
-              <li>
+            @for (repository of repositories(); track repository.path) {
+              <li [attr.data-registered-repository]="repository.displayName">
                 <button type="button" (click)="choose(repository)">{{ repository.displayName }}</button>
+                <button type="button" (click)="unregister(repository)">Unregister</button>
               </li>
             }
           </ul>
+          <form (submit)="addRepository($event)">
+            <label>
+              Repository path
+              <input [value]="pathDraft()" (input)="setPathDraft($event)" />
+            </label>
+            <label>
+              Display name
+              <input [value]="displayNameDraft()" (input)="setDisplayNameDraft($event)" />
+            </label>
+            <button type="submit">Add</button>
+          </form>
+          @if (addError(); as message) {
+            <p role="alert">{{ message }}</p>
+          }
         </section>
       </div>
     }
@@ -246,12 +261,46 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       padding: 8px 4px;
       cursor: pointer;
     }
+
+    .repository-card form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .repository-card label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+    }
+
+    .repository-card input {
+      font: inherit;
+      padding: 6px 8px;
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+    }
+
+    .repository-card form button {
+      text-align: center;
+      border: 1px solid #78716c;
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    .repository-card [role='alert'] {
+      margin: 8px 0 0;
+      color: #b91c1c;
+    }
   `,
 })
 export class Workspace {
-  protected readonly repositories = inject(SAMPLE_REGISTERED_REPOSITORIES);
+  private readonly registry = inject(REGISTERED_REPOSITORY_REGISTRY);
+  protected readonly repositories = signal(this.registry.list());
   private readonly repositoryBranches = inject(REPOSITORY_BRANCHES);
-  protected readonly selected = signal<SampleRegisteredRepository | null>(null);
+  protected readonly selected = signal<RegisteredRepository | null>(null);
   protected readonly branches = computed(() => {
     const repository = this.selected();
     if (!repository) {
@@ -261,6 +310,9 @@ export class Workspace {
     return (list?.branches ?? []).filter(isListedBranch);
   });
   private readonly repositoryListOpen = signal(false);
+  protected readonly pathDraft = signal('');
+  protected readonly displayNameDraft = signal('');
+  protected readonly addError = signal<string | null>(null);
   protected readonly hoveredBranch = signal<string | null>(null);
   protected readonly showRepositoryCard = computed(
     () => this.selected() === null || this.repositoryListOpen(),
@@ -291,13 +343,42 @@ export class Workspace {
     }
   }
 
-  protected choose(repository: SampleRegisteredRepository): void {
+  protected choose(repository: RegisteredRepository): void {
     this.selected.set(repository);
     this.repositoryListOpen.set(false);
   }
 
   protected openRepositoryList(): void {
     this.repositoryListOpen.set(true);
+  }
+
+  protected setPathDraft(event: Event): void {
+    this.pathDraft.set(inputValue(event));
+  }
+
+  protected setDisplayNameDraft(event: Event): void {
+    this.displayNameDraft.set(inputValue(event));
+  }
+
+  protected addRepository(event: Event): void {
+    event.preventDefault();
+    try {
+      this.registry.add(this.pathDraft(), this.displayNameDraft());
+      this.pathDraft.set('');
+      this.displayNameDraft.set('');
+      this.addError.set(null);
+      this.reload();
+    } catch (error) {
+      this.addError.set(error instanceof Error ? error.message : 'Could not add repository');
+    }
+  }
+
+  protected unregister(repository: RegisteredRepository): void {
+    this.registry.unregister(repository.path);
+    if (this.selected()?.path === repository.path) {
+      this.selected.set(null);
+    }
+    this.reload();
   }
 
   protected hoverBranch(name: string): void {
@@ -307,4 +388,17 @@ export class Workspace {
   protected leaveBranch(): void {
     this.hoveredBranch.set(null);
   }
+
+  private reload(): void {
+    this.repositories.set(this.registry.list());
+  }
+}
+
+function inputValue(event: Event): string {
+  const target: unknown = event.target;
+  if (typeof target !== 'object' || target === null || !('value' in target)) {
+    return '';
+  }
+  const value = target.value;
+  return typeof value === 'string' ? value : '';
 }

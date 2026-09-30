@@ -18,7 +18,8 @@
   "files": [
     "bootstrap.ts",
     "workspace.ts",
-    "sample-registered-repositories.ts",
+    "registered-repository-host.ts",
+    "registered-repository-registry.ts",
     "repository-branches.ts",
     "sample-branches.ts"
   ],

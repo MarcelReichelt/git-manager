@@ -44,6 +44,11 @@ import { showEffectiveConfig, initRepoConfig } from './commands/config.js';
 import { showDocs } from './commands/docs.js';
 import { launchTui } from './commands/ui.js';
 import { HookAbortError } from './hooks/types.js';
+import {
+  addRegisteredRepository,
+  listRegisteredRepositories,
+  unregisterRegisteredRepository,
+} from './core/registered-repositories.js';
 
 const program = new Command();
 
@@ -69,6 +74,40 @@ program
   .action(async () => {
     try {
       await runDefaultCommand();
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+program
+  .command('add')
+  .description('Register an existing local git repository')
+  .requiredOption('--path <path>', 'Path to the existing local git repository')
+  .requiredOption('--display-name <name>', 'Display name to show for this repository')
+  .action((opts: { path: string; displayName: string }) => {
+    try {
+      addRegisteredRepository(opts.path, opts.displayName);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+program
+  .command('list')
+  .description('List registered repositories by display name and path')
+  .action(() => {
+    for (const repository of listRegisteredRepositories()) {
+      console.log(`${repository.displayName}\t${repository.path}`);
+    }
+  });
+
+program
+  .command('unregister')
+  .description('Remove a registered repository from the registry')
+  .requiredOption('--path <path>', 'Path of the registered repository to remove')
+  .action((opts: { path: string }) => {
+    try {
+      unregisterRegisteredRepository(opts.path);
     } catch (err) {
       handleError(err);
     }

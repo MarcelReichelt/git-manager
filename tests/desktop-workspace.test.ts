@@ -2,14 +2,28 @@
  * @vitest-environment jsdom
  */
 import '@angular/compiler';
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
-import { upsertRepository } from '../src/core/registry.js';
+import {
+  addRegisteredRepository,
+  closeRegisteredRepositoryRegistry,
+  listRegisteredRepositories,
+  rememberRegisteredRepository,
+  unregisterRegisteredRepository,
+} from '../src/core/registered-repositories.js';
+import { listRepositories, upsertRepository } from '../src/core/registry.js';
 import type { ListedBranch } from '../src/desktop/repository-branches.js';
+import {
+  REGISTERED_REPOSITORY_REGISTRY_HOST,
+  type RegisteredRepositoryRegistry,
+} from '../src/desktop/registered-repository-registry.js';
 import { REPOSITORY_BRANCHES } from '../src/desktop/sample-branches.js';
 import { Workspace } from '../src/desktop/workspace.js';
-import { createTempDir, setupTestEnv } from './helpers.js';
+import { createTempDir, initRepo, setupTestEnv } from './helpers.js';
 
 TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 
@@ -17,10 +31,12 @@ const sampleDisplayNames = ['Harbor', 'Northwind', 'Papertrail'];
 
 describe('desktop workspace', () => {
   let cleanup: () => void;
+  let configDir: string;
 
   beforeEach(() => {
     const env = setupTestEnv(createTempDir());
     cleanup = env.cleanup;
+    configDir = env.configDir;
     upsertRepository({
       name: 'Registry Only',
       path: '/tmp/registry-only',
@@ -28,6 +44,7 @@ describe('desktop workspace', () => {
       primaryBranch: 'main',
       layoutMode: 'workspaces',
     });
+    installRegisteredRepositoryRegistry();
     TestBed.resetTestingModule();
   });
 
@@ -35,15 +52,17 @@ describe('desktop workspace', () => {
     cleanup();
   });
 
-  it('shows a centered card of sample registered repositories on first start', async () => {
+  it('shows a centered card of registered repositories on first start', async () => {
     const screen = await openWorkspace();
 
-    expect(screen.repositoryNames()).toEqual(sampleDisplayNames);
+    expect(screen.repositoryNames()).toEqual([]);
     expect(screen.text()).not.toContain('Registry Only');
+    expect(listRepositories().map((repository) => repository.name)).toEqual(['Registry Only']);
     expect(screen.cardIsCenteredInTheWindow()).toBe(true);
   });
 
   it('shows the chosen repository workspace', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
 
     await screen.choose('Harbor');
@@ -52,7 +71,8 @@ describe('desktop workspace', () => {
     expect(screen.repositoryCardIsOpen()).toBe(false);
   });
 
-  it('opens a card overlay of the same sample repositories when switching', async () => {
+  it('opens a card overlay of the same registered repositories when switching', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -70,6 +90,7 @@ describe('desktop workspace', () => {
   });
 
   it('places the content sheet flush with the top, right, and bottom of the window', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
 
     expect(screen.contentSheetIsFlushWithTheWindow()).toBe(true);
@@ -80,6 +101,7 @@ describe('desktop workspace', () => {
   });
 
   it('lists every sample branch for the selected repository, including one with no worktree', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -116,6 +138,7 @@ describe('desktop workspace', () => {
   });
 
   it('shows a status color and no text badge for each branch tracking state', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -135,6 +158,7 @@ describe('desktop workspace', () => {
   });
 
   it('shows a changed-file count and commits ahead and behind on each branch', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -173,6 +197,7 @@ describe('desktop workspace', () => {
   });
 
   it('shows a terminal count only while terminals for that branch are running', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -189,6 +214,7 @@ describe('desktop workspace', () => {
   });
 
   it('puts Create at the bottom of the branch list, and Merge and Remove on the branch hover menu', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
     await screen.choose('Harbor');
 
@@ -216,6 +242,7 @@ describe('desktop workspace', () => {
   });
 
   it('shows the selected repository display name in the sidebar', async () => {
+    rememberSampleRepositories();
     const screen = await openWorkspace();
 
     expect(screen.branchSidebarIsOpen()).toBe(false);
@@ -229,7 +256,142 @@ describe('desktop workspace', () => {
 
     expect(screen.sidebarRepositoryName()).toBe('Northwind');
   });
+
+  it('adds an existing repository on the card and the switching overlay, then unregisters it', async () => {
+    const repoPath = join(configDir, '..', 'harbor-checkout');
+    const plainPath = join(configDir, '..', 'plain-notes');
+    const registryPath = join(configDir, 'registered-only.db');
+    initRepo(repoPath);
+    mkdirSync(plainPath);
+    closeRegisteredRepositoryRegistry();
+    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+
+    const screen = await openWorkspace();
+    expect(screen.repositoryNames()).toEqual([]);
+    expect(screen.cardIsCenteredInTheWindow()).toBe(true);
+
+    await screen.addRepository(plainPath, 'Plain Notes');
+    expect(screen.repositoryNames()).toEqual([]);
+    expect(screen.addError()).toContain('Not a git repository');
+
+    await screen.addRepository(repoPath, 'Harbor Checkout');
+    expect(screen.repositoryNames()).toEqual(['Harbor Checkout']);
+    expect(registeredRepositoryRows(registryPath)).toEqual([{ path: repoPath, display_name: 'Harbor Checkout' }]);
+
+    await screen.choose('Harbor Checkout');
+    expect(screen.workspaceTitle()).toBe('Harbor Checkout');
+    expect(screen.repositoryCardIsOpen()).toBe(false);
+
+    await screen.switchRepository();
+    expect(screen.repositoryNames()).toEqual(['Harbor Checkout']);
+    expect(screen.cardIsCenteredInTheWindow()).toBe(true);
+
+    await screen.unregister('Harbor Checkout');
+    expect(screen.repositoryNames()).toEqual([]);
+    expect(registryColumnNames(registryPath)).toEqual(['path', 'display_name']);
+  });
 });
+
+function registeredRepositoryRows(path: string): readonly { path: string; display_name: string }[] {
+  return readRegistry(path).rows;
+}
+
+function registryColumnNames(path: string): string[] {
+  return readRegistry(path).columns;
+}
+
+function readRegistry(path: string): {
+  columns: string[];
+  rows: readonly { path: string; display_name: string }[];
+} {
+  const db = new Database(path, { readonly: true, fileMustExist: true });
+  try {
+    const tables: unknown[] = db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all();
+    const schema = tables.map((table) => {
+      if (!isSchemaTable(table)) {
+        throw new Error('Registry schema is invalid');
+      }
+      return table;
+    });
+    expect(schema).toHaveLength(1);
+    const sql = schema[0]?.sql ?? '';
+    expect(sql.toLowerCase()).not.toMatch(/worktree|layout|terminal/);
+    const tableName = schema[0]?.name ?? '';
+    if (!/^[A-Za-z_]+$/.test(tableName)) {
+      throw new Error('Registry table name is invalid');
+    }
+    const columns: unknown[] = db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const rows: unknown[] = db.prepare(`SELECT * FROM ${tableName}`).all();
+    return {
+      columns: columns.map((column) => {
+        if (!isSchemaColumn(column)) {
+          throw new Error('Registry column is invalid');
+        }
+        return column.name;
+      }),
+      rows: rows.map((row) => {
+        if (!isStoredRepository(row)) {
+          throw new Error('Registry row is invalid');
+        }
+        return row;
+      }),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function isSchemaTable(value: unknown): value is { name: string; sql: string | null } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    'sql' in value &&
+    typeof value.name === 'string' &&
+    (typeof value.sql === 'string' || value.sql === null)
+  );
+}
+
+function isSchemaColumn(value: unknown): value is { name: string } {
+  return typeof value === 'object' && value !== null && 'name' in value && typeof value.name === 'string';
+}
+
+function isStoredRepository(value: unknown): value is { path: string; display_name: string } {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || !keys.includes('path') || !keys.includes('display_name')) {
+    return false;
+  }
+  return (
+    'path' in value &&
+    'display_name' in value &&
+    typeof value.path === 'string' &&
+    typeof value.display_name === 'string'
+  );
+}
+
+function rememberSampleRepositories(): void {
+  rememberRegisteredRepository('/samples/harbor', 'Harbor');
+  rememberRegisteredRepository('/samples/northwind', 'Northwind');
+  rememberRegisteredRepository('/samples/papertrail', 'Papertrail');
+}
+
+function installRegisteredRepositoryRegistry(): void {
+  const registry: RegisteredRepositoryRegistry = {
+    list: () => listRegisteredRepositories(),
+    add: (path, displayName) => {
+      addRegisteredRepository(path, displayName);
+    },
+    unregister: (path) => {
+      unregisterRegisteredRepository(path);
+    },
+  };
+  Object.assign(globalThis, { [REGISTERED_REPOSITORY_REGISTRY_HOST]: registry });
+}
 
 function listedHarborBranch(name: string): ListedBranch {
   const harbor = TestBed.inject(REPOSITORY_BRANCHES).find((entry) => entry.repositoryPath === '/samples/harbor');
@@ -255,7 +417,36 @@ class WorkspaceScreen {
   }
 
   repositoryNames(): string[] {
-    return [...this.card().querySelectorAll('button')].map((button) => button.textContent?.trim() ?? '');
+    return [...this.card().querySelectorAll('[data-registered-repository]')].map(
+      (repository) => repository.getAttribute('data-registered-repository') ?? '',
+    );
+  }
+
+  async addRepository(path: string, displayName: string): Promise<void> {
+    this.labeledInput('Repository path').value = path;
+    this.labeledInput('Repository path').dispatchEvent(new Event('input', { bubbles: true }));
+    this.labeledInput('Display name').value = displayName;
+    this.labeledInput('Display name').dispatchEvent(new Event('input', { bubbles: true }));
+    this.fixture.detectChanges();
+    this.button('Add').click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
+  }
+
+  addError(): string {
+    return this.card().querySelector('[role="alert"]')?.textContent?.trim() ?? '';
+  }
+
+  async unregister(displayName: string): Promise<void> {
+    const button = [...this.registeredRepository(displayName).querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === 'Unregister',
+    );
+    if (!button) {
+      throw new Error(`No unregister button for ${displayName}`);
+    }
+    button.click();
+    this.fixture.detectChanges();
+    await this.fixture.whenStable();
   }
 
   async choose(displayName: string): Promise<void> {
@@ -419,6 +610,34 @@ class WorkspaceScreen {
       style.alignItems === 'center' &&
       style.justifyContent === 'center'
     );
+  }
+
+  private labeledInput(label: string): HTMLInputElement {
+    const input = [...this.card().querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.includes(label))
+      ?.querySelector('input');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error(`No ${label} field on the registered repositories card`);
+    }
+    return input;
+  }
+
+  private button(label: string): HTMLButtonElement {
+    const button = [...this.card().querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`${label} is not on the registered repositories card`);
+    }
+    return button;
+  }
+
+  private registeredRepository(displayName: string): HTMLElement {
+    const repository = this.card().querySelector(`[data-registered-repository="${displayName}"]`);
+    if (!(repository instanceof HTMLElement)) {
+      throw new Error(`No registered repository named ${displayName}`);
+    }
+    return repository;
   }
 
   private root(): HTMLElement {

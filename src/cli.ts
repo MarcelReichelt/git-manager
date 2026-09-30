@@ -241,11 +241,11 @@ wt
       }
       return;
     }
-    await ensureSetup();
     if (!branchName) {
       console.error('Branch is required');
       process.exit(1);
     }
+    await ensureSetup();
     await createWorktreeCmd(branchName, { newBranch: opts.new });
   });
 wt

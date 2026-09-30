@@ -1,9 +1,9 @@
 import { InjectionToken } from '@angular/core';
 import type { RegisteredRepository } from '../core/registered-repositories.js';
-import { REGISTERED_REPOSITORY_REGISTRY_HOST } from './registered-repository-host.js';
 
 export type { RegisteredRepository };
-export { REGISTERED_REPOSITORY_REGISTRY_HOST };
+
+export const REGISTERED_REPOSITORY_REGISTRY_HOST = 'gitManagerRegistry';
 
 export interface RegisteredRepositoryRegistry {
   list(): readonly RegisteredRepository[];

@@ -276,6 +276,7 @@ describe('desktop workspace', () => {
 
     await screen.addRepository(repoPath, 'Harbor Checkout');
     expect(screen.repositoryNames()).toEqual(['Harbor Checkout']);
+    expect(screen.text()).toContain(repoPath);
     expect(registeredRepositoryRows(registryPath)).toEqual([{ path: repoPath, display_name: 'Harbor Checkout' }]);
 
     await screen.choose('Harbor Checkout');
@@ -284,6 +285,7 @@ describe('desktop workspace', () => {
 
     await screen.switchRepository();
     expect(screen.repositoryNames()).toEqual(['Harbor Checkout']);
+    expect(screen.text()).toContain(repoPath);
     expect(screen.cardIsCenteredInTheWindow()).toBe(true);
 
     await screen.unregister('Harbor Checkout');

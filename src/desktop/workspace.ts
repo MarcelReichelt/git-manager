@@ -61,6 +61,7 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
             @for (repository of repositories(); track repository.path) {
               <li [attr.data-registered-repository]="repository.displayName">
                 <button type="button" (click)="choose(repository)">{{ repository.displayName }}</button>
+                <span class="repository-path">{{ repository.path }}</span>
                 <button type="button" (click)="unregister(repository)">Unregister</button>
               </li>
             }
@@ -249,6 +250,13 @@ function isListedBranch(branch: Branch): branch is ListedBranch {
       list-style: none;
       margin: 0;
       padding: 0;
+    }
+
+    .repository-path {
+      display: block;
+      margin: 0 4px 8px;
+      color: #78716c;
+      font-size: 0.8rem;
     }
 
     .repository-card button {

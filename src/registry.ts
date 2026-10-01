@@ -23,7 +23,21 @@ function openDatabase(env: NodeJS.ProcessEnv = process.env): Database.Database {
       display_name TEXT NOT NULL
     );
   `);
+  ensureDisplayName(db);
   return db;
+}
+
+function ensureDisplayName(db: Database.Database): void {
+  const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+  if (names.has('display_name')) {
+    return;
+  }
+  const source = names.has('name') ? 'name' : 'path';
+  db.exec(`
+    ALTER TABLE repositories ADD COLUMN display_name TEXT;
+    UPDATE repositories SET display_name = ${source} WHERE display_name IS NULL;
+  `);
 }
 
 function isGitRepository(repoPath: string): boolean {

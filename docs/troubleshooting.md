@@ -33,6 +33,9 @@ working from a cloned repo:
 yarn rebuild better-sqlite3
 ```
 
+That rebuilds the binding for the Node CLI. `yarn desktop` keeps a second copy
+of `better-sqlite3` and `node-pty`, compiled for Electron, in `native/electron/`.
+
 ### `git-manager ui` fails with `Cannot find module .../dist/tui/index.js`
 
 Versions before `0.2.4` were published without the TUI bundle. Upgrade:

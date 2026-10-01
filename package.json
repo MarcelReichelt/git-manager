@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsup",
     "build:desktop": "vite build --config vite.desktop.config.ts",
-    "desktop": "yarn build:desktop && electron src/desktop/electron-main.mjs",
+    "desktop": "node scripts/ensure-electron-natives.mjs && yarn build:desktop && electron src/desktop/electron-main.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",

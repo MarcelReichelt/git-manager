@@ -8,6 +8,7 @@ function createWindow() {
     height: 800,
     title: 'git-manager',
     webPreferences: {
+      preload: join(import.meta.dirname, 'electron-preload.cjs'),
       nodeIntegration: true,
       contextIsolation: false,
       sandbox: false,

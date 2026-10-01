@@ -437,6 +437,28 @@ describe('desktop workspace', () => {
       'Harbor',
     );
   });
+
+  it('creates the notes worktree from the button', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'notes']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const fixture = await renderRepository(repoPath);
+
+    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const checkout = join(repoPath, '.workspaces', 'notes');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('notes');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

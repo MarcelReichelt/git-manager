@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, input, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
+import { createWorktree } from '../worktrees.js';
 import {
   listBranches,
   readChangedFiles,
@@ -234,7 +235,8 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
               </li>
             }
           </ul>
-          <button type="button" data-testid="create-worktree">Create</button>
+          <input data-testid="create-branch" (input)="setCreateBranchName($event)" />
+          <button type="button" data-testid="create-worktree" (click)="createBranch()">Create</button>
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
@@ -311,6 +313,7 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
+  readonly createBranchName = signal('');
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
     if (path === null) {
@@ -437,6 +440,19 @@ export class WorkspaceComponent implements OnInit {
 
   openSwitch(): void {
     this.overlayOpen.set(true);
+  }
+
+  setCreateBranchName(event: Event): void {
+    this.createBranchName.set((event.target as HTMLInputElement).value);
+  }
+
+  async createBranch(): Promise<void> {
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return;
+    }
+    await createWorktree(repo, this.createBranchName());
+    this.refreshBranches();
   }
 
   private refreshBranches(): void {

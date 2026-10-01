@@ -2,7 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
-import { updateFromMaster } from '../merge.js';
+import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree } from '../worktrees.js';
 import {
   listBranches,
@@ -230,7 +230,13 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                       >
                         Update from master
                       </button>
-                      <button type="button" data-testid="merge-into-master">Merge into master</button>
+                      <button
+                        type="button"
+                        data-testid="merge-into-master"
+                        (click)="mergeBranch(branch.name, $event)"
+                      >
+                        Merge into master
+                      </button>
                       <label>
                         Squash
                         <input data-testid="squash" type="checkbox" />
@@ -461,6 +467,16 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     updateFromMaster(repo, name, false);
+    this.refreshAfterBranchChange(name);
+  }
+
+  mergeBranch(name: string, event: Event): void {
+    event.stopPropagation();
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return;
+    }
+    mergeIntoMaster(repo, name, false);
     this.refreshAfterBranchChange(name);
   }
 

@@ -265,6 +265,21 @@ describe('desktop workspace', () => {
       '+export function session',
     );
   });
+
+  it('shows the renamed docs guide as one file with the previous path', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="rename-docs"]').click();
+    fixture.detectChanges();
+
+    const files = [...fixture.nativeElement.querySelectorAll('[data-testid="changed-files"] [data-testid="changed-file"]')];
+    expect(files).toHaveLength(1);
+    expect(files[0].getAttribute('data-path')).toBe('docs/guide.md');
+    expect(files[0].getAttribute('data-previous-path')).toBe('docs/old-guide.md');
+    expect(files[0].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('4');
+    expect(files[0].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('1');
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

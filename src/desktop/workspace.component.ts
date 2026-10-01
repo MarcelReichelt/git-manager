@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
+import { updateFromMaster } from '../merge.js';
 import { createWorktree } from '../worktrees.js';
 import {
   listBranches,
@@ -222,7 +223,13 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                   <div data-testid="hover-menu">
                     <fieldset>
                       <legend>Merge</legend>
-                      <button type="button" data-testid="update-from-master">Update from master</button>
+                      <button
+                        type="button"
+                        data-testid="update-from-master"
+                        (click)="updateBranch(branch.name, $event)"
+                      >
+                        Update from master
+                      </button>
                       <button type="button" data-testid="merge-into-master">Merge into master</button>
                       <label>
                         Squash
@@ -447,6 +454,16 @@ export class WorkspaceComponent implements OnInit {
     this.overlayOpen.set(true);
   }
 
+  updateBranch(name: string, event: Event): void {
+    event.stopPropagation();
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return;
+    }
+    updateFromMaster(repo, name, false);
+    this.refreshAfterBranchChange(name);
+  }
+
   setCreateBranchName(event: Event): void {
     this.createBranchName.set((event.target as HTMLInputElement).value);
   }
@@ -467,6 +484,13 @@ export class WorkspaceComponent implements OnInit {
       this.zone.run(() => {
         this.workspaceError.set(message);
       });
+    }
+  }
+
+  private refreshAfterBranchChange(name: string): void {
+    this.refreshBranches();
+    if (this.selectedBranchName() === name) {
+      this.selectBranch(name);
     }
   }
 

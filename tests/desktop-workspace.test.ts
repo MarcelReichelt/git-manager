@@ -553,6 +553,32 @@ describe('desktop workspace', () => {
     expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\nTOKEN=2\n');
     expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
   });
+
+  it('updates the branch worktree from master', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
+    git(repoPath, ['add', 'master.txt']);
+    git(repoPath, ['commit', '-m', 'master change']);
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="update-from-master"]').click();
+    fixture.detectChanges();
+
+    expect(readFileSync(join(checkout, 'master.txt'), 'utf8')).toBe('from master\n');
+    expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('master change');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+  });
 });
 
 async function untilVisible(

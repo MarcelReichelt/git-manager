@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -128,5 +129,106 @@ describe('git-manager worktree create', () => {
     expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
     expect(git(repoPath, ['branch', '--list'])).toBe(branchesBefore);
     expect(readFileSync(join(checkout, 'keep.txt'), 'utf8')).toBe('stay');
+  });
+
+  it('uses the layout mode from the repository config when that key is set', () => {
+    const root = makeTempDir('git-manager-config-layout-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      '[layout]\nmode = "sibling"\n',
+    );
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(
+        ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'workspaces'],
+        env,
+      ).status,
+    ).toBe(0);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+
+    const checkout = resolve(root, 'login');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('login');
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
+  });
+
+  it('fetches a remote-only branch before the create hook runs', () => {
+    const root = makeTempDir('git-manager-fetch-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const remotePath = join(root, 'origin.git');
+    const otherPath = join(root, 'other');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], {
+      cwd: remotePath,
+      stdio: 'ignore',
+    });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    execFileSync('git', ['clone', remotePath, otherPath], { stdio: 'ignore' });
+    git(otherPath, ['config', 'user.name', 'git-manager test']);
+    git(otherPath, ['config', 'user.email', 'test@git-manager.local']);
+    git(otherPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(otherPath, 'feature.txt'), 'from remote\n');
+    git(otherPath, ['add', 'feature.txt']);
+    git(otherPath, ['commit', '-m', 'add feature']);
+    git(otherPath, ['push', '-u', 'origin', 'feature']);
+
+    mkdirSync(join(repoPath, 'hooks'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'hooks', 'mark.mjs'),
+      [
+        "import { execFileSync } from 'node:child_process';",
+        "import { writeFileSync } from 'node:fs';",
+        "const ref = execFileSync('git', ['show-ref', '--verify', 'refs/remotes/origin/feature'], { encoding: 'utf8' }).trim();",
+        "console.log('fetched-ref ' + ref);",
+        "writeFileSync('hook-ran.txt', 'ran');",
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      '[hooks.pre_worktree_create]\ncommands = ["node hooks/mark.mjs"]\n',
+    );
+
+    expect(() =>
+      execFileSync('git', ['show-ref', '--verify', 'refs/remotes/origin/feature'], {
+        cwd: repoPath,
+        stdio: 'ignore',
+      }),
+    ).toThrow();
+
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'feature', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+    expect(created.stdout).toMatch(
+      /fetched-ref [0-9a-f]{40} refs\/remotes\/origin\/feature/,
+    );
+    expect(readFileSync(join(repoPath, 'hook-ran.txt'), 'utf8')).toBe('ran');
+
+    const checkout = resolve(repoPath, '.workspaces', 'feature');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
   });
 });

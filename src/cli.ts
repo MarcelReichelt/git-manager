@@ -6,6 +6,7 @@ import {
   unregisterRepository,
   type LayoutMode,
 } from './registry.js';
+import { createWorktree } from './worktrees.js';
 
 const program = new Command();
 program.name('git-manager');
@@ -41,6 +42,16 @@ program
   .requiredOption('--path <path>')
   .action((options: { path: string }) => {
     unregisterRepository(options.path);
+  });
+
+const worktree = program.command('worktree');
+worktree
+  .command('create')
+  .argument('<branch>')
+  .requiredOption('--repo <path-or-name>')
+  .action(async (branch: string, options: { repo: string }) => {
+    const checkout = await createWorktree(options.repo, branch);
+    process.stdout.write(`${checkout}\n`);
   });
 
 try {

@@ -224,10 +224,30 @@ describe('desktop workspace', () => {
     const branchList = sidebar.querySelector('[data-testid="branch-list"]');
     const create = sidebar.querySelector('[data-testid="create-worktree"]');
     expect(create).not.toBeNull();
+    expect(sidebar.querySelector('[data-testid="create-branch"]')).toBeNull();
     expect(branchList.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
     const controls = [...sidebar.querySelectorAll('button, a, input, select, textarea')];
     expect(controls.at(-1)).toBe(create);
+  });
+
+  it('opens a create worktree dialog instead of an inline branch field', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-label')).toBe('Create worktree');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    expect(field.tagName).toBe('INPUT');
+    expect(dialog.querySelector('h2').textContent.trim()).toBe('Create worktree');
   });
 
   it('notes that a remote-only branch is fetched first and when create hooks run', async () => {
@@ -235,7 +255,14 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    const note = fixture.nativeElement.querySelector('.create-note');
+    const sidebar = fixture.nativeElement.querySelector('[data-testid="workspace"] aside');
+    expect(sidebar.querySelector('[data-testid="create-worktree-note"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const note = dialog.querySelector('[data-testid="create-worktree-note"]');
     expect(note.textContent.trim()).toBe(
       'A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
     );
@@ -565,19 +592,29 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'notes';
     field.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-testid="create-worktree-dialog"]') === null,
+    );
 
     const checkout = join(repoPath, '.workspaces', 'notes');
     expect(git(checkout, ['branch', '--show-current'])).toBe('notes');
     expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['master', 'notes']);
+    expect(fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]')).toBeNull();
   });
 
   it('shows an error when the worktree folder already exists', async () => {
@@ -591,20 +628,29 @@ describe('desktop workspace', () => {
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'feature/notes';
     field.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
-      `Worktree folder already exists: ${checkout}`,
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(fixture, (root) =>
+      (root.querySelector('[data-testid="create-worktree-dialog"] [data-testid="workspace-error"]')?.textContent ?? '').includes(
+        `Worktree folder already exists: ${checkout}`,
+      ),
     );
+
+    const error = dialog.querySelector('[data-testid="workspace-error"]');
+    expect(error.textContent).toContain(`Worktree folder already exists: ${checkout}`);
     expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
     expect(readFileSync(join(checkout, 'keep.txt'), 'utf8')).toBe('stay');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['feature/notes', 'master']);
   });
 
   it('adds no worktree when a plugin aborts create', async () => {
@@ -633,17 +679,20 @@ describe('desktop workspace', () => {
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'notes';
     field.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
     await untilVisible(fixture, (root) =>
-      (root.querySelector('[data-testid="workspace-error"]')?.textContent ?? '').includes(
+      (root.querySelector('[data-testid="create-worktree-dialog"] [data-testid="workspace-error"]')?.textContent ?? '').includes(
         'abort-create aborted worktree create',
       ),
     );
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+    expect(dialog.querySelector('[data-testid="workspace-error"]').textContent).toContain(
       'abort-create aborted worktree create',
     );
     expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
@@ -694,11 +743,14 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'notes';
     field.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
     const checkout = join(repoPath, '.workspaces', 'notes');
     await untilVisible(fixture, () => existsSync(checkout) && existsSync(pluginMarker) && existsSync(shellMarker));
 
@@ -717,11 +769,14 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'notes';
     field.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
     const copied = join(repoPath, '.workspaces', 'notes', '.env');
     await untilVisible(fixture, () => existsSync(copied));
 
@@ -729,6 +784,38 @@ describe('desktop workspace', () => {
     writeFileSync(copied, 'SECRET=1\nTOKEN=2\n');
     expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\nTOKEN=2\n');
     expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
+  });
+
+  it('leaves the branch list unchanged when create is cancelled', async () => {
+    const repoPath = createEmptyRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['master']);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'dock';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['master']);
+    expect(fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(existsSync(join(repoPath, '.workspaces', 'dock'))).toBe(false);
   });
 
   it('shows the diff for the commit file that was chosen', async () => {

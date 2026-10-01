@@ -232,21 +232,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   margin-top: 12px;
 }
 
-.create-row input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-}
-
-.create-row input::placeholder { color: rgba(255, 255, 255, 0.55); }
-
 [data-testid='create-worktree'] {
   height: 40px;
   border: 0;
@@ -254,15 +239,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   background: var(--paper);
   color: var(--forest);
   cursor: pointer;
-}
-
-.create-note {
-  margin-top: 8px;
-  padding: 0 4px;
-  color: rgba(255, 255, 255, 0.7);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  line-height: 1.4;
 }
 
 .content-sheet {

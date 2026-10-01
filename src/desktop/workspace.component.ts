@@ -268,6 +268,88 @@ button, input { font: inherit; color: inherit; }
   word-break: break-all;
 }
 
+[data-testid='create-worktree-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='create-worktree-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  color: var(--grid);
+}
+
+[data-testid='create-worktree-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='create-worktree-dialog'] label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+[data-testid='create-worktree-dialog'] input,
+[data-testid='confirm-create-worktree'],
+[data-testid='cancel-create-worktree'] {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='create-worktree-dialog'] input {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  cursor: text;
+}
+
+[data-testid='confirm-create-worktree'] {
+  background: var(--forest);
+  color: white;
+  border-color: var(--forest);
+}
+
+[data-testid='create-worktree-note'] {
+  margin: 0;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+[data-testid='create-worktree-dialog'] [data-testid='workspace-error'] {
+  color: var(--coral);
+}
+
 .dialog-actions {
   display: flex;
   gap: 8px;
@@ -397,17 +479,12 @@ button, input { font: inherit; color: inherit; }
             }
           </ul>
           <div class="create-row">
-            <input
-              data-testid="create-branch"
-              placeholder="Branch name"
-              [value]="createBranchName()"
-              (input)="setCreateBranchName($event)"
-            />
-            <button type="button" data-testid="create-worktree" (click)="createBranch()">Create worktree</button>
+            <button type="button" data-testid="create-worktree" (click)="openCreateDialog()">Create worktree</button>
           </div>
-          <p class="create-note">A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.</p>
           @if (workspaceError(); as message) {
-            <p data-testid="workspace-error">{{ message }}</p>
+            @if (!createDialogOpen()) {
+              <p data-testid="workspace-error">{{ message }}</p>
+            }
           }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
@@ -519,6 +596,32 @@ button, input { font: inherit; color: inherit; }
         </div>
       }
     }
+    @if (createDialogOpen()) {
+      <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree">
+        <section class="dialog-panel">
+          <h2>Create worktree</h2>
+          <label>
+            Branch name
+            <input
+              data-testid="create-branch"
+              placeholder="Branch name"
+              [value]="createBranchName()"
+              (input)="setCreateBranchName($event)"
+            />
+          </label>
+          <p data-testid="create-worktree-note">
+            A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.
+          </p>
+          @if (workspaceError(); as message) {
+            <p data-testid="workspace-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-create-worktree" (click)="createBranch()">Create worktree</button>
+            <button type="button" data-testid="cancel-create-worktree" (click)="cancelCreate()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository">
         <section class="dialog-panel">
@@ -568,6 +671,7 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
+  readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
   readonly workspaceError = signal<string | null>(null);
   readonly worktreePath = signal('');
@@ -912,9 +1016,20 @@ export class WorkspaceComponent implements OnInit {
     });
   }
 
+  openCreateDialog(): void {
+    this.workspaceError.set(null);
+    this.createBranchName.set('');
+    this.createDialogOpen.set(true);
+  }
+
+  cancelCreate(): void {
+    this.workspaceError.set(null);
+    this.createBranchName.set('');
+    this.createDialogOpen.set(false);
+  }
+
   setCreateBranchName(event: Event): void {
-    const target = event.target as { value?: string } | null;
-    this.createBranchName.set(target?.value ?? '');
+    this.createBranchName.set(inputValue(event));
   }
 
   async createBranch(): Promise<void> {
@@ -926,6 +1041,8 @@ export class WorkspaceComponent implements OnInit {
     try {
       await createWorktree(repo, this.createBranchName());
       this.zone.run(() => {
+        this.createDialogOpen.set(false);
+        this.createBranchName.set('');
         this.refreshBranches();
       });
     } catch (error) {

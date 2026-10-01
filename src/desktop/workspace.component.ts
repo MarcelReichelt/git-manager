@@ -15,6 +15,7 @@ import {
 } from './tmux-sessions';
 import {
   listBranches,
+  pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
   readCommitFiles,
@@ -48,6 +49,11 @@ interface SampleBranch {
   behind: number;
   files?: SampleFile[];
   commits?: SampleCommit[];
+}
+
+interface SampleBranchList {
+  defaultBranch?: string;
+  branches: SampleBranch[];
 }
 
 const harborBranches: SampleBranch[] = [
@@ -94,8 +100,15 @@ const harborBranches: SampleBranch[] = [
   },
 ];
 
-const branchesByRepository: Record<string, SampleBranch[]> = {
-  Harbor: harborBranches,
+const atlasBranches: SampleBranch[] = [
+  { name: 'feature/login', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
+  { name: 'main', status: 'local-and-remote', changedFileCount: 0, ahead: 0, behind: 0 },
+  { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
+];
+
+const branchesByRepository: Record<string, SampleBranchList> = {
+  Harbor: { branches: harborBranches },
+  Atlas: { defaultBranch: 'main', branches: atlasBranches },
 };
 
 interface CardRepository {
@@ -713,7 +726,11 @@ export class WorkspaceComponent implements OnInit {
     if (this.effectivePath() !== null) {
       return this.realBranches();
     }
-    return branchesByRepository[this.selectedName() ?? ''] ?? [];
+    const sample = branchesByRepository[this.selectedName() ?? ''];
+    if (!sample) {
+      return [];
+    }
+    return pinDefaultBranch(sample.branches, sample.defaultBranch);
   });
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,

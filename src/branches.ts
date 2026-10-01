@@ -172,6 +172,7 @@ function changedFilesInWorktree(worktree: string): ChangedFile[] {
 }
 
 export function listBranches(repoPath: string): BranchRow[] {
+  const fallbackBase = aheadBehindBase(repoPath);
   const localNames = gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
     .split('\n')
     .map((name) => name.trim())
@@ -181,7 +182,7 @@ export function listBranches(repoPath: string): BranchRow[] {
     const configuredUpstream = upstreamRef(repoPath, name);
     const upstreamExists = configuredUpstream ? hasRef(repoPath, configuredUpstream) : false;
     let status: BranchStatus = 'local-only';
-    let base = 'master';
+    let base = fallbackBase;
     if (configuredUpstream && upstreamExists) {
       status = 'local-and-remote';
       base = configuredUpstream;
@@ -213,7 +214,7 @@ export function listBranches(repoPath: string): BranchRow[] {
     if (local.has(localName)) {
       continue;
     }
-    const counts = aheadBehind(repoPath, name, 'master');
+    const counts = aheadBehind(repoPath, name, fallbackBase);
     rows.push({
       name,
       status: 'remote-only',
@@ -223,7 +224,36 @@ export function listBranches(repoPath: string): BranchRow[] {
     });
   }
 
-  return rows;
+  return pinDefaultBranch(rows, checkedOutBranch(repoPath));
+}
+
+export function pinDefaultBranch<T extends { name: string }>(
+  branches: readonly T[],
+  defaultBranch: string | undefined,
+): T[] {
+  const index =
+    defaultBranch === undefined ? -1 : branches.findIndex((branch) => branch.name === defaultBranch);
+  if (index <= 0) {
+    return branches.slice();
+  }
+  const pinned = branches[index];
+  return [pinned, ...branches.slice(0, index), ...branches.slice(index + 1)];
+}
+
+function aheadBehindBase(repoPath: string): string {
+  // Counts stay against master when that branch exists. A repository whose default is another name has no master ref, so count against the checked-out branch instead of failing the list.
+  if (hasRef(repoPath, 'refs/heads/master')) {
+    return 'master';
+  }
+  return checkedOutBranch(repoPath) ?? 'HEAD';
+}
+
+function checkedOutBranch(repoPath: string): string | undefined {
+  const name = gitOptional(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (name === undefined || name === 'HEAD') {
+    return undefined;
+  }
+  return name;
 }
 
 export function readChangedFiles(repoPath: string, branch: string): ChangedFile[] {

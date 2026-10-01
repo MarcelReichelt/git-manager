@@ -157,6 +157,14 @@ describe('desktop workspace', () => {
     expect(style.bottom).toBe('0px');
   });
 
+  it('lists the sample default branch first and keeps the other sample branches in order', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
+    fixture.detectChanges();
+
+    expect(branchNames(fixture)).toEqual(['main', 'feature/login', 'wip']);
+  });
+
   it('lists every Harbor branch with status, changed files, and commits ahead and behind', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -585,6 +593,28 @@ describe('desktop workspace', () => {
     );
   });
 
+  it('lists master first when that is the default branch and keeps every other branch in order', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature/notes']);
+    git(repoPath, ['branch', 'zeta']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)).toEqual(['master', 'feature/notes', 'zeta']);
+  });
+
+  it('lists main first when that is the default branch and keeps every other branch in order', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    git(repoPath, ['branch', 'feature/login']);
+    git(repoPath, ['branch', 'zeta']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)).toEqual(['main', 'feature/login', 'zeta']);
+  });
+
   it('creates the notes worktree from the button', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'notes']);
@@ -650,7 +680,7 @@ describe('desktop workspace', () => {
       [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
         row.getAttribute('data-branch'),
       ),
-    ).toEqual(['feature/notes', 'master']);
+    ).toEqual(['master', 'feature/notes']);
   });
 
   it('adds no worktree when a plugin aborts create', async () => {
@@ -1212,15 +1242,21 @@ function leftEdge(element: HTMLElement): number {
   return Number.parseFloat(getComputedStyle(element).left);
 }
 
+function branchNames(fixture: { nativeElement: HTMLElement }): string[] {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map(
+    (row) => row.getAttribute('data-branch') ?? '',
+  );
+}
+
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
 }
 
-function createEmptyRepository(roots: string[]): string {
+function createEmptyRepository(roots: string[], branch = 'master'): string {
   const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
   roots.push(root);
   const repoPath = join(root, 'harbor');
-  initGitRepo(repoPath);
+  initGitRepo(repoPath, branch);
   writeFileSync(join(repoPath, 'README.md'), '# harbor\n');
   git(repoPath, ['add', '.']);
   git(repoPath, ['commit', '-m', 'init']);
@@ -1255,9 +1291,9 @@ function createRewriteRepository(roots: string[]): string {
   return repoPath;
 }
 
-function initGitRepo(repoPath: string): void {
+function initGitRepo(repoPath: string, branch = 'master'): void {
   mkdirSync(repoPath, { recursive: true });
-  execFileSync('git', ['init', '-b', 'master'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['init', '-b', branch], { cwd: repoPath, stdio: 'ignore' });
   execFileSync('git', ['config', 'user.name', 'git-manager test'], {
     cwd: repoPath,
     stdio: 'ignore',

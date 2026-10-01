@@ -32,7 +32,12 @@ export function updateFromMaster(repoQuery: string, branch: string, squash: bool
   }
   const checkout = checkoutForBranch(repository.path, branch);
   if (squash) {
-    throw new Error(`Squash is not implemented for ${branch}`);
+    execFileSync('git', ['merge', '--squash', 'master'], { cwd: checkout, stdio: 'inherit' });
+    execFileSync('git', ['commit', '-m', `Squash master into ${branch}`], {
+      cwd: checkout,
+      stdio: 'inherit',
+    });
+    return;
   }
   execFileSync('git', ['merge', 'master'], { cwd: checkout, stdio: 'inherit' });
 }

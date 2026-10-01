@@ -3,7 +3,7 @@ import { Component, computed, inject, input, NgZone, OnInit, signal } from '@ang
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
-import { createWorktree } from '../worktrees.js';
+import { createWorktree, removeWorktree } from '../worktrees.js';
 import {
   listBranches,
   readChangedFiles,
@@ -242,7 +242,13 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                         <input data-testid="squash" type="checkbox" />
                       </label>
                     </fieldset>
-                    <button type="button" data-testid="remove-worktree">Remove worktree</button>
+                    <button
+                      type="button"
+                      data-testid="remove-worktree"
+                      (click)="removeBranch(branch.name, $event)"
+                    >
+                      Remove worktree
+                    </button>
                   </div>
                 }
               </li>
@@ -477,6 +483,19 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     mergeIntoMaster(repo, name, squashChecked(event));
+    this.refreshAfterBranchChange(name);
+  }
+
+  removeBranch(name: string, event: Event): void {
+    event.stopPropagation();
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return;
+    }
+    removeWorktree(repo, name);
+    if (this.openBranch() === name) {
+      this.openBranch.set(null);
+    }
     this.refreshAfterBranchChange(name);
   }
 

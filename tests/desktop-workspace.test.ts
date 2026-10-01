@@ -631,6 +631,27 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
     expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('feature change');
   });
+
+  it('removes the worktree and keeps the branch in the sidebar', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    const branchSha = git(repoPath, ['rev-parse', 'refs/heads/feature']);
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="remove-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(git(repoPath, ['rev-parse', 'refs/heads/feature'])).toBe(branchSha);
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).not.toBeNull();
+  });
 });
 
 async function untilVisible(

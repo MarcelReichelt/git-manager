@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -86,5 +87,18 @@ describe('git-manager registry', () => {
     expect(names).toContain('repositories');
     expect(names.filter((name) => name.toLowerCase().includes('worktree'))).toEqual([]);
     expect(names.filter((name) => name.toLowerCase().includes('session'))).toEqual([]);
+  });
+
+  it('rejects a path that is not a git repository', () => {
+    const root = makeTempDir('git-manager-not-git-');
+    roots.push(root);
+    const plain = join(root, 'plain');
+    mkdirSync(plain);
+    const env = gitManagerEnv(join(root, 'registry.db'));
+
+    const added = runGitManager(['add', '--path', plain, '--name', 'Plain'], env);
+    expect(added.status).toBe(1);
+    expect(added.stderr).toContain('Not a git repository');
+    expect(runGitManager(['list'], env).stdout).toBe('');
   });
 });

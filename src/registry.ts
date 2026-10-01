@@ -1,8 +1,15 @@
 import Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+
+const createRepositoriesTable = `
+  CREATE TABLE repositories (
+    path TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL
+  );
+`;
 
 export interface RegisteredRepository {
   path: string;
@@ -17,27 +24,25 @@ function openDatabase(env: NodeJS.ProcessEnv = process.env): Database.Database {
   const dbPath = resolveRegistryPath(env);
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS repositories (
-      path TEXT PRIMARY KEY,
-      display_name TEXT NOT NULL
-    );
-  `);
-  ensureDisplayName(db);
-  return db;
-}
-
-function ensureDisplayName(db: Database.Database): void {
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'repositories'")
+    .get();
+  if (!table) {
+    db.exec(createRepositoriesTable);
+    return db;
+  }
   const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>;
   const names = new Set(columns.map((column) => column.name));
-  if (names.has('display_name')) {
-    return;
+  if (names.size === 2 && names.has('path') && names.has('display_name')) {
+    return db;
   }
-  const source = names.has('name') ? 'name' : 'path';
-  db.exec(`
-    ALTER TABLE repositories ADD COLUMN display_name TEXT;
-    UPDATE repositories SET display_name = ${source} WHERE display_name IS NULL;
-  `);
+  db.close();
+  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
+    rmSync(path, { force: true });
+  }
+  const fresh = new Database(dbPath);
+  fresh.exec(createRepositoriesTable);
+  return fresh;
 }
 
 function isGitRepository(repoPath: string): boolean {

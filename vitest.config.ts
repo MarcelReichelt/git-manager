@@ -1,12 +1,36 @@
+import angular from '@analogjs/vite-plugin-angular';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
     testTimeout: 30000,
-    // e2e tests require the Docker compose stack (real git server); they are
-    // run separately via `yarn test:e2e` with vitest.e2e.config.ts.
     exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+          exclude: ['tests/desktop-workspace.test.ts', 'tests/e2e/**', '**/node_modules/**', '**/dist/**'],
+        },
+      },
+      {
+        extends: true,
+        plugins: [
+          angular({
+            tsconfig: 'src/desktop/tsconfig.json',
+            jit: true,
+          }),
+        ],
+        test: {
+          name: 'desktop',
+          environment: 'jsdom',
+          include: ['tests/desktop-workspace.test.ts'],
+          setupFiles: ['src/desktop/test-setup.ts'],
+        },
+      },
+    ],
   },
 });

@@ -11,6 +11,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:desktop": "vite build --config vite.desktop.config.ts",
+    "desktop": "yarn build:desktop && electron src/desktop/electron-main.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
@@ -34,6 +36,14 @@
   },
   "packageManager": "yarn@4.17.0",
   "dependencies": {
+    "@analogjs/vite-plugin-angular": "2.7.5",
+    "@angular/build": "22.2.0",
+    "@angular/common": "22.2.1",
+    "@angular/compiler": "22.2.1",
+    "@angular/compiler-cli": "22.2.1",
+    "@angular/core": "22.2.1",
+    "@angular/platform-browser": "22.2.1",
+    "@angular/platform-browser-dynamic": "22.2.1",
     "@iarna/toml": "^2.2.5",
     "@inquirer/prompts": "^7.3.2",
     "better-sqlite3": "^12.11.1",
@@ -42,16 +52,22 @@
     "ink": "^5.2.0",
     "jiti": "^2.4.2",
     "react": "^18.3.1",
+    "rxjs": "7.8.2",
     "simple-git": "^3.27.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "zone.js": "0.16.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^22.13.10",
     "@types/react": "^18.3.18",
+    "electron": "35.7.5",
     "ink-testing-library": "^4.0.0",
+    "jsdom": "26.1.0",
     "tsup": "^8.4.0",
-    "typescript": "^5.8.2",
+    "typescript": "6.0.3",
+    "vite": "6.3.5",
     "vitest": "^3.0.9"
   }
 }

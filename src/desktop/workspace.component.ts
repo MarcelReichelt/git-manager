@@ -500,7 +500,8 @@ export class WorkspaceComponent implements OnInit {
   }
 
   setCreateBranchName(event: Event): void {
-    this.createBranchName.set((event.target as HTMLInputElement).value);
+    const target = event.target as { value?: string } | null;
+    this.createBranchName.set(target?.value ?? '');
   }
 
   async createBranch(): Promise<void> {
@@ -547,7 +548,9 @@ export class WorkspaceComponent implements OnInit {
 }
 
 function squashChecked(event: Event): boolean {
-  const menu = (event.currentTarget as HTMLElement | null)?.closest('[data-testid="hover-menu"]');
-  const box = menu?.querySelector('[data-testid="squash"]');
-  return box instanceof HTMLInputElement && box.checked;
+  const current = event.currentTarget as {
+    closest?: (selector: string) => { querySelector?: (selector: string) => { checked?: boolean } | null } | null;
+  } | null;
+  const box = current?.closest?.('[data-testid="hover-menu"]')?.querySelector?.('[data-testid="squash"]');
+  return box?.checked === true;
 }

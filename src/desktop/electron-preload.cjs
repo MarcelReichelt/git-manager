@@ -1,12 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');
+const { electronNativeAddons } = require('./electron-native-addons.cjs');
 
 const nativeDir = path.join(__dirname, '../../native/electron');
-const electronBinaries = new Map([
-  ['better_sqlite3.node', path.join(nativeDir, 'better_sqlite3.node')],
-  ['pty.node', path.join(nativeDir, 'pty.node')],
-]);
+const electronBinaries = new Map(
+  electronNativeAddons.map((addon) => [addon.binary, path.join(nativeDir, addon.binary)]),
+);
 
 const originalNodeExtension = Module._extensions['.node'];
 Module._extensions['.node'] = function loadElectronNative(module, filename) {

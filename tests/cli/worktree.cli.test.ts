@@ -378,4 +378,33 @@ describe('git-manager worktree create', () => {
     const listed = runGitManager(['list'], env);
     expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\tworkspaces\n`);
   });
+
+  it('removes the worktree and leaves the branch', () => {
+    const root = makeTempDir('git-manager-remove-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+
+    const removed = runGitManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(removed.status).toBe(0);
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toMatch(
+      /^[0-9a-f]{40}$/,
+    );
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
 });

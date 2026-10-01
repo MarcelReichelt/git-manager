@@ -7,7 +7,7 @@ import {
   type LayoutMode,
 } from './registry.js';
 import { mergeIntoMaster, updateFromMaster } from './merge.js';
-import { createWorktree } from './worktrees.js';
+import { createWorktree, removeWorktree } from './worktrees.js';
 
 const program = new Command();
 program.name('git-manager');
@@ -53,6 +53,13 @@ worktree
   .action(async (branch: string, options: { repo: string }) => {
     const checkout = await createWorktree(options.repo, branch);
     process.stdout.write(`${checkout}\n`);
+  });
+worktree
+  .command('remove')
+  .argument('<branch>')
+  .requiredOption('--repo <path-or-name>')
+  .action((branch: string, options: { repo: string }) => {
+    removeWorktree(options.repo, branch);
   });
 
 program

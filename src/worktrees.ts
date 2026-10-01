@@ -115,6 +115,29 @@ function copyConfiguredFiles(
   }
 }
 
+export function findBranchCheckout(repoPath: string, branch: string): string {
+  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  });
+  const primary = resolve(repoPath);
+  for (const block of output.split('\n\n')) {
+    let path: string | undefined;
+    let ref: string | undefined;
+    for (const line of block.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        path = line.slice('worktree '.length);
+      } else if (line.startsWith('branch ')) {
+        ref = line.slice('branch '.length);
+      }
+    }
+    if (path && ref === `refs/heads/${branch}` && resolve(path) !== primary) {
+      return path;
+    }
+  }
+  throw new Error(`No worktree for branch: ${branch}`);
+}
+
 function checkoutPath(repositoryPath: string, layout: LayoutMode, folder: string): string {
   if (layout === 'sibling') {
     return join(dirname(repositoryPath), folder);
@@ -171,4 +194,16 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   runHookCommands(repository.path, config.hooks?.post_worktree_create?.commands);
   await runPostPlugins(plugins);
   return checkout;
+}
+
+export function removeWorktree(repoQuery: string, branch: string): void {
+  const repository = findRepository(repoQuery);
+  if (!repository) {
+    throw new Error(`Repository not found: ${repoQuery}`);
+  }
+  const checkout = findBranchCheckout(repository.path, branch);
+  execFileSync('git', ['worktree', 'remove', checkout], {
+    cwd: repository.path,
+    stdio: 'inherit',
+  });
 }

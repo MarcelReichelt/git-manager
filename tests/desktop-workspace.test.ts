@@ -16,8 +16,11 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 describe('desktop workspace', () => {
   const roots: string[] = [];
   const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  let restoreSearch: (() => void) | undefined;
 
   afterEach(() => {
+    restoreSearch?.();
+    restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
       delete process.env.GIT_MANAGER_REGISTRY_PATH;
     } else {
@@ -58,11 +61,10 @@ describe('desktop workspace', () => {
   async function renderLive() {
     const previousSearch = location.search;
     history.replaceState(null, '', `${location.pathname}?live=1`);
-    try {
-      return await setupWorkspace();
-    } finally {
+    restoreSearch = () => {
       history.replaceState(null, '', `${location.pathname}${previousSearch}`);
-    }
+    };
+    return setupWorkspace();
   }
 
   function renderRepository(repoPath: string) {
@@ -834,19 +836,13 @@ describe('desktop workspace', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    const previousSearch = location.search;
-    history.replaceState(null, '', `${location.pathname}?live=1`);
-    try {
-      const fixture = await render();
-      const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
+    const fixture = await renderLive();
+    const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
 
-      expect(card).not.toBeNull();
-      expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
-      expect(card.querySelector('[data-testid="repository"][data-name="Harbor"]')).toBeNull();
-      expect(card.querySelector('[data-testid="repository"][data-name="Atlas"]')).toBeNull();
-    } finally {
-      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
-    }
+    expect(card).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repository"][data-name="Harbor"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repository"][data-name="Atlas"]')).toBeNull();
   });
 
   it('lists registered repositories on the card and opens that repository', async () => {

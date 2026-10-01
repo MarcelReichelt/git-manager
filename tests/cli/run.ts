@@ -3,6 +3,12 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+const emptyGitConfig = join(tmpdir(), 'git-manager-test-gitconfig');
+writeFileSync(emptyGitConfig, '');
+process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
+process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
+process.env.GIT_TERMINAL_PROMPT = '0';
+
 export const cliPath = resolve('dist/cli.js');
 
 export function makeTempDir(prefix: string): string {

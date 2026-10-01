@@ -142,6 +142,15 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
         background-color: red;
       }
 
+      .branch-actions {
+        display: none;
+      }
+
+      .branch-row:hover > .branch-actions,
+      .branch-actions.is-open {
+        display: block;
+      }
+
       .commit-detail {
         position: relative;
         min-height: 12rem;
@@ -181,10 +190,13 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
       <main data-testid="workspace">
         <aside>
           <h1 data-testid="repository-name">{{ workspaceTitle() }}</h1>
-          <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
+          @if (repositoryPath() === null) {
+            <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
+          }
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
               <li
+                class="branch-row"
                 data-testid="branch-row"
                 [attr.data-branch]="branch.name"
                 [attr.data-status]="branch.status"
@@ -219,8 +231,11 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 >
                   Branch actions
                 </button>
-                @if (openBranch() === branch.name) {
-                  <div data-testid="hover-menu">
+                <div
+                  data-testid="hover-menu"
+                  class="branch-actions"
+                  [class.is-open]="openBranch() === branch.name"
+                >
                     <fieldset>
                       <legend>Merge</legend>
                       <button
@@ -249,8 +264,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                     >
                       Remove worktree
                     </button>
-                  </div>
-                }
+                </div>
               </li>
             }
           </ul>
@@ -295,6 +309,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                       data-testid="changed-file"
                       [attr.data-path]="file.path"
                       [attr.data-previous-path]="file.previousPath ?? null"
+                      (click)="selectCommitFile(file.path, $event)"
                     >
                       {{ file.path }}
                       @if (file.added !== null) {
@@ -441,6 +456,20 @@ export class WorkspaceComponent implements OnInit {
     this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path) : '');
   }
 
+  selectCommitFile(path: string, event: Event): void {
+    event.stopPropagation();
+    const repo = this.repositoryPath();
+    const subject = this.selectedCommitSubject();
+    if (!repo || !subject) {
+      return;
+    }
+    const commit = this.loadedCommits().find((item) => item.subject === subject);
+    if (!commit) {
+      return;
+    }
+    this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
+  }
+
   openBranchMenu(name: string, event: Event): void {
     event.stopPropagation();
     this.openBranch.set(name);
@@ -468,35 +497,22 @@ export class WorkspaceComponent implements OnInit {
 
   updateBranch(name: string, event: Event): void {
     event.stopPropagation();
-    const repo = this.repositoryPath();
-    if (!repo) {
-      return;
-    }
-    updateFromMaster(repo, name, squashChecked(event));
-    this.refreshAfterBranchChange(name);
+    this.runBranchAction(name, () => updateFromMaster(this.repositoryPath() ?? '', name, squashChecked(event)));
   }
 
   mergeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    const repo = this.repositoryPath();
-    if (!repo) {
-      return;
-    }
-    mergeIntoMaster(repo, name, squashChecked(event));
-    this.refreshAfterBranchChange(name);
+    this.runBranchAction(name, () => mergeIntoMaster(this.repositoryPath() ?? '', name, squashChecked(event)));
   }
 
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    const repo = this.repositoryPath();
-    if (!repo) {
-      return;
-    }
-    removeWorktree(repo, name);
-    if (this.openBranch() === name) {
-      this.openBranch.set(null);
-    }
-    this.refreshAfterBranchChange(name);
+    this.runBranchAction(name, () => {
+      removeWorktree(this.repositoryPath() ?? '', name);
+      if (this.openBranch() === name) {
+        this.openBranch.set(null);
+      }
+    });
   }
 
   setCreateBranchName(event: Event): void {
@@ -520,6 +536,20 @@ export class WorkspaceComponent implements OnInit {
       this.zone.run(() => {
         this.workspaceError.set(message);
       });
+    }
+  }
+
+  private runBranchAction(name: string, action: () => void): void {
+    if (!this.repositoryPath()) {
+      return;
+    }
+    this.workspaceError.set(null);
+    try {
+      action();
+      this.refreshAfterBranchChange(name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.workspaceError.set(message);
     }
   }
 

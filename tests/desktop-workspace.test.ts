@@ -215,6 +215,10 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    const closedMenu = row.querySelector('[data-testid="hover-menu"]');
+    expect(closedMenu.classList.contains('is-open')).toBe(false);
+    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    expect(css).toContain(':hover');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
 
@@ -341,6 +345,7 @@ describe('desktop workspace', () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
 
+    expect(fixture.nativeElement.querySelector('[data-testid="switch-repository"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-card"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(
@@ -536,6 +541,63 @@ describe('desktop workspace', () => {
     expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
   });
 
+  it('runs a shell command and a TypeScript plugin from the create button', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'notes']);
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    mkdirSync(join(repoPath, 'hooks'), { recursive: true });
+    const pluginMarker = join(repoPath, 'plugin-hook.txt');
+    const shellMarker = join(repoPath, 'shell-hook.txt');
+    writeFileSync(
+      join(repoPath, 'plugins', 'mark.ts'),
+      [
+        "import { writeFileSync } from 'node:fs';",
+        'export default {',
+        "  name: 'mark',",
+        '  preWorktreeCreate() {',
+        `    writeFileSync(${JSON.stringify(pluginMarker)}, 'plugin ran\\n');`,
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(
+      join(repoPath, 'hooks', 'mark.mjs'),
+      [
+        "import { writeFileSync } from 'node:fs';",
+        `writeFileSync(${JSON.stringify(shellMarker)}, 'shell ran\\n');`,
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      [
+        '[hooks]',
+        'modules = ["plugins/mark.ts"]',
+        '',
+        '[hooks.pre_worktree_create]',
+        'commands = ["node hooks/mark.mjs"]',
+        '',
+      ].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const fixture = await renderRepository(repoPath);
+
+    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    const checkout = join(repoPath, '.workspaces', 'notes');
+    await untilVisible(fixture, () => existsSync(checkout) && existsSync(pluginMarker) && existsSync(shellMarker));
+
+    expect(readFileSync(pluginMarker, 'utf8')).toBe('plugin ran\n');
+    expect(readFileSync(shellMarker, 'utf8')).toBe('shell ran\n');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+  });
+
   it('copies .env into the new worktree and leaves the original unchanged', async () => {
     const repoPath = createEmptyRepository(roots);
     writeFileSync(join(repoPath, '.env'), 'SECRET=1\n');
@@ -558,6 +620,69 @@ describe('desktop workspace', () => {
     writeFileSync(copied, 'SECRET=1\nTOKEN=2\n');
     expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\nTOKEN=2\n');
     expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
+  });
+
+  it('shows the diff for the commit file that was chosen', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'topic']);
+    writeFileSync(join(repoPath, 'a.txt'), 'alpha\n');
+    writeFileSync(join(repoPath, 'b.txt'), 'beta\n');
+    git(repoPath, ['add', 'a.txt', 'b.txt']);
+    git(repoPath, ['commit', '-m', 'Add both files']);
+    git(repoPath, ['checkout', 'master']);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-branch="topic"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add both files"]').click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+alpha');
+    commitFiles.querySelector('[data-path="b.txt"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+beta');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('+alpha');
+  });
+
+  it('shows an error when update from master has no worktree', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="update-from-master"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'No worktree for branch: feature',
+    );
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
+
+  it('shows an error when merge into master is not run on master', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['checkout', '-b', 'other']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'Primary checkout is on other, not master',
+    );
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('other');
   });
 
   it('updates the branch worktree from master', async () => {

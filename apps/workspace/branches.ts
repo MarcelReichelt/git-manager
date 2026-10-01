@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process';
 
+export function primaryCheckoutBranch(repoPath: string): string {
+  return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  }).trim();
+}
+
 export function listBranches(repoPath: string): string[] {
   const output = execFileSync('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads'], {
     cwd: repoPath,

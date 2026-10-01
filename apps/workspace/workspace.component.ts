@@ -1,5 +1,5 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
-import { findWorktree, listBranches } from './branches';
+import { findWorktree, listBranches, primaryCheckoutBranch } from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
@@ -16,12 +16,21 @@ import {
   template: `
     <aside>
       @for (branch of branches(); track branch) {
-        <button type="button" (click)="selectBranch(branch)">
-          <span class="branch-name">{{ branch }}</span>
-          @if (terminalCount(branch) > 0) {
-            <span class="terminal-count">{{ terminalCount(branch) }}</span>
+        <div class="branch-row" (mouseenter)="showMenu(branch)" (mouseleave)="hideMenu()">
+          <button type="button" (click)="selectBranch(branch)">
+            <span class="branch-name">{{ branch }}</span>
+            @if (terminalCount(branch) > 0) {
+              <span class="terminal-count">{{ terminalCount(branch) }}</span>
+            }
+          </button>
+          @if (menuBranch() === branch) {
+            <div role="menu">
+              <button type="button" (click)="openMerge('into', branch)">Merge into the master tree</button>
+              <button type="button" (click)="openMerge('from', branch)">Merge from the master tree</button>
+              <button type="button" (click)="openMerge('generic', branch)">Generic merge</button>
+            </div>
           }
-        </button>
+        </div>
       }
     </aside>
     <section>
@@ -46,6 +55,24 @@ import {
         }
       }
     </section>
+    @if (mergeOpen()) {
+      <dialog open>
+        <label>
+          Source
+          @if (mergeSourceIsMasterTree()) {
+            <span>master tree</span>
+          }
+          <input aria-label="Source" [value]="mergeSource()" />
+        </label>
+        <label>
+          Target
+          @if (mergeTargetIsMasterTree()) {
+            <span>master tree</span>
+          }
+          <input aria-label="Target" [value]="mergeTarget()" />
+        </label>
+      </dialog>
+    }
   `,
 })
 export class WorkspaceComponent implements OnInit {
@@ -58,6 +85,12 @@ export class WorkspaceComponent implements OnInit {
   readonly sessions = signal<string[]>([]);
   readonly focused = signal('');
   readonly splitView = signal(false);
+  readonly menuBranch = signal('');
+  readonly mergeOpen = signal(false);
+  readonly mergeSource = signal('');
+  readonly mergeTarget = signal('');
+  readonly mergeSourceIsMasterTree = signal(false);
+  readonly mergeTargetIsMasterTree = signal(false);
   readonly visibleSessions = computed(() => {
     const focused = this.focused();
     const sessions = this.sessions();
@@ -73,6 +106,35 @@ export class WorkspaceComponent implements OnInit {
 
   ngOnInit(): void {
     this.branches.set(listBranches(this.repoPath()));
+  }
+
+  showMenu(branch: string): void {
+    this.menuBranch.set(branch);
+  }
+
+  hideMenu(): void {
+    this.menuBranch.set('');
+  }
+
+  openMerge(mode: 'into' | 'from' | 'generic', branch: string): void {
+    const primary = primaryCheckoutBranch(this.repoPath());
+    if (mode === 'into') {
+      this.mergeSource.set(branch);
+      this.mergeTarget.set(primary);
+      this.mergeSourceIsMasterTree.set(false);
+      this.mergeTargetIsMasterTree.set(true);
+    } else if (mode === 'from') {
+      this.mergeSource.set(primary);
+      this.mergeTarget.set(branch);
+      this.mergeSourceIsMasterTree.set(true);
+      this.mergeTargetIsMasterTree.set(false);
+    } else {
+      this.mergeSource.set('');
+      this.mergeTarget.set('');
+      this.mergeSourceIsMasterTree.set(false);
+      this.mergeTargetIsMasterTree.set(false);
+    }
+    this.mergeOpen.set(true);
   }
 
   selectBranch(branch: string): void {

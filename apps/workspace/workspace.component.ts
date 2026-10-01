@@ -1,7 +1,12 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
 import { findWorktree, listBranches } from './branches';
 import { TerminalPane } from './terminal-pane';
-import { createBranchSession, killTmuxSession, nextSessionIndex, sessionsForBranch } from './tmux-sessions';
+import {
+  createBranchSession,
+  killTmuxSession,
+  nextSessionIndex,
+  sessionsForBranch,
+} from './tmux-sessions';
 
 @Component({
   selector: 'gm-workspace',
@@ -10,7 +15,12 @@ import { createBranchSession, killTmuxSession, nextSessionIndex, sessionsForBran
   template: `
     <aside>
       @for (branch of branches(); track branch) {
-        <button type="button" (click)="selectBranch(branch)">{{ branch }}</button>
+        <button type="button" (click)="selectBranch(branch)">
+          <span class="branch-name">{{ branch }}</span>
+          @if (terminalCount(branch) > 0) {
+            <span class="terminal-count">{{ terminalCount(branch) }}</span>
+          }
+        </button>
       }
     </aside>
     <section>
@@ -81,6 +91,13 @@ export class WorkspaceComponent implements OnInit {
     }
     this.sessions.set(existing);
     this.focused.set(existing[0]);
+  }
+
+  terminalCount(branch: string): number {
+    if (branch === this.selectedBranch()) {
+      return this.sessions().length;
+    }
+    return sessionsForBranch(this.repoPath(), branch).length;
   }
 
   focusSession(session: string): void {

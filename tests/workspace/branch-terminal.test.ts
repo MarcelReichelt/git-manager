@@ -68,14 +68,23 @@ function renderWorkspace(repo: string): ComponentFixture<WorkspaceComponent> {
   return fixture;
 }
 
-function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
-  const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
-  const button = buttons.find((candidate) => candidate.textContent?.trim() === name);
+function branchRow(fixture: ComponentFixture<WorkspaceComponent>, name: string): HTMLButtonElement {
+  const buttons = Array.from(fixture.nativeElement.querySelectorAll('aside button')) as HTMLButtonElement[];
+  const button = buttons.find((candidate) => (candidate.textContent ?? '').includes(name));
   if (!button) {
     throw new Error(`Branch ${name} is not shown`);
   }
-  button.click();
+  return button;
+}
+
+function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
+  branchRow(fixture, name).click();
   fixture.detectChanges();
+}
+
+function terminalCount(fixture: ComponentFixture<WorkspaceComponent>, name: string): string | null {
+  const text = (branchRow(fixture, name).textContent ?? '').replace(name, '').trim();
+  return text.length === 0 ? null : text;
 }
 
 function paneText(fixture: ComponentFixture<WorkspaceComponent>): string {
@@ -237,5 +246,27 @@ describe('branch terminal', () => {
     expect(hasSession(first)).toBe(false);
     expect(hasSession(second!)).toBe(true);
     expect(visiblePaneCount(fixture!)).toBe(1);
+  });
+
+  it('shows a terminal count only while terminals for that branch are running', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo);
+
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    clickControl(fixture, 'New');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '2');
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+    expect(branchRow(fixture, 'feature').textContent ?? '').not.toContain('0');
   });
 });

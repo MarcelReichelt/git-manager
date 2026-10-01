@@ -1,8 +1,6 @@
-import type { GitManagerPlugin } from '../src/hooks/types.js';
-
-const plugin: GitManagerPlugin = {
+const plugin = {
   name: 'install-deps',
-  async postMerge() {
+  async postMerge(): Promise<void> {
     console.log('[install-deps] Run yarn/npm install after merge');
   },
 };

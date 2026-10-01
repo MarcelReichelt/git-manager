@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/cli.ts', 'src/tui/index.tsx'],
+  entry: ['src/cli.ts'],
   format: ['esm'],
   target: 'node20',
   splitting: false,

@@ -407,4 +407,24 @@ describe('git-manager worktree create', () => {
     );
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
   });
+
+  it('does not remove the primary checkout', () => {
+    const root = makeTempDir('git-manager-remove-primary-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const removed = runGitManager(
+      ['worktree', 'remove', 'master', '--repo', 'Harbor'],
+      env,
+    );
+    expect(removed.status).toBe(1);
+    expect(git(repoPath, ['worktree', 'list'])).toContain(resolve(repoPath));
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
 });

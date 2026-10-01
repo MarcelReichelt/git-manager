@@ -1,7 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');
+const { ipcRenderer } = require('electron');
 const { electronNativeAddons } = require('./electron-native-addons.cjs');
+
+window.gitManager = {
+  browseForFolder() {
+    return ipcRenderer.invoke('browse-for-folder');
+  },
+};
 
 const nativeDir = path.join(__dirname, '../../native/electron');
 const electronBinaries = new Map(

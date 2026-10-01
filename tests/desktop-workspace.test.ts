@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
+import { resetFolderBrowser, setFolderBrowser } from '../src/desktop/folder-browser';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
 
@@ -19,6 +20,7 @@ describe('desktop workspace', () => {
   let restoreSearch: (() => void) | undefined;
 
   afterEach(() => {
+    resetFolderBrowser();
     restoreSearch?.();
     restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
@@ -889,22 +891,155 @@ describe('desktop workspace', () => {
     const pier = join(root, 'pier');
     initGitRepo(pier);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => pier);
 
     const fixture = await renderLive();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
+    expect(card.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(card.querySelector('[data-testid="add-repository-path"]')).toBeNull();
+    expect(card.querySelector('[data-testid="add-repository-name"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).toBeNull();
 
-    const pathField = fixture.nativeElement.querySelector('[data-testid="add-repository-path"]');
-    const nameField = fixture.nativeElement.querySelector('[data-testid="add-repository-name"]');
-    pathField.value = pier;
-    pathField.dispatchEvent(new Event('input'));
+    card.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    expect(dialog.querySelector('[data-testid="browse-repository-folder"]').textContent).toBe('Choose folder');
+    expect(card.querySelector('[data-testid="add-repository-path"]')).toBeNull();
+    expect(card.querySelector('[data-testid="add-repository-name"]')).toBeNull();
+
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(dialog.querySelector('[data-testid="add-repository-path"]').textContent).toBe(pier);
+
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
     nameField.value = 'Pier';
     nameField.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).toBeNull();
+  });
+
+  it('shows an error and does not add a repository when the folder is not a git repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const plain = join(root, 'plain');
+    mkdirSync(plain);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => plain);
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
+    nameField.value = 'Plain';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toBe(
+      `Not a git repository: ${plain}`,
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).not.toBeNull();
+  });
+
+  it('shows an error and does not add a repository when no folder is chosen', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
+    nameField.value = 'Nowhere';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toBe(
+      'Choose a repository folder',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+  });
+
+  it('shows an error and does not add a repository when the display name is blank', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => pier);
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
+    nameField.value = '   ';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toBe(
+      'Enter a display name',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).not.toBeNull();
+  });
+
+  it('leaves registered repositories unchanged when the add dialog is cancelled', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    setFolderBrowser(async () => quay);
+
+    const fixture = await renderLive();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
+    nameField.value = 'Quay';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="cancel-add-repository"]').click();
+    fixture.detectChanges();
+
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual(['Pier']);
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).toBeNull();
   });
 });
 

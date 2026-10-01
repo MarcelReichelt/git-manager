@@ -4,6 +4,7 @@ import { basename } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
+import { browseForFolder } from './folder-browser';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
@@ -189,7 +190,38 @@ button, input { font: inherit; color: inherit; }
   border-color: var(--forest);
 }
 
-[data-testid='repository-card'] label {
+[data-testid='add-repository-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='add-repository-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  color: var(--grid);
+}
+
+[data-testid='add-repository-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='add-repository-dialog'] label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -199,16 +231,46 @@ button, input { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-[data-testid='repository-card'] input {
+[data-testid='add-repository-dialog'] input,
+[data-testid='browse-repository-folder'],
+[data-testid='confirm-add-repository'],
+[data-testid='cancel-add-repository'] {
   box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='add-repository-dialog'] input {
   width: 100%;
   height: 36px;
   padding: 0 8px;
-  border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 0;
   background: var(--surface);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
+  cursor: text;
+}
+
+[data-testid='confirm-add-repository'] {
+  background: var(--forest);
+  color: white;
+  border-color: var(--forest);
+}
+
+[data-testid='add-repository-path'] {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
 }
 
 [data-testid='card-error'] { color: var(--coral); }
@@ -229,18 +291,7 @@ button, input { font: inherit; color: inherit; }
           </button>
         }
         @if (registryMode()) {
-          <label>
-            Path
-            <input data-testid="add-repository-path" [value]="addPath()" (input)="setAddPath($event)" />
-          </label>
-          <label>
-            Name
-            <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
-          </label>
-          <button type="button" data-testid="add-repository" (click)="addRegistered()">Add repository</button>
-          @if (cardError(); as message) {
-            <p data-testid="card-error">{{ message }}</p>
-          }
+          <button type="button" data-testid="add-repository" (click)="openAddDialog()">Add repository</button>
         }
       </section>
     </ng-template>
@@ -468,6 +519,31 @@ button, input { font: inherit; color: inherit; }
         </div>
       }
     }
+    @if (addDialogOpen()) {
+      <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository">
+        <section class="dialog-panel">
+          <h2>Add repository</h2>
+          <label>
+            Location
+            <button type="button" data-testid="browse-repository-folder" (click)="browseFolder()">Choose folder</button>
+          </label>
+          @if (addPath()) {
+            <p data-testid="add-repository-path">{{ addPath() }}</p>
+          }
+          <label>
+            Display name
+            <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
+          </label>
+          @if (cardError(); as message) {
+            <p data-testid="card-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-add-repository" (click)="addRegistered()">Add repository</button>
+            <button type="button" data-testid="cancel-add-repository" (click)="cancelAdd()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
   `,
 })
 export class WorkspaceComponent implements OnInit {
@@ -478,6 +554,7 @@ export class WorkspaceComponent implements OnInit {
   readonly selectedName = signal<string | null>(null);
   readonly openedPath = signal<string | null>(null);
   readonly registered = signal<RegisteredRepository[]>([]);
+  readonly addDialogOpen = signal(false);
   readonly addPath = signal('');
   readonly addName = signal('');
   readonly cardError = signal<string | null>(null);
@@ -617,20 +694,49 @@ export class WorkspaceComponent implements OnInit {
     this.refreshBranches();
   }
 
-  setAddPath(event: Event): void {
-    this.addPath.set(inputValue(event));
+  openAddDialog(): void {
+    this.cardError.set(null);
+    this.addPath.set('');
+    this.addName.set('');
+    this.addDialogOpen.set(true);
   }
 
   setAddName(event: Event): void {
     this.addName.set(inputValue(event));
   }
 
+  async browseFolder(): Promise<void> {
+    const chosen = await browseForFolder();
+    this.zone.run(() => {
+      if (chosen) {
+        this.addPath.set(chosen);
+      }
+    });
+  }
+
+  cancelAdd(): void {
+    this.cardError.set(null);
+    this.addPath.set('');
+    this.addName.set('');
+    this.addDialogOpen.set(false);
+  }
+
   addRegistered(): void {
     this.cardError.set(null);
+    if (this.addPath().trim() === '') {
+      this.cardError.set('Choose a repository folder');
+      return;
+    }
+    const displayName = this.addName().trim();
+    if (displayName === '') {
+      this.cardError.set('Enter a display name');
+      return;
+    }
     try {
-      addRepository(this.addPath(), this.addName());
+      addRepository(this.addPath(), displayName);
       this.addPath.set('');
       this.addName.set('');
+      this.addDialogOpen.set(false);
       this.registered.set(listRepositories());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

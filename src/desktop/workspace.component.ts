@@ -5,6 +5,7 @@ import {
   listBranches,
   readChangedFiles,
   readCommitsOnlyOnBranch,
+  readWorkingTreeDiff,
   type BranchCommit,
   type ChangedFile,
 } from '../branches.js';
@@ -301,6 +302,7 @@ export class WorkspaceComponent implements OnInit {
   readonly realBranches = signal<SampleBranch[]>([]);
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
+  readonly loadedDiff = signal<string | null>(null);
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
     if (path === null) {
@@ -318,6 +320,9 @@ export class WorkspaceComponent implements OnInit {
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
   readonly selectedDiff = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.loadedDiff();
+    }
     const file = this.selectedBranch()?.files?.find((item) => item.path === this.selectedFilePath());
     return file?.diff ?? null;
   });
@@ -353,6 +358,12 @@ export class WorkspaceComponent implements OnInit {
   selectFile(path: string): void {
     this.selectedFilePath.set(path);
     this.selectedCommitSubject.set(null);
+    const repo = this.repositoryPath();
+    const branch = this.selectedBranchName();
+    if (!repo || !branch) {
+      return;
+    }
+    this.loadedDiff.set(readWorkingTreeDiff(repo, branch, path));
   }
 
   selectCommit(subject: string): void {
@@ -369,6 +380,7 @@ export class WorkspaceComponent implements OnInit {
     this.selectedBranchName.set(name);
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
+    this.loadedDiff.set(null);
     const path = this.repositoryPath();
     if (path === null) {
       this.loadedFiles.set([]);

@@ -369,6 +369,20 @@ describe('desktop workspace', () => {
       'Retitle the guide',
     ]);
   });
+
+  it('opens the working tree diff for the renamed guide', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement
+      .querySelector('[data-testid="changed-files"] [data-testid="changed-file"][data-path="docs/guide.md"]')
+      .click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+pier note');
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

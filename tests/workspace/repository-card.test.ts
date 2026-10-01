@@ -135,6 +135,7 @@ describe('repository card', () => {
     initRepo(ledger);
     initRepo(payroll);
     execFileSync('git', ['branch', 'feature'], { cwd: billing, stdio: 'ignore' });
+    execFileSync('git', ['branch', 'release'], { cwd: ledger, stdio: 'ignore' });
     process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(billing, 'Billing');
     addRepository(ledger, 'Ledger');
@@ -153,8 +154,51 @@ describe('repository card', () => {
     expect(cardNames(fixture)).toEqual(['Billing', 'Ledger', 'Payroll']);
     expect(fixture.nativeElement.textContent).not.toContain(payroll);
     expect(branchNames(fixture)).toEqual(['feature', 'trunk']);
+
+    clickCardButton(fixture, 'Ledger');
+
+    expect(branchNames(fixture)).toEqual(['release', 'trunk']);
+    expect(fixture.nativeElement.querySelector('.repository-card')).toBeNull();
+  });
+
+  it('does not show the repository path, Unregister, or Checked out', () => {
+    root = mkdtempSync(join(tmpdir(), 'git-manager-card-'));
+    const billing = join(root, 'billing');
+    initRepo(billing);
+    execFileSync('git', ['branch', 'feature'], { cwd: billing, stdio: 'ignore' });
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(billing, 'Billing');
+    fixture = renderWorkspace();
+
+    expect(windowText(fixture)).not.toContain(billing);
+    expect(windowText(fixture)).not.toContain('Unregister');
+    expect(windowText(fixture)).not.toContain('Checked out');
+
+    clickCardButton(fixture, 'Billing');
+    clickBranch(fixture, 'feature');
+    clickButton(fixture, 'Switch');
+
+    expect(windowText(fixture)).not.toContain(billing);
+    expect(windowText(fixture)).not.toContain('Unregister');
+    expect(windowText(fixture)).not.toContain('Checked out');
+    expect(cardNames(fixture)).toEqual(['Billing']);
+    expect(branchNames(fixture)).toEqual(['feature', 'trunk']);
   });
 });
+
+function windowText(fixture: ComponentFixture<WorkspaceComponent>): string {
+  return fixture.nativeElement.textContent ?? '';
+}
+
+function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
+  const buttons = Array.from(fixture.nativeElement.querySelectorAll('.branch-row button')) as HTMLButtonElement[];
+  const button = buttons.find((candidate) => candidate.querySelector('.branch-name')?.textContent?.trim() === name);
+  if (!button) {
+    throw new Error(`Branch ${name} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}
 
 function clickButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];

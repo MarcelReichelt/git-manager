@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
+import { mergeIntoMasterTree } from '../../src/merge.js';
 import { findWorktree, listBranches, primaryCheckoutBranch } from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
@@ -71,6 +72,7 @@ import {
           }
           <input aria-label="Target" [value]="mergeTarget()" />
         </label>
+        <button type="button" (click)="confirmMerge()">Merge</button>
       </dialog>
     }
   `,
@@ -91,6 +93,8 @@ export class WorkspaceComponent implements OnInit {
   readonly mergeTarget = signal('');
   readonly mergeSourceIsMasterTree = signal(false);
   readonly mergeTargetIsMasterTree = signal(false);
+  readonly mergeMode = signal<'into' | 'from' | 'generic'>('generic');
+  readonly mergeBranch = signal('');
   readonly visibleSessions = computed(() => {
     const focused = this.focused();
     const sessions = this.sessions();
@@ -118,6 +122,8 @@ export class WorkspaceComponent implements OnInit {
 
   openMerge(mode: 'into' | 'from' | 'generic', branch: string): void {
     const primary = primaryCheckoutBranch(this.repoPath());
+    this.mergeMode.set(mode);
+    this.mergeBranch.set(branch);
     if (mode === 'into') {
       this.mergeSource.set(branch);
       this.mergeTarget.set(primary);
@@ -135,6 +141,18 @@ export class WorkspaceComponent implements OnInit {
       this.mergeTargetIsMasterTree.set(false);
     }
     this.mergeOpen.set(true);
+  }
+
+  confirmMerge(): void {
+    if (this.mergeMode() !== 'into') {
+      return;
+    }
+    try {
+      mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), false);
+      this.mergeOpen.set(false);
+    } catch (error) {
+      this.notice.set(error instanceof Error ? error.message : String(error));
+    }
   }
 
   selectBranch(branch: string): void {

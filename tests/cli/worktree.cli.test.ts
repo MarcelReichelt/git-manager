@@ -358,4 +358,24 @@ describe('git-manager worktree create', () => {
     expect(readFileSync(copied, 'utf8')).toBe('SECRET=2\n');
     expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
   });
+
+  it('lists only the repository after a worktree is created', () => {
+    const root = makeTempDir('git-manager-list-after-create-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    expect(
+      runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const listed = runGitManager(['list'], env);
+    expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\tworkspaces\n`);
+  });
 });

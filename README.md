@@ -48,6 +48,8 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 
 ## Documentation
 
+The command list above is the v2 CLI. The guides below still describe the removed v1 commands, including `clone`, `ui`, and the Ink carousel.
+
 | Guide | Topic |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, register, clone, switch worktrees |

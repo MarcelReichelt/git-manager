@@ -170,6 +170,7 @@ describe('branch row', () => {
       ahead: '1 ahead',
       behind: '0 behind',
     });
+    expect(rowFacts(fixture, 'trunk').changedFiles).toBe('0');
   });
 
   it('shows the commits on a remote-only branch that has no checkout', () => {

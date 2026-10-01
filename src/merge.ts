@@ -59,6 +59,10 @@ export function mergeSourceIntoTarget(
   squash = false,
 ): void {
   const repo = requireRepository(repoQuery);
-  const cwd = target === primaryBranch(repo.path) ? repo.path : findCheckedOutWorktree(repo.path, target);
-  mergeBranch(cwd, source, squash, `Squash merge ${source} into ${target}`);
+  const primary = primaryBranch(repo.path);
+  const intoMasterTree = target === primary;
+  const cwd = intoMasterTree ? repo.path : findCheckedOutWorktree(repo.path, target);
+  const sourceLabel = source === primary ? 'the master tree' : source;
+  const targetLabel = intoMasterTree ? 'the master tree' : target;
+  mergeBranch(cwd, source, squash, `Squash merge ${sourceLabel} into ${targetLabel}`);
 }

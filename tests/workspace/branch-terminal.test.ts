@@ -2,12 +2,13 @@
 
 import './setup';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WorkspaceComponent } from '../../apps/workspace/workspace.component';
+import { tmuxBinary } from '../../apps/workspace/tmux-sessions';
 
 const TMUX = '/usr/bin/tmux';
 
@@ -298,5 +299,68 @@ describe('branch terminal', () => {
     submitCommand(fixture!.nativeElement, 'pwd');
     await waitFor(() => paneText(fixture!).includes(worktree));
     expect(listSessions().filter((name) => !before.includes(name))).toEqual([]);
+  });
+
+  it('follows the selected worktree when the Windows shell changes branch', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const feature = join(repo.repo, '.workspaces', 'feature');
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo, 'win32');
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    submitCommand(fixture!.nativeElement, 'pwd');
+    await waitFor(() => paneText(fixture!).includes(feature));
+
+    clickBranch(fixture, 'main');
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    submitCommand(fixture!.nativeElement, 'pwd');
+    await waitFor(() => {
+      const text = paneText(fixture!);
+      return text.includes(repo.repo) && !text.includes(feature);
+    });
+    expect(terminalCount(fixture!, 'feature')).toBeNull();
+    expect(terminalCount(fixture!, 'main')).toBe('1');
+  });
+
+  it('drops the count when the tmux session exits outside the window', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    const session = tabNames(fixture!)[0];
+    execFileSync(TMUX, ['kill-session', '-t', session], { stdio: 'ignore', env: tmuxEnv() });
+
+    await waitFor(() => {
+      fixture!.detectChanges();
+      return terminalCount(fixture!, 'feature') === null;
+    });
+  });
+
+  it('does not count a tmux session that only shares the branch prefix', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    const session = tabNames(fixture!)[0];
+    execFileSync(TMUX, ['new-session', '-d', '-s', `${session}extra`], { stdio: 'ignore', env: tmuxEnv() });
+    clickBranch(fixture, 'main');
+    await waitFor(() => terminalCount(fixture!, 'main') === '1');
+
+    fixture.detectChanges();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+  });
+
+  it('finds tmux on PATH and skips the agent wrapper', () => {
+    const binary = tmuxBinary();
+    expect(binary.startsWith('/exec-daemon')).toBe(false);
+    expect(existsSync(binary)).toBe(true);
   });
 });

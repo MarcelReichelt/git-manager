@@ -1,6 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, OnInit, computed, input, signal } from '@angular/core';
-import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from '../../src/merge.js';
+import { mergeSourceIntoTarget } from '../../src/merge.js';
 import { addRepository, listRepositories, type RegisteredRepository } from '../../src/registry.js';
 import {
   commitsOnBranch,
@@ -71,9 +71,9 @@ import {
           <span class="row-behind">{{ branch.behind }} behind</span>
           @if (menuBranch() === branch.name) {
             <div role="menu">
-              <button type="button" (click)="openMerge('into', branch.name)">Merge into the master tree</button>
-              <button type="button" (click)="openMerge('from', branch.name)">Merge from the master tree</button>
-              <button type="button" (click)="openMerge('generic', branch.name)">Generic merge</button>
+              <button type="button" (click)="openMerge('into', branch)">Merge into the master tree</button>
+              <button type="button" (click)="openMerge('from', branch)">Merge from the master tree</button>
+              <button type="button" (click)="openMerge('generic', branch)">Generic merge</button>
             </div>
           }
         </div>
@@ -94,8 +94,13 @@ import {
           </ul>
         </div>
       }
-      @if (platform() === 'win32' && worktreePath()) {
-        <div class="terminal-pane" [gmShell]="worktreePath()" style="background-color: #1e1e1e"></div>
+      @if (platform() === 'win32' && shellRunning() && worktreePath()) {
+        <div
+          class="terminal-pane"
+          [gmShell]="worktreePath()"
+          (shellEnded)="onShellEnded()"
+          style="background-color: #1e1e1e"
+        ></div>
       } @else if (sessions().length > 0) {
         <div class="terminal-chrome">
           <div role="tablist">
@@ -107,8 +112,13 @@ import {
           <button type="button" (click)="newSession()">New</button>
           <button type="button" (click)="killSession()">Kill</button>
         </div>
-        @for (session of visibleSessions(); track $index) {
-          <div class="terminal-pane" [gmTerminal]="session" style="background-color: #1e1e1e"></div>
+        @for (session of visibleSessions(); track session) {
+          <div
+            class="terminal-pane"
+            [gmTerminal]="session"
+            (sessionEnded)="onSessionEnded(session)"
+            style="background-color: #1e1e1e"
+          ></div>
         }
       }
     </section>
@@ -189,6 +199,7 @@ export class WorkspaceComponent implements OnInit {
   readonly mergeMode = signal<'into' | 'from' | 'generic'>('generic');
   readonly mergeBranch = signal('');
   readonly squash = signal(false);
+  readonly shellRunning = signal(false);
   readonly visibleSessions = computed(() => {
     const focused = this.focused();
     const sessions = this.sessions();
@@ -292,27 +303,22 @@ export class WorkspaceComponent implements OnInit {
     this.menuBranch.set('');
   }
 
-  openMerge(mode: 'into' | 'from' | 'generic', branch: string): void {
+  openMerge(mode: 'into' | 'from' | 'generic', branch: BranchRow): void {
     const primary = primaryCheckoutBranch(this.activeRepo());
     this.mergeMode.set(mode);
-    this.mergeBranch.set(branch);
+    this.mergeBranch.set(branch.name);
     this.squash.set(false);
     if (mode === 'into') {
-      this.mergeSource.set(branch);
+      this.mergeSource.set(branch.ref);
       this.mergeTarget.set(primary);
-      this.mergeSourceIsMasterTree.set(false);
-      this.mergeTargetIsMasterTree.set(true);
     } else if (mode === 'from') {
       this.mergeSource.set(primary);
-      this.mergeTarget.set(branch);
-      this.mergeSourceIsMasterTree.set(true);
-      this.mergeTargetIsMasterTree.set(false);
+      this.mergeTarget.set(branch.name);
     } else {
       this.mergeSource.set('');
       this.mergeTarget.set('');
-      this.mergeSourceIsMasterTree.set(false);
-      this.mergeTargetIsMasterTree.set(false);
     }
+    this.syncMasterTreeLabels();
     this.mergeOpen.set(true);
   }
 
@@ -320,6 +326,7 @@ export class WorkspaceComponent implements OnInit {
     const target = event.target;
     if (target instanceof HTMLInputElement) {
       this.mergeSource.set(target.value);
+      this.syncMasterTreeLabels();
     }
   }
 
@@ -327,6 +334,7 @@ export class WorkspaceComponent implements OnInit {
     const target = event.target;
     if (target instanceof HTMLInputElement) {
       this.mergeTarget.set(target.value);
+      this.syncMasterTreeLabels();
     }
   }
 
@@ -338,22 +346,15 @@ export class WorkspaceComponent implements OnInit {
   }
 
   confirmMerge(): void {
-    const mode = this.mergeMode();
-    const squash = this.squash();
+    const source = this.mergeSource().trim();
+    const target = this.mergeTarget().trim();
+    if (!source || !target) {
+      return;
+    }
     try {
-      if (mode === 'into') {
-        mergeIntoMasterTree(this.activeRepo(), this.mergeBranch(), squash);
-      } else if (mode === 'from') {
-        mergeFromMasterTree(this.activeRepo(), this.mergeBranch(), squash);
-      } else {
-        const source = this.mergeSource().trim();
-        const target = this.mergeTarget().trim();
-        if (!source || !target) {
-          return;
-        }
-        mergeSourceIntoTarget(this.activeRepo(), source, target, squash);
-      }
+      mergeSourceIntoTarget(this.activeRepo(), source, target, this.squash());
       this.mergeOpen.set(false);
+      this.refreshBranchView();
     } catch (error) {
       this.notice.set(error instanceof Error ? error.message : String(error));
     }
@@ -381,8 +382,10 @@ export class WorkspaceComponent implements OnInit {
     if (this.platform() === 'win32') {
       this.sessions.set([]);
       this.focused.set('');
+      this.shellRunning.set(true);
       return;
     }
+    this.shellRunning.set(false);
     const existing = sessionsForBranch(this.activeRepo(), branch);
     if (existing.length === 0) {
       const name = createBranchSession(this.activeRepo(), branch, cwd, 1);
@@ -396,7 +399,7 @@ export class WorkspaceComponent implements OnInit {
 
   terminalCount(branch: string): number {
     if (this.platform() === 'win32') {
-      return branch === this.selectedBranch() && this.worktreePath().length > 0 ? 1 : 0;
+      return branch === this.selectedBranch() && this.shellRunning() ? 1 : 0;
     }
     if (branch === this.selectedBranch()) {
       return this.sessions().length;
@@ -436,6 +439,24 @@ export class WorkspaceComponent implements OnInit {
     this.splitView.set(true);
   }
 
+  onShellEnded(): void {
+    this.shellRunning.set(false);
+  }
+
+  onSessionEnded(session: string): void {
+    if (!this.sessions().includes(session)) {
+      return;
+    }
+    const remaining = this.sessions().filter((name) => name !== session);
+    this.sessions.set(remaining);
+    if (remaining.length < 2) {
+      this.splitView.set(false);
+    }
+    if (this.focused() === session) {
+      this.focused.set(remaining[0] ?? '');
+    }
+  }
+
   killSession(): void {
     const current = this.focused();
     if (!current) {
@@ -456,6 +477,31 @@ export class WorkspaceComponent implements OnInit {
     this.sessions.set([]);
     this.focused.set('');
     this.splitView.set(false);
+    this.shellRunning.set(false);
+  }
+
+  private refreshBranchView(): void {
+    const path = this.activeRepo();
+    if (!path) {
+      return;
+    }
+    this.branches.set(listBranches(path));
+    const selected = this.selectedBranch();
+    if (!selected) {
+      return;
+    }
+    const row = this.branches().find((branch) => branch.name === selected);
+    const commits = commitsOnBranch(path, row?.ref ?? selected);
+    this.ahead.set(commits.ahead);
+    this.behind.set(commits.behind);
+    this.commitsOnlyOnBranch.set(commits.subjects);
+  }
+
+  private syncMasterTreeLabels(): void {
+    const path = this.activeRepo();
+    const primary = path ? primaryCheckoutBranch(path) : '';
+    this.mergeSourceIsMasterTree.set(primary.length > 0 && this.mergeSource() === primary);
+    this.mergeTargetIsMasterTree.set(primary.length > 0 && this.mergeTarget() === primary);
   }
 }
 

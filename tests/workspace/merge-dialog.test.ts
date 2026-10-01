@@ -2,7 +2,7 @@
 
 import './setup';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -311,6 +311,35 @@ describe('merge dialog', () => {
 
     expect(git(repo.repo, ['rev-parse', 'HEAD'])).toBe(primaryHead);
     expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(featureTip);
+  });
+
+  it('merges the source typed into an into-master dialog and refreshes the counts', () => {
+    const repo = createRepo();
+    root = repo.root;
+    execFileSync('git', ['branch', 'other'], { cwd: repo.repo, stdio: 'ignore' });
+    const other = addWorktree(repo.repo, 'other');
+    commitFile(other, 'other.txt', 'from other\n', 'add other');
+    const feature = addWorktree(repo.repo, 'feature');
+    commitFile(feature, 'feature.txt', 'from feature\n', 'add feature');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    fixture = renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    expect(shownCommits(fixture).ahead).toBe('1 ahead');
+    expect(shownCommits(fixture).commits).toEqual(['add feature']);
+
+    hoverBranch(fixture, 'feature');
+    clickMenu(fixture, 'Merge into the master tree');
+    setMergeField(fixture, 'Source', 'other');
+    confirmMerge(fixture);
+
+    expect(readFileSync(join(repo.repo, 'other.txt'), 'utf8')).toBe('from other\n');
+    expect(existsSync(join(repo.repo, 'feature.txt'))).toBe(false);
+    expect(git(repo.repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('trunk');
+    expect(shownCommits(fixture).commits).toEqual(['add feature']);
+    const row = branchRow(fixture, 'other');
+    expect(row.querySelector('.row-ahead')?.textContent?.trim()).toBe('0 ahead');
   });
 
   it('shows the selected branch ahead, behind, and the commits only on that branch', () => {

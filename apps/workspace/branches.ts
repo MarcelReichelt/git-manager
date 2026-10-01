@@ -120,10 +120,14 @@ function aheadBehind(repoPath: string, base: string, ref: string): { ahead: numb
 }
 
 function changedFileCount(cwd: string): number {
-  const output = execFileSync('git', ['status', '--porcelain=v1', '-uall'], {
-    cwd,
-    encoding: 'utf8',
-  });
+  const output = execFileSync(
+    'git',
+    ['status', '--porcelain=v1', '-uall', '--', '.', ':(exclude).workspaces'],
+    {
+      cwd,
+      encoding: 'utf8',
+    },
+  );
   if (output.length === 0) {
     return 0;
   }

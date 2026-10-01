@@ -1,7 +1,7 @@
-import { Directive, ElementRef, OnDestroy, OnInit, afterRenderEffect, inject, input } from '@angular/core';
+import { Directive, ElementRef, NgZone, OnDestroy, OnInit, afterRenderEffect, inject, input, output } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
-import { TMUX, terminalEnvironment } from './tmux-sessions';
+import { terminalEnvironment, tmuxBinary } from './tmux-sessions';
 
 @Directive({
   selector: '[gmTerminal]',
@@ -9,10 +9,13 @@ import { TMUX, terminalEnvironment } from './tmux-sessions';
 })
 export class TerminalPane implements OnInit, OnDestroy {
   readonly sessionName = input.required<string>({ alias: 'gmTerminal' });
+  readonly sessionEnded = output<string>();
   private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly zone = inject(NgZone);
   private term: Terminal | null = null;
   private pty: IPty | null = null;
   private attachedSession = '';
+  private generation = 0;
 
   constructor() {
     afterRenderEffect(() => {
@@ -43,6 +46,7 @@ export class TerminalPane implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.generation += 1;
     this.detach();
     this.term?.dispose();
     this.term = null;
@@ -55,7 +59,8 @@ export class TerminalPane implements OnInit, OnDestroy {
     }
     this.detach();
     term.reset();
-    const pty = spawn(TMUX, ['attach-session', '-t', session], {
+    const generation = ++this.generation;
+    const pty = spawn(tmuxBinary(), ['attach-session', '-t', session], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -66,10 +71,17 @@ export class TerminalPane implements OnInit, OnDestroy {
     pty.onData((data) => {
       term.write(data);
     });
+    pty.onExit(() => {
+      if (generation !== this.generation) {
+        return;
+      }
+      this.zone.run(() => this.sessionEnded.emit(session));
+    });
     term.focus();
   }
 
   private detach(): void {
+    this.generation += 1;
     try {
       this.pty?.kill();
     } catch {

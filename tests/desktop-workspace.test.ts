@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
@@ -16,8 +16,11 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 describe('desktop workspace', () => {
   const roots: string[] = [];
   const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  let restoreSearch: (() => void) | undefined;
 
   afterEach(() => {
+    restoreSearch?.();
+    restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
       delete process.env.GIT_MANAGER_REGISTRY_PATH;
     } else {
@@ -35,46 +38,42 @@ describe('desktop workspace', () => {
     }
   });
 
-  async function render() {
+  async function setupWorkspace(
+    apply?: (fixture: ComponentFixture<WorkspaceComponent>) => void,
+  ) {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [WorkspaceComponent],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(WorkspaceComponent);
+    apply?.(fixture);
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
+  }
+
+  function render() {
+    return setupWorkspace();
   }
 
   async function renderLive() {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [WorkspaceComponent],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(WorkspaceComponent);
-    fixture.componentRef.setInput('liveRegistry', true);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    return fixture;
+    const previousSearch = location.search;
+    history.replaceState(null, '', `${location.pathname}?live=1`);
+    restoreSearch = () => {
+      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+    };
+    return setupWorkspace();
   }
 
-  async function renderRepository(repoPath: string) {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [WorkspaceComponent],
-    }).compileComponents();
-
+  function renderRepository(repoPath: string) {
     if (!process.env.GIT_MANAGER_REGISTRY_PATH) {
       process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     }
-    const fixture = TestBed.createComponent(WorkspaceComponent);
-    fixture.componentRef.setInput('repositoryPath', repoPath);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    return fixture;
+    return setupWorkspace((fixture) => {
+      fixture.componentRef.setInput('repositoryPath', repoPath);
+    });
   }
 
   it('shows a centered repository card and no branch list on first start', async () => {
@@ -229,6 +228,17 @@ describe('desktop workspace', () => {
     expect(controls.at(-1)).toBe(create);
   });
 
+  it('notes that a remote-only branch is fetched first and when create hooks run', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const note = fixture.nativeElement.querySelector('.create-note');
+    expect(note.textContent.trim()).toBe(
+      'A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
+    );
+  });
+
   it('opens a branch menu where squash is inside Merge and remove is outside it', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -253,6 +263,24 @@ describe('desktop workspace', () => {
     expect(group.contains(remove)).toBe(false);
     expect(squash.parentElement).not.toBe(remove.parentElement);
     expect(squash.parentElement).not.toBe(group.parentElement);
+  });
+
+  it('counts the commits that exist only on feature/login in the branch summary', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('2 commits only on this branch · 2 changed files');
+
+    const commits = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')];
+    expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
+      'Add the login form',
+      'Wire the session',
+    ]);
   });
 
   it('shows the changed files and the commits only on feature/login', async () => {
@@ -802,6 +830,19 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
     expect(git(repoPath, ['rev-parse', 'refs/heads/feature'])).toBe(branchSha);
     expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).not.toBeNull();
+  });
+
+  it('reads the registry on the centered card when the live query flag is set', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+    const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
+
+    expect(card).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repository"][data-name="Harbor"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repository"][data-name="Atlas"]')).toBeNull();
   });
 
   it('lists registered repositories on the card and opens that repository', async () => {

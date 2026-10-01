@@ -1,5 +1,8 @@
 import angular from '@analogjs/vite-plugin-angular';
 import { defineConfig, type Plugin } from 'vite';
+import { electronNativeAddons } from './src/desktop/electron-native-addons.cjs';
+
+const electronNativePackageNames = electronNativeAddons.map((addon) => addon.name);
 
 const nodeBuiltins = new Set([
   'assert',
@@ -26,7 +29,7 @@ function keepNodeBuiltinsExternal(): Plugin {
     enforce: 'pre',
     resolveId(id) {
       const bare = id.startsWith('node:') ? id.slice('node:'.length) : id;
-      if (nodeBuiltins.has(bare) || id === 'node-pty' || id === 'better-sqlite3') {
+      if (nodeBuiltins.has(bare) || electronNativePackageNames.includes(id)) {
         return { id, external: true };
       }
       return null;
@@ -88,7 +91,7 @@ export default defineConfig({
     outDir: '../../dist/desktop-app',
     emptyOutDir: true,
     rollupOptions: {
-      external: ['node-pty', 'better-sqlite3'],
+      external: [...electronNativePackageNames],
     },
   },
 });

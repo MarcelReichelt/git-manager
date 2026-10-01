@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { electronNativeAddons } from '../src/desktop/electron-native-addons.cjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -21,11 +22,6 @@ if (!electronVersion || /^[\^~]/.test(electronVersion)) {
   console.error('Electron native rebuild needs an exact electron version in devDependencies.');
   process.exit(1);
 }
-
-const modules = [
-  { name: 'better-sqlite3', binary: 'better_sqlite3.node' },
-  { name: 'node-pty', binary: 'pty.node' },
-];
 
 const outDir = join(root, 'native', 'electron');
 const stampPath = join(outDir, 'stamp.json');
@@ -41,7 +37,9 @@ const stamp = {
   electron: electronVersion,
   platform: process.platform,
   arch: process.arch,
-  modules: Object.fromEntries(modules.map((mod) => [mod.name, moduleVersion(mod.name)])),
+  modules: Object.fromEntries(
+    electronNativeAddons.map((mod) => [mod.name, moduleVersion(mod.name)]),
+  ),
 };
 
 function stampMatches() {
@@ -52,7 +50,7 @@ function stampMatches() {
   if (JSON.stringify(current) !== JSON.stringify(stamp)) {
     return false;
   }
-  return modules.every((mod) => existsSync(join(outDir, mod.binary)));
+  return electronNativeAddons.every((mod) => existsSync(join(outDir, mod.binary)));
 }
 
 if (stampMatches()) {
@@ -63,7 +61,7 @@ if (stampMatches()) {
 const nodeGyp = join(root, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js');
 mkdirSync(outDir, { recursive: true });
 
-for (const mod of modules) {
+for (const mod of electronNativeAddons) {
   const moduleDir = join(root, 'node_modules', mod.name);
   const buildDir = join(moduleDir, 'build');
   const stashDir = join(tmpdir(), `git-manager-native-${mod.name}-${process.pid}`);

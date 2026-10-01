@@ -44,6 +44,31 @@ function branchRow(fixture: ComponentFixture<WorkspaceComponent>, name: string):
   return row;
 }
 
+function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
+  const button = branchRow(fixture, name).querySelector('button');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Branch ${name} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
+function shownCommits(fixture: ComponentFixture<WorkspaceComponent>): {
+  ahead: string;
+  behind: string;
+  commits: string[];
+} {
+  const region = fixture.nativeElement.querySelector('.branch-commits');
+  if (!(region instanceof HTMLElement)) {
+    throw new Error('Branch commits are not shown');
+  }
+  return {
+    ahead: region.querySelector('.ahead')?.textContent?.trim() ?? '',
+    behind: region.querySelector('.behind')?.textContent?.trim() ?? '',
+    commits: Array.from(region.querySelectorAll('li'), (item) => (item.textContent ?? '').trim()),
+  };
+}
+
 function hoverBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
   branchRow(fixture, name).dispatchEvent(new MouseEvent('mouseenter'));
   fixture.detectChanges();
@@ -89,6 +114,16 @@ function enableSquash(fixture: ComponentFixture<WorkspaceComponent>): void {
     throw new Error('Squash is not on the dialog');
   }
   box.click();
+  fixture.detectChanges();
+}
+
+function setMergeField(fixture: ComponentFixture<WorkspaceComponent>, name: 'Source' | 'Target', value: string): void {
+  const input = mergeDialog(fixture).querySelector(`[aria-label="${name}"]`);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`${name} is not on the merge dialog`);
+  }
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
   fixture.detectChanges();
 }
 
@@ -234,5 +269,76 @@ describe('merge dialog', () => {
       .split('\n')
       .filter((line) => line.startsWith('parent '));
     expect(parents).toHaveLength(1);
+  });
+
+  it('merges the source and target entered in a generic merge', () => {
+    const repo = createRepo();
+    root = repo.root;
+    commitFile(repo.repo, 'trunk.txt', 'from trunk\n', 'ship billing');
+    const worktree = addWorktree(repo.repo, 'feature');
+    commitFile(worktree, 'feature.txt', 'from feature\n', 'add feature');
+    const primaryHead = git(repo.repo, ['rev-parse', 'HEAD']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    fixture = renderWorkspace(repo.repo);
+
+    hoverBranch(fixture, 'feature');
+    clickMenu(fixture, 'Generic merge');
+    setMergeField(fixture, 'Source', 'trunk');
+    setMergeField(fixture, 'Target', 'feature');
+    confirmMerge(fixture);
+
+    expect(git(repo.repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('trunk');
+    expect(git(repo.repo, ['rev-parse', 'HEAD'])).toBe(primaryHead);
+    expect(git(worktree, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature');
+    expect(readFileSync(join(worktree, 'trunk.txt'), 'utf8')).toBe('from trunk\n');
+  });
+
+  it('confirming a blank generic merge leaves the checkout untouched', () => {
+    const repo = createRepo();
+    root = repo.root;
+    commitFile(repo.repo, 'trunk.txt', 'from trunk\n', 'ship billing');
+    const worktree = addWorktree(repo.repo, 'feature');
+    const primaryHead = git(repo.repo, ['rev-parse', 'HEAD']);
+    const featureTip = git(worktree, ['rev-parse', 'HEAD']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    fixture = renderWorkspace(repo.repo);
+
+    hoverBranch(fixture, 'feature');
+    clickMenu(fixture, 'Generic merge');
+    confirmMerge(fixture);
+
+    expect(git(repo.repo, ['rev-parse', 'HEAD'])).toBe(primaryHead);
+    expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(featureTip);
+  });
+
+  it('shows the selected branch ahead, behind, and the commits only on that branch', () => {
+    const repo = createRepo();
+    root = repo.root;
+    execFileSync('git', ['checkout', 'feature'], { cwd: repo.repo, stdio: 'ignore' });
+    commitFile(repo.repo, 'invoice.txt', 'invoice\n', 'add invoice');
+    commitFile(repo.repo, 'tax.txt', 'tax\n', 'add tax');
+    execFileSync('git', ['checkout', 'trunk'], { cwd: repo.repo, stdio: 'ignore' });
+    commitFile(repo.repo, 'trunk.txt', 'from trunk\n', 'ship billing');
+    execFileSync('git', ['branch', 'hotfix'], { cwd: repo.repo, stdio: 'ignore' });
+    execFileSync('git', ['checkout', 'hotfix'], { cwd: repo.repo, stdio: 'ignore' });
+    commitFile(repo.repo, 'typo.txt', 'typo\n', 'fix typo');
+    execFileSync('git', ['checkout', 'trunk'], { cwd: repo.repo, stdio: 'ignore' });
+    fixture = renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    expect(shownCommits(fixture)).toEqual({
+      ahead: '2 ahead',
+      behind: '1 behind',
+      commits: ['add tax', 'add invoice'],
+    });
+
+    clickBranch(fixture, 'hotfix');
+    expect(shownCommits(fixture)).toEqual({
+      ahead: '1 ahead',
+      behind: '0 behind',
+      commits: ['fix typo'],
+    });
   });
 });

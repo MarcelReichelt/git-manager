@@ -1,6 +1,6 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
-import { mergeFromMasterTree, mergeIntoMasterTree } from '../../src/merge.js';
-import { findWorktree, listBranches, primaryCheckoutBranch } from './branches';
+import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from '../../src/merge.js';
+import { commitsOnBranch, findWorktree, listBranches, primaryCheckoutBranch } from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
@@ -38,6 +38,17 @@ import {
       @if (notice()) {
         <p>{{ notice() }}</p>
       }
+      @if (selectedBranch()) {
+        <div class="branch-commits">
+          <p class="ahead">{{ ahead() }} ahead</p>
+          <p class="behind">{{ behind() }} behind</p>
+          <ul aria-label="Commits only on this branch">
+            @for (subject of commitsOnlyOnBranch(); track $index) {
+              <li>{{ subject }}</li>
+            }
+          </ul>
+        </div>
+      }
       @if (platform() === 'win32' && worktreePath()) {
         <div class="terminal-pane" [gmShell]="worktreePath()" style="background-color: #1e1e1e"></div>
       } @else if (sessions().length > 0) {
@@ -63,14 +74,14 @@ import {
           @if (mergeSourceIsMasterTree()) {
             <span>master tree</span>
           }
-          <input aria-label="Source" [value]="mergeSource()" />
+          <input aria-label="Source" [value]="mergeSource()" (input)="onMergeSource($event)" />
         </label>
         <label>
           Target
           @if (mergeTargetIsMasterTree()) {
             <span>master tree</span>
           }
-          <input aria-label="Target" [value]="mergeTarget()" />
+          <input aria-label="Target" [value]="mergeTarget()" (input)="onMergeTarget($event)" />
         </label>
         <label>
           <input aria-label="Squash" type="checkbox" [checked]="squash()" (change)="onSquash($event)" />
@@ -87,6 +98,9 @@ export class WorkspaceComponent implements OnInit {
   readonly branches = signal<string[]>([]);
   readonly notice = signal('');
   readonly selectedBranch = signal('');
+  readonly ahead = signal(0);
+  readonly behind = signal(0);
+  readonly commitsOnlyOnBranch = signal<string[]>([]);
   readonly worktreePath = signal('');
   readonly sessions = signal<string[]>([]);
   readonly focused = signal('');
@@ -149,6 +163,20 @@ export class WorkspaceComponent implements OnInit {
     this.mergeOpen.set(true);
   }
 
+  onMergeSource(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) {
+      this.mergeSource.set(target.value);
+    }
+  }
+
+  onMergeTarget(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) {
+      this.mergeTarget.set(target.value);
+    }
+  }
+
   onSquash(event: Event): void {
     const target = event.target;
     if (target instanceof HTMLInputElement) {
@@ -159,14 +187,18 @@ export class WorkspaceComponent implements OnInit {
   confirmMerge(): void {
     const mode = this.mergeMode();
     const squash = this.squash();
-    if (mode === 'generic') {
-      return;
-    }
     try {
       if (mode === 'into') {
         mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), squash);
-      } else {
+      } else if (mode === 'from') {
         mergeFromMasterTree(this.repoPath(), this.mergeBranch(), squash);
+      } else {
+        const source = this.mergeSource().trim();
+        const target = this.mergeTarget().trim();
+        if (!source || !target) {
+          return;
+        }
+        mergeSourceIntoTarget(this.repoPath(), source, target, squash);
       }
       this.mergeOpen.set(false);
     } catch (error) {
@@ -175,14 +207,22 @@ export class WorkspaceComponent implements OnInit {
   }
 
   selectBranch(branch: string): void {
+    const commits = commitsOnBranch(this.repoPath(), branch);
     const cwd = findWorktree(this.repoPath(), branch);
     if (!cwd) {
       this.notice.set('This branch has no worktree.');
       this.clearTerminals();
+      this.selectedBranch.set(branch);
+      this.ahead.set(commits.ahead);
+      this.behind.set(commits.behind);
+      this.commitsOnlyOnBranch.set(commits.subjects);
       return;
     }
     this.notice.set('');
     this.selectedBranch.set(branch);
+    this.ahead.set(commits.ahead);
+    this.behind.set(commits.behind);
+    this.commitsOnlyOnBranch.set(commits.subjects);
     this.worktreePath.set(cwd);
     this.splitView.set(false);
     if (this.platform() === 'win32') {

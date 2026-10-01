@@ -7,6 +7,27 @@ export function primaryCheckoutBranch(repoPath: string): string {
   }).trim();
 }
 
+export function commitsOnBranch(
+  repoPath: string,
+  branch: string,
+): { ahead: number; behind: number; subjects: string[] } {
+  const base = primaryCheckoutBranch(repoPath);
+  const counts = execFileSync('git', ['rev-list', '--left-right', '--count', `${base}...${branch}`], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  }).trim();
+  const [behindText, aheadText] = counts.split(/\s+/);
+  const log = execFileSync('git', ['log', '--format=%s', `${base}..${branch}`], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  }).trim();
+  return {
+    ahead: Number(aheadText),
+    behind: Number(behindText),
+    subjects: log.length === 0 ? [] : log.split('\n'),
+  };
+}
+
 export function listBranches(repoPath: string): string[] {
   const output = execFileSync('git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads'], {
     cwd: repoPath,

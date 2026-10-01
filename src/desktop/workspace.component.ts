@@ -1,8 +1,10 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, signal } from '@angular/core';
 
 @Component({
   selector: 'gm-workspace',
   standalone: true,
+  imports: [NgTemplateOutlet],
   styles: [
     `
       .start-screen {
@@ -11,31 +13,52 @@ import { Component, signal } from '@angular/core';
         justify-content: center;
         min-height: 100vh;
       }
+
+      .switching-overlay {
+        position: fixed;
+        inset: 0;
+      }
     `,
   ],
   template: `
+    <ng-template #repositoryCard>
+      <section data-testid="repository-card">
+        <button type="button" data-testid="repository" data-name="Harbor" (click)="choose('Harbor')">
+          Harbor
+        </button>
+        <button type="button" data-testid="repository" data-name="Atlas" (click)="choose('Atlas')">
+          Atlas
+        </button>
+      </section>
+    </ng-template>
+
     @if (selectedName() === null) {
       <div class="start-screen">
-        <section data-testid="repository-card">
-          <button type="button" data-testid="repository" data-name="Harbor" (click)="choose('Harbor')">
-            Harbor
-          </button>
-          <button type="button" data-testid="repository" data-name="Atlas" (click)="choose('Atlas')">
-            Atlas
-          </button>
-        </section>
+        <ng-container [ngTemplateOutlet]="repositoryCard" />
       </div>
     } @else {
       <main data-testid="workspace">
         <h1 data-testid="repository-name">{{ selectedName() }}</h1>
+        <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
       </main>
+      @if (overlayOpen()) {
+        <div class="start-screen switching-overlay" data-testid="switching-overlay">
+          <ng-container [ngTemplateOutlet]="repositoryCard" />
+        </div>
+      }
     }
   `,
 })
 export class WorkspaceComponent {
   readonly selectedName = signal<string | null>(null);
+  readonly overlayOpen = signal(false);
 
   choose(name: string): void {
     this.selectedName.set(name);
+    this.overlayOpen.set(false);
+  }
+
+  openSwitch(): void {
+    this.overlayOpen.set(true);
   }
 }

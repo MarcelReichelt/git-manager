@@ -47,4 +47,33 @@ describe('desktop workspace', () => {
       'Harbor',
     );
   });
+
+  it('switches from Harbor to Atlas through a centered repository overlay', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+
+    const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
+    expect(overlay).not.toBeNull();
+    const card = overlay.querySelector('[data-testid="repository-card"]');
+    const frame = getComputedStyle(card.parentElement);
+    expect(frame.display).toBe('flex');
+    expect(frame.justifyContent).toBe('center');
+    expect(frame.alignItems).toBe('center');
+    const names = [...card.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual(['Harbor', 'Atlas']);
+
+    overlay.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Atlas',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+  });
 });

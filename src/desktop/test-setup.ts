@@ -11,6 +11,47 @@ getTestBed().initTestEnvironment(
   platformBrowserDynamicTesting(),
 );
 
+// jsdom returns var(--token) as the computed color. Resolve the custom property
+// from the rendered element so screen assertions see the used color.
+const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+const customPropertyUse = /^var\(\s*(--[\w-]+)\s*\)$/;
+
+window.getComputedStyle = (element: Element, pseudoElt?: string | null): CSSStyleDeclaration => {
+  const style = nativeGetComputedStyle(element, pseudoElt);
+  const background = style.backgroundColor;
+  const token = customPropertyUse.exec(background);
+  if (!token) {
+    return style;
+  }
+  const specified = specifiedCustomProperty(element, token[1]);
+  const used = specified ? hexToRgb(specified) : null;
+  if (used) {
+    style.backgroundColor = used;
+  }
+  return style;
+};
+
+function specifiedCustomProperty(element: Element, name: string): string {
+  let node: Element | null = element;
+  while (node) {
+    const value = nativeGetComputedStyle(node).getPropertyValue(name).trim();
+    if (value) {
+      return value;
+    }
+    node = node.parentElement;
+  }
+  return '';
+}
+
+function hexToRgb(color: string): string | null {
+  const hex = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!hex) {
+    return null;
+  }
+  const value = Number.parseInt(hex[1], 16);
+  return `rgb(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255})`;
+}
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string): MediaQueryList =>

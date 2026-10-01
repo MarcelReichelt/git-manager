@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
@@ -459,7 +459,92 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
   });
+
+  it('shows an error when the worktree folder already exists', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature/notes']);
+    const checkout = join(repoPath, '.workspaces', 'feature-notes');
+    mkdirSync(checkout, { recursive: true });
+    writeFileSync(join(checkout, 'keep.txt'), 'stay');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+    const fixture = await renderRepository(repoPath);
+
+    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    field.value = 'feature/notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      `Worktree folder already exists: ${checkout}`,
+    );
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(readFileSync(join(checkout, 'keep.txt'), 'utf8')).toBe('stay');
+  });
+
+  it('adds no worktree when a plugin aborts create', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'notes']);
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'abort.ts'),
+      [
+        'export default {',
+        "  name: 'abort-create',",
+        "  preWorktreeCreate(): 'abort' {",
+        "    return 'abort';",
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      '[hooks]\nmodules = ["plugins/abort.ts"]\n',
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+    const fixture = await renderRepository(repoPath);
+
+    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    await untilVisible(fixture, (root) =>
+      (root.querySelector('[data-testid="workspace-error"]')?.textContent ?? '').includes(
+        'abort-create aborted worktree create',
+      ),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'abort-create aborted worktree create',
+    );
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+  });
 });
+
+async function untilVisible(
+  fixture: { detectChanges(): void; nativeElement: HTMLElement },
+  ready: (root: HTMLElement) => boolean,
+): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < 5000) {
+    fixture.detectChanges();
+    if (ready(fixture.nativeElement)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+  fixture.detectChanges();
+}
 
 function leftEdge(element: HTMLElement): number {
   const rect = element.getBoundingClientRect();

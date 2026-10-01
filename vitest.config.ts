@@ -27,6 +27,9 @@ export default defineConfig({
         test: {
           name: 'desktop',
           environment: 'jsdom',
+          // The Angular plugin defaults this project to vmThreads, whose
+          // synthetic node:module cannot host jiti plugin loading.
+          pool: 'forks',
           include: ['tests/desktop-workspace.test.ts'],
           setupFiles: ['src/desktop/test-setup.ts'],
         },

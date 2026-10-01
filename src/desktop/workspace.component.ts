@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, input, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
 import { createWorktree } from '../worktrees.js';
@@ -237,6 +237,9 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
           </ul>
           <input data-testid="create-branch" (input)="setCreateBranchName($event)" />
           <button type="button" data-testid="create-worktree" (click)="createBranch()">Create</button>
+          @if (workspaceError(); as message) {
+            <p data-testid="workspace-error">{{ message }}</p>
+          }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
@@ -301,6 +304,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
   `,
 })
 export class WorkspaceComponent implements OnInit {
+  private readonly zone = inject(NgZone);
   readonly repositoryPath = input<string | null>(null);
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
@@ -314,6 +318,7 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly createBranchName = signal('');
+  readonly workspaceError = signal<string | null>(null);
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
     if (path === null) {
@@ -451,8 +456,18 @@ export class WorkspaceComponent implements OnInit {
     if (!repo) {
       return;
     }
-    await createWorktree(repo, this.createBranchName());
-    this.refreshBranches();
+    this.workspaceError.set(null);
+    try {
+      await createWorktree(repo, this.createBranchName());
+      this.zone.run(() => {
+        this.refreshBranches();
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.zone.run(() => {
+        this.workspaceError.set(message);
+      });
+    }
   }
 
   private refreshBranches(): void {

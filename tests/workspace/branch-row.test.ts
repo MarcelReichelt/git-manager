@@ -44,7 +44,8 @@ function branchRow(fixture: ComponentFixture<WorkspaceComponent>, name: string):
 }
 
 function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
-  return Array.from(fixture.nativeElement.querySelectorAll('.branch-name'), (name) => (name.textContent ?? '').trim());
+  const names = fixture.nativeElement.querySelectorAll('.branch-name');
+  return Array.from(names, (name: Element) => (name.textContent ?? '').trim());
 }
 
 function rowFacts(

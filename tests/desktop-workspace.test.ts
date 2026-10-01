@@ -46,6 +46,20 @@ describe('desktop workspace', () => {
     return fixture;
   }
 
+  async function renderLive() {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [WorkspaceComponent],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixture.componentRef.setInput('liveRegistry', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
   async function renderRepository(repoPath: string) {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
@@ -175,13 +189,15 @@ describe('desktop workspace', () => {
 
     const background = (branch: string) =>
       getComputedStyle(
-        fixture.nativeElement.querySelector(`[data-testid="branch-row"][data-branch="${branch}"]`),
+        fixture.nativeElement.querySelector(
+          `[data-testid="branch-row"][data-branch="${branch}"] [data-testid="status-color"]`,
+        ),
       ).backgroundColor;
 
-    expect(background('wip')).toBe('rgb(173, 216, 230)');
-    expect(background('feature/login')).toBe('rgb(0, 128, 0)');
-    expect(background('origin/release')).toBe('rgb(255, 255, 0)');
-    expect(background('abandoned')).toBe('rgb(255, 0, 0)');
+    expect(background('wip')).toBe('rgb(142, 202, 230)');
+    expect(background('feature/login')).toBe('rgb(61, 220, 151)');
+    expect(background('origin/release')).toBe('rgb(244, 211, 94)');
+    expect(background('abandoned')).toBe('rgb(255, 92, 92)');
 
     for (const row of fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')) {
       expect(row.textContent).not.toMatch(/local only|local-only|remote only|remote-only|gone|remote-deleted/i);
@@ -786,6 +802,68 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
     expect(git(repoPath, ['rev-parse', 'refs/heads/feature'])).toBe(branchSha);
     expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).not.toBeNull();
+  });
+
+  it('lists registered repositories on the card and opens that repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(pier, ['checkout', '-b', 'dock']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual(['Pier', 'Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const rows = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+      row.getAttribute('data-branch'),
+    );
+    expect(rows).toContain('dock');
+    expect(rows).not.toContain('feature/login');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+  });
+
+  it('adds a repository from the centered card', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+
+    const fixture = await renderLive();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+
+    const pathField = fixture.nativeElement.querySelector('[data-testid="add-repository-path"]');
+    const nameField = fixture.nativeElement.querySelector('[data-testid="add-repository-name"]');
+    pathField.value = pier;
+    pathField.dispatchEvent(new Event('input'));
+    nameField.value = 'Pier';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
   });
 });
 

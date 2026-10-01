@@ -47,6 +47,25 @@ function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
   return Array.from(fixture.nativeElement.querySelectorAll('.branch-name'), (name) => (name.textContent ?? '').trim());
 }
 
+function rowFacts(
+  fixture: ComponentFixture<WorkspaceComponent>,
+  name: string,
+): { changedFiles: string; ahead: string; behind: string } {
+  const row = branchRow(fixture, name);
+  return {
+    changedFiles: row.querySelector('.changed-files')?.textContent?.trim() ?? '',
+    ahead: row.querySelector('.row-ahead')?.textContent?.trim() ?? '',
+    behind: row.querySelector('.row-behind')?.textContent?.trim() ?? '',
+  };
+}
+
+function addWorktree(repo: string, branch: string): string {
+  const worktree = join(repo, '.workspaces', branch);
+  mkdirSync(join(repo, '.workspaces'), { recursive: true });
+  git(repo, ['worktree', 'add', worktree, branch]);
+  return worktree;
+}
+
 function branchStatus(fixture: ComponentFixture<WorkspaceComponent>, name: string): { color: string; status: string | null } {
   const swatch = branchRow(fixture, name).querySelector('[data-status]');
   if (!(swatch instanceof HTMLElement)) {
@@ -104,5 +123,51 @@ describe('branch row', () => {
       expect(swatch?.textContent?.trim()).toBe('');
       expect(branchRow(fixture, name).textContent ?? '').not.toMatch(/tracking|gone|local only|remote only/i);
     }
+  });
+
+  it('shows the changed-file count and the commits that branch is ahead and behind', () => {
+    root = mkdtempSync(join(tmpdir(), 'git-manager-status-'));
+    const repo = join(root, 'billing');
+    initRepo(repo);
+    git(repo, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repo, 'invoice.txt'), 'invoice\n');
+    git(repo, ['add', 'invoice.txt']);
+    git(repo, ['commit', '-m', 'add invoice']);
+    writeFileSync(join(repo, 'tax.txt'), 'tax\n');
+    git(repo, ['add', 'tax.txt']);
+    git(repo, ['commit', '-m', 'add tax']);
+    git(repo, ['checkout', 'trunk']);
+    writeFileSync(join(repo, 'trunk.txt'), 'from trunk\n');
+    git(repo, ['add', 'trunk.txt']);
+    git(repo, ['commit', '-m', 'ship billing']);
+    git(repo, ['branch', 'renamed']);
+    git(repo, ['branch', 'pictures']);
+
+    const feature = addWorktree(repo, 'feature');
+    writeFileSync(join(feature, 'README'), 'changed\n');
+    const renamed = addWorktree(repo, 'renamed');
+    git(renamed, ['mv', 'README', 'GUIDE']);
+    const pictures = addWorktree(repo, 'pictures');
+    writeFileSync(join(pictures, 'logo.bin'), Buffer.from([0, 1, 2, 255]));
+    git(pictures, ['add', 'logo.bin']);
+    git(pictures, ['commit', '-m', 'add logo']);
+    writeFileSync(join(pictures, 'logo.bin'), Buffer.from([9, 9, 9, 9]));
+    fixture = renderWorkspace(repo);
+
+    expect(rowFacts(fixture, 'feature')).toEqual({
+      changedFiles: '1',
+      ahead: '2 ahead',
+      behind: '1 behind',
+    });
+    expect(rowFacts(fixture, 'renamed')).toEqual({
+      changedFiles: '1',
+      ahead: '0 ahead',
+      behind: '0 behind',
+    });
+    expect(rowFacts(fixture, 'pictures')).toEqual({
+      changedFiles: '1',
+      ahead: '1 ahead',
+      behind: '0 behind',
+    });
   });
 });

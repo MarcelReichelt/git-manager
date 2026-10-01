@@ -5,6 +5,9 @@ export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | '
 export type BranchRow = {
   name: string;
   status: BranchStatus;
+  changedFiles: number;
+  ahead: number;
+  behind: number;
 };
 
 export function primaryCheckoutBranch(repoPath: string): string {
@@ -51,9 +54,11 @@ export function listBranches(repoPath: string): BranchRow[] {
 
   const remoteOutput = gitOutput(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes']);
   const remoteList = gitOutput(repoPath, ['remote']);
-  const remotePrefixes = new Set(remoteList.length === 0 ? [] : remoteList.split('\n').filter((name) => name.length > 0));
+  const remotePrefixes = new Set(
+    remoteList.length === 0 ? [] : remoteList.split('\n').filter((name) => name.length > 0),
+  );
   const onRemote = new Set<string>();
-  const remoteOnly: string[] = [];
+  const remoteOnly: { name: string; ref: string }[] = [];
   if (remoteOutput.length > 0) {
     for (const short of remoteOutput.split('\n')) {
       const slash = short.indexOf('/');
@@ -66,24 +71,61 @@ export function listBranches(repoPath: string): BranchRow[] {
         continue;
       }
       onRemote.add(name);
-      remoteOnly.push(name);
+      remoteOnly.push({ name, ref: short });
     }
   }
 
+  const base = primaryCheckoutBranch(repoPath);
   const localNames = new Set(locals.map((branch) => branch.name));
-  const rows: BranchRow[] = locals.map((branch) => ({
-    name: branch.name,
-    status: statusForLocal(branch.upstream, branch.track, onRemote.has(branch.name)),
-  }));
+  const rows: BranchRow[] = locals.map((branch) =>
+    branchFacts(repoPath, base, {
+      name: branch.name,
+      status: statusForLocal(branch.upstream, branch.track, onRemote.has(branch.name)),
+      ref: branch.name,
+    }),
+  );
   const seen = new Set(localNames);
-  for (const name of remoteOnly) {
-    if (seen.has(name)) {
+  for (const remote of remoteOnly) {
+    if (seen.has(remote.name)) {
       continue;
     }
-    seen.add(name);
-    rows.push({ name, status: 'remote-only' });
+    seen.add(remote.name);
+    rows.push(branchFacts(repoPath, base, { name: remote.name, status: 'remote-only', ref: remote.ref }));
   }
   return rows.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function branchFacts(
+  repoPath: string,
+  base: string,
+  branch: { name: string; status: BranchStatus; ref: string },
+): BranchRow {
+  const counts = aheadBehind(repoPath, base, branch.ref);
+  const checkout = branch.status === 'remote-only' ? undefined : findWorktree(repoPath, branch.name);
+  return {
+    name: branch.name,
+    status: branch.status,
+    changedFiles: checkout ? changedFileCount(checkout) : 0,
+    ahead: counts.ahead,
+    behind: counts.behind,
+  };
+}
+
+function aheadBehind(repoPath: string, base: string, ref: string): { ahead: number; behind: number } {
+  const counts = gitOutput(repoPath, ['rev-list', '--left-right', '--count', `${base}...${ref}`]);
+  const [behindText, aheadText] = counts.split(/\s+/);
+  return { ahead: Number(aheadText), behind: Number(behindText) };
+}
+
+function changedFileCount(cwd: string): number {
+  const output = execFileSync('git', ['status', '--porcelain=v1', '-uall'], {
+    cwd,
+    encoding: 'utf8',
+  });
+  if (output.length === 0) {
+    return 0;
+  }
+  return output.split('\n').filter((line) => line.length > 0).length;
 }
 
 function statusForLocal(upstream: string, track: string, published: boolean): BranchStatus {

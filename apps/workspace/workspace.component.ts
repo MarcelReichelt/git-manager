@@ -66,6 +66,9 @@ import {
               <span class="terminal-count">{{ terminalCount(branch.name) }}</span>
             }
           </button>
+          <span class="changed-files">{{ branch.changedFiles }}</span>
+          <span class="row-ahead">{{ branch.ahead }} ahead</span>
+          <span class="row-behind">{{ branch.behind }} behind</span>
           @if (menuBranch() === branch.name) {
             <div role="menu">
               <button type="button" (click)="openMerge('into', branch.name)">Merge into the master tree</button>

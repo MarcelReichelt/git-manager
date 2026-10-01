@@ -4,11 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
+import { addRepository } from '../src/registry';
 
 describe('desktop workspace', () => {
   const roots: string[] = [];
+  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
 
   afterEach(() => {
+    if (previousRegistryPath === undefined) {
+      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+    } else {
+      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+    }
     for (const root of roots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
@@ -31,6 +38,9 @@ describe('desktop workspace', () => {
       imports: [WorkspaceComponent],
     }).compileComponents();
 
+    if (!process.env.GIT_MANAGER_REGISTRY_PATH) {
+      process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    }
     const fixture = TestBed.createComponent(WorkspaceComponent);
     fixture.componentRef.setInput('repositoryPath', repoPath);
     fixture.detectChanges();
@@ -415,6 +425,18 @@ describe('desktop workspace', () => {
     expect(logo.querySelector('[data-testid="lines-added"]')).toBeNull();
     expect(logo.querySelector('[data-testid="lines-deleted"]')).toBeNull();
   });
+
+  it('titles a registered repository with its display name', async () => {
+    const repoPath = createEmptyRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+
+    const fixture = await renderRepository(repoPath);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(
+      'Harbor',
+    );
+  });
 });
 
 function leftEdge(element: HTMLElement): number {
@@ -427,6 +449,17 @@ function leftEdge(element: HTMLElement): number {
 
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
+}
+
+function createEmptyRepository(roots: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  roots.push(root);
+  const repoPath = join(root, 'harbor');
+  initGitRepo(repoPath);
+  writeFileSync(join(repoPath, 'README.md'), '# harbor\n');
+  git(repoPath, ['add', '.']);
+  git(repoPath, ['commit', '-m', 'init']);
+  return repoPath;
 }
 
 function createRewriteRepository(roots: string[]): string {

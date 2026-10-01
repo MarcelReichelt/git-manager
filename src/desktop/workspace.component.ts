@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, input, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
+import { findRepository } from '../registry.js';
 import {
   listBranches,
   readChangedFiles,
@@ -315,7 +316,7 @@ export class WorkspaceComponent implements OnInit {
     if (path === null) {
       return this.selectedName();
     }
-    return basename(path);
+    return findRepository(path)?.displayName ?? basename(path);
   });
   readonly branches = computed(() => {
     if (this.repositoryPath() !== null) {

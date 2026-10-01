@@ -2,6 +2,7 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { addRepository, listRepositories, unregisterRepository } from './registry.js';
+import { createWorktree } from './worktrees.js';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 
@@ -45,6 +46,21 @@ program
       for (const repo of listRepositories()) {
         console.log(`${repo.displayName}\t${repo.path}`);
       }
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+const worktree = program.command('worktree').description('Create and remove worktrees');
+
+worktree
+  .command('create <branch>')
+  .description('Create a worktree for a branch')
+  .requiredOption('--repo <repo>', 'Registered repository path or display name')
+  .action(async (branch: string, opts: { repo: string }) => {
+    try {
+      const checkout = await createWorktree(opts.repo, branch);
+      console.log(checkout);
     } catch (error) {
       fail(error);
     }

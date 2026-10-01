@@ -40,6 +40,30 @@ export async function runCli(
   });
 }
 
+export function initBareRepo(path: string, branch = 'main'): void {
+  mkdirSync(path, { recursive: true });
+  execSync(`git init --bare -b ${branch}`, { cwd: path, stdio: 'ignore' });
+}
+
+export function initRepoWithRemote(repoPath: string, remotePath: string, branch = 'main'): void {
+  initBareRepo(remotePath, branch);
+  initRepo(repoPath, branch);
+  execSync(`git remote add origin "${remotePath}"`, { cwd: repoPath, stdio: 'ignore' });
+  execSync(`git push -u origin ${branch}`, { cwd: repoPath, stdio: 'ignore' });
+}
+
+export function pushRemoteOnlyBranch(remotePath: string, baseDir: string, branch: string): void {
+  const clone = join(baseDir, `contributor-${branch.replace(/[^\w.-]+/g, '-')}`);
+  execSync(`git clone "${remotePath}" "${clone}"`, { stdio: 'ignore' });
+  execSync('git config user.name "git-manager test"', { cwd: clone, stdio: 'ignore' });
+  execSync('git config user.email "test@git-manager.local"', { cwd: clone, stdio: 'ignore' });
+  execSync('git config commit.gpgsign false', { cwd: clone, stdio: 'ignore' });
+  execSync(`git checkout -b ${branch}`, { cwd: clone, stdio: 'ignore' });
+  writeFileSync(join(clone, 'remote-only.txt'), 'from remote\n');
+  execSync('git add . && git commit -m "remote only"', { cwd: clone, stdio: 'ignore' });
+  execSync(`git push -u origin ${branch}`, { cwd: clone, stdio: 'ignore' });
+}
+
 export function initRepo(path: string, branch = 'main'): void {
   mkdirSync(path, { recursive: true });
   execSync(`git init -b ${branch}`, { cwd: path, stdio: 'ignore' });

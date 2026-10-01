@@ -63,6 +63,12 @@ export function unregisterRepository(repoPath: string): void {
   }
 }
 
+export function findRepository(query: string): RegisteredRepository | undefined {
+  const repos = listRepositories();
+  const resolved = resolve(query);
+  return repos.find((repo) => repo.path === resolved) ?? repos.find((repo) => repo.displayName === query);
+}
+
 export function listRepositories(): RegisteredRepository[] {
   const db = openRegistry();
   try {

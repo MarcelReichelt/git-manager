@@ -18,6 +18,13 @@ import { Component, signal } from '@angular/core';
         position: fixed;
         inset: 0;
       }
+
+      .content-sheet {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+      }
     `,
   ],
   template: `
@@ -40,6 +47,7 @@ import { Component, signal } from '@angular/core';
       <main data-testid="workspace">
         <h1 data-testid="repository-name">{{ selectedName() }}</h1>
         <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
+        <section class="content-sheet" data-testid="content-sheet"></section>
       </main>
       @if (overlayOpen()) {
         <div class="start-screen switching-overlay" data-testid="switching-overlay">

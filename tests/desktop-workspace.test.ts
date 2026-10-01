@@ -76,4 +76,19 @@ describe('desktop workspace', () => {
     );
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
   });
+
+  it('pins the content sheet to the top, right, and bottom after a repository is chosen', async () => {
+    const fixture = await render();
+    expect(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    const style = getComputedStyle(sheet);
+    expect(style.position).toBe('fixed');
+    expect(style.top).toBe('0px');
+    expect(style.right).toBe('0px');
+    expect(style.bottom).toBe('0px');
+  });
 });

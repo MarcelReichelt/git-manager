@@ -210,6 +210,21 @@ describe('desktop workspace', () => {
       'Wire the session',
     ]);
   });
+
+  it('shows the working tree diff when src/login.ts is chosen', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain(
+      '+export function login',
+    );
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

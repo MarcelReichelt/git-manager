@@ -7,6 +7,7 @@ interface SampleFile {
   path: string;
   added: number | null;
   deleted: number | null;
+  diff?: string;
 }
 
 interface SampleCommit {
@@ -33,7 +34,7 @@ const harborBranches: SampleBranch[] = [
     behind: 1,
     terminalCount: 2,
     files: [
-      { path: 'src/login.ts', added: 12, deleted: 3 },
+      { path: 'src/login.ts', added: 12, deleted: 3, diff: '+export function login' },
       { path: 'README.md', added: 4, deleted: 1 },
     ],
     commits: [{ subject: 'Add the login form' }, { subject: 'Wire the session' }],
@@ -157,8 +158,12 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
           @if (selectedBranch(); as branch) {
             <ul data-testid="changed-files">
               @for (file of branch.files ?? []; track file.path) {
-                <li data-testid="changed-file" [attr.data-path]="file.path">
-                  {{ file.path }}
+                <li
+                  data-testid="changed-file"
+                  [attr.data-path]="file.path"
+                  (click)="selectFile(file.path)"
+                >
+                  <button type="button" (click)="selectFile(file.path)">{{ file.path }}</button>
                   <span data-testid="lines-added">{{ file.added }}</span>
                   <span data-testid="lines-deleted">{{ file.deleted }}</span>
                 </li>
@@ -169,6 +174,9 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 <li data-testid="commit" [attr.data-subject]="commit.subject">{{ commit.subject }}</li>
               }
             </ul>
+            @if (selectedDiff(); as diff) {
+              <pre data-testid="diff">{{ diff }}</pre>
+            }
           }
         </section>
       </main>
@@ -185,16 +193,26 @@ export class WorkspaceComponent {
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
+  readonly selectedFilePath = signal<string | null>(null);
   readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
+  readonly selectedDiff = computed(() => {
+    const file = this.selectedBranch()?.files?.find((item) => item.path === this.selectedFilePath());
+    return file?.diff ?? null;
+  });
 
   choose(name: string): void {
     this.selectedName.set(name);
     this.overlayOpen.set(false);
     this.openBranch.set(null);
     this.selectedBranchName.set(null);
+    this.selectedFilePath.set(null);
+  }
+
+  selectFile(path: string): void {
+    this.selectedFilePath.set(path);
   }
 
   openBranchMenu(name: string, event: Event): void {
@@ -204,6 +222,7 @@ export class WorkspaceComponent {
 
   selectBranch(name: string): void {
     this.selectedBranchName.set(name);
+    this.selectedFilePath.set(null);
   }
 
   openSwitch(): void {

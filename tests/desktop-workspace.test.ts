@@ -529,6 +529,30 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
     expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
   });
+
+  it('copies .env into the new worktree and leaves the original unchanged', async () => {
+    const repoPath = createEmptyRepository(roots);
+    writeFileSync(join(repoPath, '.env'), 'SECRET=1\n');
+    git(repoPath, ['branch', 'notes']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[copy]\nfiles = [".env"]\n');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const fixture = await renderRepository(repoPath);
+
+    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    const copied = join(repoPath, '.workspaces', 'notes', '.env');
+    await untilVisible(fixture, () => existsSync(copied));
+
+    expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\n');
+    writeFileSync(copied, 'SECRET=1\nTOKEN=2\n');
+    expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\nTOKEN=2\n');
+    expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
+  });
 });
 
 async function untilVisible(

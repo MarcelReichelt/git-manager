@@ -151,6 +151,21 @@ describe('desktop workspace', () => {
       expect(row.querySelector('[data-testid="terminal-count"]')).toBeNull();
     }
   });
+
+  it('places create after the branch list as the last sidebar control', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const sidebar = fixture.nativeElement.querySelector('[data-testid="workspace"] aside');
+    const branchList = sidebar.querySelector('[data-testid="branch-list"]');
+    const create = sidebar.querySelector('[data-testid="create-worktree"]');
+    expect(create).not.toBeNull();
+    expect(branchList.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    const controls = [...sidebar.querySelectorAll('button, a, input, select, textarea')];
+    expect(controls.at(-1)).toBe(create);
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

@@ -111,6 +111,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
               </li>
             }
           </ul>
+          <button type="button" data-testid="create-worktree">Create</button>
         </aside>
         <section class="content-sheet" data-testid="content-sheet"></section>
       </main>

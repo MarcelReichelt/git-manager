@@ -605,6 +605,32 @@ describe('desktop workspace', () => {
     expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('0');
   });
+
+  it('squashes the branch into one master commit when squash is checked', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor', 'workspaces');
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
+    git(checkout, ['add', 'feature.txt']);
+    git(checkout, ['commit', '-m', 'feature change']);
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="squash"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+
+    expect(readFileSync(join(repoPath, 'feature.txt'), 'utf8')).toBe('from feature\n');
+    expect(git(repoPath, ['log', '--format=%s'])).toBe('Squash feature into master\ninit');
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('feature change');
+  });
 });
 
 async function untilVisible(

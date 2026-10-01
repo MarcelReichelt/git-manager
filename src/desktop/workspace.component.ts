@@ -466,7 +466,7 @@ export class WorkspaceComponent implements OnInit {
     if (!repo) {
       return;
     }
-    updateFromMaster(repo, name, false);
+    updateFromMaster(repo, name, squashChecked(event));
     this.refreshAfterBranchChange(name);
   }
 
@@ -476,7 +476,7 @@ export class WorkspaceComponent implements OnInit {
     if (!repo) {
       return;
     }
-    mergeIntoMaster(repo, name, false);
+    mergeIntoMaster(repo, name, squashChecked(event));
     this.refreshAfterBranchChange(name);
   }
 
@@ -525,4 +525,10 @@ export class WorkspaceComponent implements OnInit {
       })),
     );
   }
+}
+
+function squashChecked(event: Event): boolean {
+  const menu = (event.currentTarget as HTMLElement | null)?.closest('[data-testid="hover-menu"]');
+  const box = menu?.querySelector('[data-testid="squash"]');
+  return box instanceof HTMLInputElement && box.checked;
 }

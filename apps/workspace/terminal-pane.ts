@@ -1,4 +1,4 @@
-import { Directive, ElementRef, OnDestroy, OnInit, inject, input } from '@angular/core';
+import { Directive, ElementRef, OnDestroy, OnInit, afterRenderEffect, inject, input } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
 import { TMUX, tmuxEnvironment } from './tmux-sessions';
@@ -12,6 +12,17 @@ export class TerminalPane implements OnInit, OnDestroy {
   private readonly host = inject(ElementRef<HTMLElement>);
   private term: Terminal | null = null;
   private pty: IPty | null = null;
+  private attachedSession = '';
+
+  constructor() {
+    afterRenderEffect(() => {
+      const session = this.sessionName();
+      if (!this.term || !session || session === this.attachedSession) {
+        return;
+      }
+      this.attach(session);
+    });
+  }
 
   ngOnInit(): void {
     const term = new Terminal({
@@ -24,29 +35,47 @@ export class TerminalPane implements OnInit, OnDestroy {
       fontFamily: 'monospace',
     });
     term.open(this.host.nativeElement);
+    term.onData((data) => {
+      this.pty?.write(data);
+    });
     this.term = term;
+    this.attach(this.sessionName());
+  }
 
-    const pty = spawn(TMUX, ['attach-session', '-t', this.sessionName()], {
+  ngOnDestroy(): void {
+    this.detach();
+    this.term?.dispose();
+    this.term = null;
+  }
+
+  private attach(session: string): void {
+    const term = this.term;
+    if (!term) {
+      return;
+    }
+    this.detach();
+    term.reset();
+    const pty = spawn(TMUX, ['attach-session', '-t', session], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
-      cwd: this.host.nativeElement.dataset['cwd'],
       env: tmuxEnvironment(),
     });
     this.pty = pty;
+    this.attachedSession = session;
     pty.onData((data) => {
       term.write(data);
-    });
-    term.onData((data) => {
-      pty.write(data);
     });
     term.focus();
   }
 
-  ngOnDestroy(): void {
-    this.pty?.kill();
-    this.term?.dispose();
+  private detach(): void {
+    try {
+      this.pty?.kill();
+    } catch {
+      // The tmux client already exited.
+    }
     this.pty = null;
-    this.term = null;
+    this.attachedSession = '';
   }
 }

@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WorkspaceComponent } from '../../apps/workspace/workspace.component';
 
 const TMUX = '/usr/bin/tmux';
@@ -83,6 +83,37 @@ function paneText(fixture: ComponentFixture<WorkspaceComponent>): string {
   return pane?.textContent ?? '';
 }
 
+function tabNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const tabs = fixture.nativeElement.querySelectorAll('[role="tab"]');
+  return Array.from(tabs, (tab: Element) => (tab.textContent ?? '').trim());
+}
+
+function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number {
+  return fixture.nativeElement.querySelectorAll('.terminal-pane').length;
+}
+
+function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
+  const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+  const button = buttons.find((candidate) => candidate.textContent?.trim() === label);
+  if (!button) {
+    throw new Error(`${label} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
+function hasSession(session: string): boolean {
+  try {
+    execFileSync(TMUX, ['has-session', '-t', session], {
+      stdio: 'ignore',
+      env: tmuxEnv(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function keyEvent(type: string, key: string, keyCode: number, charCode = 0): KeyboardEvent {
   const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
   Object.defineProperty(event, 'keyCode', { get: () => keyCode });
@@ -123,6 +154,10 @@ describe('branch terminal', () => {
   let before: string[] = [];
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
 
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+  });
+
   afterEach(() => {
     fixture?.destroy();
     for (const name of listSessions()) {
@@ -159,5 +194,48 @@ describe('branch terminal', () => {
 
     const pane = fixture.nativeElement.querySelector('.terminal-pane') as HTMLElement;
     expect(pane.getAttribute('style')).toContain('background-color: #1e1e1e');
+  });
+
+  it('switches tabs, splits the view, and kill drops the outside tmux session', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+
+    const firstTabs = tabNames(fixture!);
+    expect(firstTabs).toHaveLength(1);
+    expect(visiblePaneCount(fixture!)).toBe(1);
+    const first = firstTabs[0];
+
+    clickControl(fixture!, 'New');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    const second = tabNames(fixture!).find((name) => name !== first);
+    expect(second).toMatch(/^gm_[0-9a-f]{8}_feature_2$/);
+
+    clickControl(fixture!, second!);
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    submitCommand(fixture!.nativeElement, 'echo marker-second');
+    await waitFor(() => capturePane(second!).includes('marker-second'));
+    expect(capturePane(first)).not.toContain('marker-second');
+
+    clickControl(fixture!, first);
+    await waitFor(() => {
+      const text = paneText(fixture!);
+      return /[$#%]/.test(text) && !text.includes('marker-second');
+    });
+    submitCommand(fixture!.nativeElement, 'echo marker-first');
+    await waitFor(() => capturePane(first).includes('marker-first'));
+    expect(capturePane(second!)).not.toContain('marker-first');
+
+    clickControl(fixture!, 'Split');
+    await waitFor(() => visiblePaneCount(fixture!) === 2);
+
+    clickControl(fixture!, 'Kill');
+    await waitFor(() => !tabNames(fixture!).includes(first));
+    expect(hasSession(first)).toBe(false);
+    expect(hasSession(second!)).toBe(true);
+    expect(visiblePaneCount(fixture!)).toBe(1);
   });
 });

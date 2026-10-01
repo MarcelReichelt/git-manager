@@ -273,4 +273,58 @@ describe('git-manager worktree create', () => {
     expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
   });
+
+  it('runs a shell command and a TypeScript plugin when creating a worktree', () => {
+    const root = makeTempDir('git-manager-both-hooks-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, 'hooks'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'hooks', 'mark.mjs'),
+      "import { writeFileSync } from 'node:fs';\nwriteFileSync('shell-ran.txt', 'ran');\n",
+    );
+    const pluginMarker = join(repoPath, 'plugin-ran.txt');
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'mark.ts'),
+      [
+        "import { writeFileSync } from 'node:fs';",
+        'export default {',
+        "  name: 'mark',",
+        '  preWorktreeCreate(): void {',
+        `    writeFileSync(${JSON.stringify(pluginMarker)}, 'ran');`,
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      [
+        '[hooks]',
+        'modules = ["plugins/mark.ts"]',
+        '',
+        '[hooks.pre_worktree_create]',
+        'commands = ["node hooks/mark.mjs"]',
+        '',
+      ].join('\n'),
+    );
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+    expect(readFileSync(join(repoPath, 'shell-ran.txt'), 'utf8')).toBe('ran');
+    expect(readFileSync(pluginMarker, 'utf8')).toBe('ran');
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(true);
+  });
 });

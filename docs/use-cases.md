@@ -1,24 +1,41 @@
 # Use cases
 
-## Parallel feature development
+## A branch next to the repository
 
-1. `git-manager branch fetch`
-2. `git-manager worktree create feature/login`
-3. `git-manager worktree open feature/login`
-
-## Hotfix on primary branch
-
-1. `git-manager worktree switch main`
-2. Make fix, commit, push
-3. `git-manager merge from-primary --to feature/login`
-
-## Post-merge install
-
-Add to `.git-manager/config.toml`:
+In `.git-manager/config.toml`:
 
 ```toml
-[hooks.post_merge]
-commands = ["yarn"]
+layout = "sibling"
 ```
 
-Or use a plugin from `plugins/install-deps.ts`.
+```bash
+git-manager add --path ~/src/billing --name Billing
+git-manager worktree create feature/login --repo Billing
+```
+
+The checkout is the folder `feature-login` next to `billing`.
+
+## Bring a branch into the master tree
+
+```bash
+git-manager merge --repo Billing --into-master-tree feature/login
+```
+
+The merge runs in the primary checkout. Add `--squash` to make one commit.
+
+## Update a branch from the master tree
+
+```bash
+git-manager merge --repo Billing --from-master-tree feature/login
+```
+
+The merge runs in that branch's worktree. The primary checkout stays on its branch.
+
+## Copy a file into each new worktree
+
+```toml
+layout = "workspaces"
+copy = [".env"]
+```
+
+`worktree create` copies `.env` into the new checkout. Edit the copy there.

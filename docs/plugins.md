@@ -1,30 +1,25 @@
 # Plugins
 
-Plugins are TypeScript or JavaScript modules implementing `GitManagerPlugin`.
+A create plugin is a TypeScript or JavaScript module loaded with jiti. Paths in `[hooks].plugins` are relative to the repository.
 
-## Load order
+```ts
+import type { GitManagerPlugin } from '../src/hooks.js';
 
-1. `~/.config/git-manager/plugins/` from `[hooks].global_modules`
-2. Repo-local paths from `[hooks].modules`
+const plugin: GitManagerPlugin = {
+  name: 'setup-db',
+  preWorktreeCreate() {
+    return 'abort';
+  },
+  postWorktreeCreate(context) {
+    console.log(context.branch, context.worktreePath);
+  },
+};
 
-Loaded via **jiti** — no separate compile step.
-
-## Hook actions
-
-Each supports `pre_*` and `post_*`:
-
-- `clone`, `register`, `worktree_create`, `worktree_remove`
-- `worktree_pull`, `worktree_push`, `merge`
-
-Pre hooks may return `'abort'` to cancel the action.
-
-## Example
-
-See `plugins/setup-db.ts`, `plugins/install-deps.ts`, `plugins/merge-guard.ts`.
-
-```toml
-[hooks.post_worktree_create]
-database_port = 5433
+export default plugin;
 ```
 
-Plugin receives `hookConfig` with action-specific keys.
+`preWorktreeCreate` runs after a remote-only branch is fetched and before the worktree is created. Return `'abort'` to refuse the worktree. `postWorktreeCreate` runs after it exists.
+
+The context is the phase (`pre` or `post`), the branch, the worktree path, and the repository path.
+
+`plugins/setup-db.ts` is an example that logs on `postWorktreeCreate`. Shell commands for the same moments live in `[hooks.create]`. See [Configuration](configuration.md).

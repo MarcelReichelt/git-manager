@@ -1,32 +1,26 @@
 # CLI reference
 
-## Global flags
-
-- `--verbose` — show filesystem paths
-- `--no-hooks` — skip all hooks
-- `--no-pre-hooks` / `--no-post-hooks` — partial skip
-
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `(default)` | Interactive menu |
-| `setup` | Settings wizard |
-| `register` | Register cwd repo |
-| `repo list` | List registered repos |
-| `repo current` | Show active repo/worktree |
-| `repo switch [name]` | Unified picker or switch by name |
-| `repo add [--path]` | Add existing repo |
-| `repo unregister [name]` | Remove from registry |
-| `clone <url>` | Clone and register |
-| `branch list` / `fetch` | Remote branches |
-| `worktree list/switch/path/open/create/remove/pull/push` | Worktree ops |
-| `changes [--all] [--files]` | Working tree status |
-| `merge into-primary/from-primary/<src> <tgt>` | Merge flows |
-| `doctor [--fix]` | Registry health |
-| `settings show/edit/set/reset/wizard` | Global settings |
-| `config init/show` | Per-repo config |
-| `docs [topic]` | Open documentation |
-| `ui` | Launch TUI |
+| `add --path <path> --name <name>` | Register an existing local git repository |
+| `list` | List registered repositories as display name and path |
+| `unregister --path <path>` | Remove a repository from the registry |
+| `worktree create <branch> --repo <repo>` | Create a worktree. Prints the checkout path |
+| `worktree remove <branch> --repo <repo>` | Remove that branch's worktree |
+| `merge --repo <repo>` | Merge into the master tree, from the master tree, or from an explicit source into an explicit target |
 
-See `git-manager <command> --help` for flags.
+`<repo>` is a registered path or display name. The master tree is the primary checkout of that repository.
+
+## Merge
+
+```bash
+git-manager merge --repo Billing --into-master-tree feature
+git-manager merge --repo Billing --from-master-tree feature
+git-manager merge --repo Billing --source feature --target trunk
+```
+
+`--squash` squashes that merge into one commit. Use either the master-tree options or `--source` and `--target`, not both.
+
+`git-manager <command> --help` prints the flags for one command.

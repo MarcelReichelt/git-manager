@@ -27,14 +27,11 @@ Inside the container's terminal:
 yarn build
 
 # Run directly
-node dist/cli.js
-node dist/cli.js ui      # Ink TUI
+node dist/cli.js --help
 
 # Or install the global command (lands in ~/.local/bin, already on PATH)
 yarn link:global
-git-manager
-git-manager ui
-git-manager setup
+git-manager --help
 
 # Run the test suite
 yarn test

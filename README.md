@@ -48,18 +48,15 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 
 ## Documentation
 
-The command list above is the v2 CLI. The guides below still describe the removed v1 commands, including `clone`, `ui`, and the Ink carousel.
-
 | Guide | Topic |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Install, register, clone, switch worktrees |
-| [Use cases](docs/use-cases.md) | Parallel features, hotfixes, post-merge tasks |
-| [CLI reference](docs/cli-reference.md) | All subcommands and flags |
-| [TUI guide](docs/tui-guide.md) | Carousel layout and keybindings |
-| [Configuration](docs/configuration.md) | Global and per-repo TOML |
-| [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
-| [Plugins](docs/plugins.md) | Hook actions and plugin authoring |
-| [Troubleshooting](docs/troubleshooting.md) | Install issues, doctor, stale entries, editor issues |
+| [Getting started](docs/getting-started.md) | Install, register a repository, create a worktree |
+| [Use cases](docs/use-cases.md) | Sibling checkouts, merge into and from the master tree |
+| [CLI reference](docs/cli-reference.md) | Commands and flags |
+| [Configuration](docs/configuration.md) | Per-repository config, copy, and create hooks |
+| [Worktrees and layouts](docs/worktrees-and-layouts.md) | Workspaces and sibling |
+| [Plugins](docs/plugins.md) | TypeScript create hooks |
+| [Troubleshooting](docs/troubleshooting.md) | Install, layout config, and failed creates |
 
 ## License
 

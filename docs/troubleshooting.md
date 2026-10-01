@@ -4,8 +4,7 @@
 
 ### `404 Not Found` for `@git-manager/main`
 
-npm is querying the public registry. Point the `@git-manager` scope at the
-project registry (once per machine or user):
+npm is querying the public registry. Point the `@git-manager` scope at the project registry (once per machine or user):
 
 ```bash
 npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
@@ -15,8 +14,7 @@ You can also add this to `~/.npmrc` or a project `.npmrc`.
 
 ### `better-sqlite3` / `node-gyp` errors
 
-The package depends on native SQLite bindings. On minimal Linux images, install
-build tools before `npm install -g`:
+The registry uses native SQLite bindings. On minimal Linux images, install build tools before `npm install -g`:
 
 ```bash
 # Debian/Ubuntu
@@ -26,55 +24,20 @@ apt-get install python3 make g++
 apk add python3 make g++
 ```
 
-After a Node upgrade, reinstall the package or rebuild the dependency. When
-working from a cloned repo:
+After a Node upgrade, reinstall the package. From a checkout of this repository:
 
 ```bash
 yarn rebuild better-sqlite3
 ```
 
-### `git-manager ui` fails with `Cannot find module .../dist/tui/index.js`
+## Repository config does not set a layout
 
-Versions before `0.2.4` were published without the TUI bundle. Upgrade:
+`worktree create` reads `.git-manager/config.toml` in the registered repository. `layout` must be `workspaces` or `sibling`. See [Configuration](configuration.md).
 
-```bash
-npm install -g @git-manager/main@latest
-```
+## The worktree folder already exists
 
-## Doctor
+Creation stops instead of replacing that folder. Remove or rename it, then run `worktree create` again.
 
-```bash
-git-manager doctor
-git-manager doctor --fix
-```
+## A create hook aborted
 
-Checks:
-
-- Missing worktree paths
-- Orphan registry entries
-- Remote branches gone after fetch
-- Missing `.git-manager/config.toml`
-
-## Stale registry
-
-If a worktree folder was deleted manually:
-
-```bash
-git-manager doctor --fix
-```
-
-Or remove via interactive startup prompt.
-
-## Editor not opening
-
-Set editor in config:
-
-```bash
-git-manager settings set editor.command cursor
-```
-
-Or export `GIT_MANAGER_EDITOR`.
-
-## Plugin load errors
-
-Verify path in `[hooks].modules` is relative to layout root. Global plugins go in `~/.config/git-manager/plugins/`.
+A failing `[hooks.create]` command, or a plugin that returns `'abort'` from `preWorktreeCreate`, stops creation before the worktree is added. The command prints the hook error.

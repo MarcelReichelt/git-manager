@@ -1,30 +1,39 @@
 # Worktrees and layouts
 
-## Sibling mode
+The layout comes from that repository's `.git-manager/config.toml`. It is not inferred from folder names, and it is not stored in the registry.
+
+## Workspaces
+
+```toml
+layout = "workspaces"
+```
 
 ```
-my-project/
-├── main/              # primary checkout (folder = default branch)
-├── feature-x/         # worktree
-└── .git-manager/
-```
-
-Registry `path` = `my-project`, `git_root` = `my-project/main`.
-
-## Workspaces mode
-
-```
-my-repo/
+billing/
 ├── .git/
 ├── .workspaces/
-│   └── feature-x/
+│   └── feature/
 └── .git-manager/
+    └── config.toml
 ```
 
-`.workspaces/` is auto-added to `.gitignore`.
+The new checkout is `.workspaces/<folder>` inside the repository. The primary checkout stays where it is.
 
-## Auto-detection
+## Sibling
 
-On register, sibling mode is used only when the primary checkout folder name matches `primary_branch`. Otherwise workspaces.
+```toml
+layout = "sibling"
+```
 
-Explicit `[layout].mode` in repo config always wins.
+```
+src/
+├── billing/           # registered repository, the master tree
+├── feature/           # worktree, next to the repository
+└── feature-login/
+```
+
+The folder name comes from the branch. `/`, `\`, and characters that are illegal in a directory name (`< > : " | ? *` and control characters) become `-`. The git branch name stays unchanged. `feature/login` is checked out in a folder named `feature-login`.
+
+Creation stops when that folder already exists.
+
+A remote-only branch is fetched before create hooks run. The worktree is then created from that remote branch.

@@ -10,24 +10,11 @@ One-time registry setup (per machine or user):
 
 ```bash
 npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
-```
-
-Global install:
-
-```bash
 npm install -g @git-manager/main
 git-manager --version
 ```
 
-Or run without installing:
-
-```bash
-npx @git-manager/main setup
-```
-
 ### From source
-
-For contributors working in the cloned repository:
 
 ```bash
 yarn install
@@ -35,53 +22,37 @@ yarn build
 yarn link:global
 ```
 
-## First run
+## Register a repository
 
-Run `git-manager` with no arguments. The setup wizard configures:
-
-1. Editor command (`cursor`, `code`, `nvim`, …)
-2. Default clone location (`~/DEV`)
-3. Default layout mode (sibling or workspaces)
-4. TUI refresh interval
-
-## Register an existing repo
-
-Inside a git repository:
+`git-manager` does not clone. Point it at a local checkout and give it a display name:
 
 ```bash
-git-manager register
-# or
-git-manager repo add
+git-manager add --path ~/src/billing --name Billing
+git-manager list
 ```
 
-## Clone a new repo
+The registry file is `~/.config/git-manager/registry.db`. `GIT_MANAGER_REGISTRY_PATH` overrides that location. Each registered repository is a path and a display name.
+
+Remove one with:
 
 ```bash
-git-manager clone https://github.com/user/my-app.git
+git-manager unregister --path ~/src/billing
 ```
 
-Clones to `<clone_root>/<repo-name>/` using your configured layout.
+## Layout
 
-## Switch repository
+Before creating a worktree, set the layout in that repository's `.git-manager/config.toml`:
+
+```toml
+layout = "workspaces"
+```
+
+`workspaces` puts each checkout under `.workspaces` in the repository. `sibling` puts it in a folder next to the repository, named from the branch. See [Worktrees and layouts](worktrees-and-layouts.md).
+
+## Create a worktree
 
 ```bash
-git-manager repo switch
+git-manager worktree create feature --repo Billing
 ```
 
-The picker lists registered repos plus options to clone new or add existing.
-
-## Switch worktree
-
-```bash
-git-manager worktree list
-git-manager worktree switch feature-x
-git-manager worktree open
-```
-
-## TUI
-
-```bash
-git-manager ui
-```
-
-See [TUI guide](tui-guide.md) for keybindings.
+The command prints the checkout path.

@@ -1,9 +1,1 @@
-[layout]
-workspaces_dir = ".workspaces"
-mode = "workspaces"
-
-[copy]
-files = [ ]
-
-[hooks]
-modules = [ ]
+layout = "workspaces"

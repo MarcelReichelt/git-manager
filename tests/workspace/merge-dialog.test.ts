@@ -82,6 +82,16 @@ function addWorktree(repo: string, branch: string): string {
   return worktree;
 }
 
+function enableSquash(fixture: ComponentFixture<WorkspaceComponent>): void {
+  const dialog = mergeDialog(fixture);
+  const box = dialog.querySelector('[aria-label="Squash"]');
+  if (!(box instanceof HTMLInputElement) || box.type !== 'checkbox') {
+    throw new Error('Squash is not on the dialog');
+  }
+  box.click();
+  fixture.detectChanges();
+}
+
 function confirmMerge(fixture: ComponentFixture<WorkspaceComponent>): void {
   const dialog = mergeDialog(fixture);
   const buttons = Array.from(dialog.querySelectorAll('button')) as HTMLButtonElement[];
@@ -196,5 +206,33 @@ describe('merge dialog', () => {
     expect(git(repo.repo, ['rev-parse', 'HEAD'])).toBe(primaryHead);
     expect(git(worktree, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature');
     expect(readFileSync(join(worktree, 'trunk.txt'), 'utf8')).toBe('from trunk\n');
+  });
+
+  it('squashes the merge into one commit on the target', () => {
+    const repo = createRepo();
+    root = repo.root;
+    commitFile(repo.repo, 'trunk.txt', 'from trunk\n', 'ship billing');
+    const worktree = addWorktree(repo.repo, 'feature');
+    commitFile(worktree, 'invoice.txt', 'invoice\n', 'add invoice');
+    commitFile(worktree, 'tax.txt', 'tax\n', 'add tax');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    fixture = renderWorkspace(repo.repo);
+
+    hoverBranch(fixture, 'feature');
+    clickMenu(fixture, 'Merge into the master tree');
+    enableSquash(fixture);
+    confirmMerge(fixture);
+
+    expect(git(repo.repo, ['log', '--format=%s'])).toBe(
+      ['Squash merge feature into the master tree', 'ship billing', 'init'].join('\n'),
+    );
+    expect(git(repo.repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('trunk');
+    expect(readFileSync(join(repo.repo, 'invoice.txt'), 'utf8')).toBe('invoice\n');
+    expect(readFileSync(join(repo.repo, 'tax.txt'), 'utf8')).toBe('tax\n');
+    const parents = git(repo.repo, ['cat-file', '-p', 'HEAD'])
+      .split('\n')
+      .filter((line) => line.startsWith('parent '));
+    expect(parents).toHaveLength(1);
   });
 });

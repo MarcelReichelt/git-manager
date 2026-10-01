@@ -72,6 +72,10 @@ import {
           }
           <input aria-label="Target" [value]="mergeTarget()" />
         </label>
+        <label>
+          <input aria-label="Squash" type="checkbox" [checked]="squash()" (change)="onSquash($event)" />
+          Squash
+        </label>
         <button type="button" (click)="confirmMerge()">Merge</button>
       </dialog>
     }
@@ -95,6 +99,7 @@ export class WorkspaceComponent implements OnInit {
   readonly mergeTargetIsMasterTree = signal(false);
   readonly mergeMode = signal<'into' | 'from' | 'generic'>('generic');
   readonly mergeBranch = signal('');
+  readonly squash = signal(false);
   readonly visibleSessions = computed(() => {
     const focused = this.focused();
     const sessions = this.sessions();
@@ -124,6 +129,7 @@ export class WorkspaceComponent implements OnInit {
     const primary = primaryCheckoutBranch(this.repoPath());
     this.mergeMode.set(mode);
     this.mergeBranch.set(branch);
+    this.squash.set(false);
     if (mode === 'into') {
       this.mergeSource.set(branch);
       this.mergeTarget.set(primary);
@@ -143,16 +149,24 @@ export class WorkspaceComponent implements OnInit {
     this.mergeOpen.set(true);
   }
 
+  onSquash(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) {
+      this.squash.set(target.checked);
+    }
+  }
+
   confirmMerge(): void {
     const mode = this.mergeMode();
+    const squash = this.squash();
     if (mode === 'generic') {
       return;
     }
     try {
       if (mode === 'into') {
-        mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), false);
+        mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), squash);
       } else {
-        mergeFromMasterTree(this.repoPath(), this.mergeBranch(), false);
+        mergeFromMasterTree(this.repoPath(), this.mergeBranch(), squash);
       }
       this.mergeOpen.set(false);
     } catch (error) {

@@ -231,4 +231,46 @@ describe('git-manager worktree create', () => {
     expect(existsSync(checkout)).toBe(true);
     expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
   });
+
+  it('leaves no worktree when a TypeScript plugin returns abort', () => {
+    const root = makeTempDir('git-manager-abort-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'abort.ts'),
+      [
+        'export default {',
+        "  name: 'abort-create',",
+        "  preWorktreeCreate(): 'abort' {",
+        "    return 'abort';",
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      '[hooks]\nmodules = ["plugins/abort.ts"]\n',
+    );
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+
+    expect(created.status).toBe(1);
+    expect(created.stderr).toContain('abort');
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
+  });
 });

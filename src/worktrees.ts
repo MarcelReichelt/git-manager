@@ -1,7 +1,8 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import TOML from '@iarna/toml';
+import { createJiti } from 'jiti';
 import {
   findRepository,
   type LayoutMode,
@@ -11,9 +12,16 @@ import {
 interface RepoConfig {
   layout?: { mode?: string };
   hooks?: {
+    modules?: string[];
     pre_worktree_create?: { commands?: string[] };
     post_worktree_create?: { commands?: string[] };
   };
+}
+
+interface WorktreePlugin {
+  name: string;
+  preWorktreeCreate?: () => 'abort' | void | Promise<'abort' | void>;
+  postWorktreeCreate?: () => void | Promise<void>;
 }
 
 function folderName(branch: string): string {
@@ -57,6 +65,33 @@ function runHookCommands(repoPath: string, commands: string[] | undefined): void
   }
 }
 
+async function loadPlugins(
+  repoPath: string,
+  modules: string[] | undefined,
+): Promise<WorktreePlugin[]> {
+  if (!modules || modules.length === 0) {
+    return [];
+  }
+  const jiti = createJiti(join(repoPath, 'package.json'));
+  const plugins: WorktreePlugin[] = [];
+  for (const modulePath of modules) {
+    const plugin = await jiti.import<WorktreePlugin>(resolve(repoPath, modulePath), {
+      default: true,
+    });
+    plugins.push(plugin);
+  }
+  return plugins;
+}
+
+async function runPrePlugins(plugins: WorktreePlugin[]): Promise<void> {
+  for (const plugin of plugins) {
+    const result = await plugin.preWorktreeCreate?.();
+    if (result === 'abort') {
+      throw new Error(`${plugin.name} aborted worktree create`);
+    }
+  }
+}
+
 function checkoutPath(repositoryPath: string, layout: LayoutMode, folder: string): string {
   if (layout === 'sibling') {
     return join(dirname(repositoryPath), folder);
@@ -92,6 +127,7 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   runHookCommands(repository.path, config.hooks?.pre_worktree_create?.commands);
+  await runPrePlugins(await loadPlugins(repository.path, config.hooks?.modules));
 
   mkdirSync(dirname(checkout), { recursive: true });
   if (localBranch) {

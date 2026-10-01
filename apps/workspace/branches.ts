@@ -5,6 +5,7 @@ export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | '
 export type BranchRow = {
   name: string;
   status: BranchStatus;
+  ref: string;
   changedFiles: number;
   ahead: number;
   behind: number;
@@ -105,6 +106,7 @@ function branchFacts(
   return {
     name: branch.name,
     status: branch.status,
+    ref: branch.ref,
     changedFiles: checkout ? changedFileCount(checkout) : 0,
     ahead: counts.ahead,
     behind: counts.behind,

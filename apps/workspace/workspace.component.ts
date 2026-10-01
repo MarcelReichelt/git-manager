@@ -60,7 +60,7 @@ import {
             [attr.aria-label]="statusName(branch.status)"
             [style.background-color]="statusColor(branch.status)"
           ></span>
-          <button type="button" (click)="selectBranch(branch.name)">
+          <button type="button" (click)="selectBranch(branch.name, branch.ref)">
             <span class="branch-name">{{ branch.name }}</span>
             @if (terminalCount(branch.name) > 0) {
               <span class="terminal-count">{{ terminalCount(branch.name) }}</span>
@@ -359,8 +359,8 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
-  selectBranch(branch: string): void {
-    const commits = commitsOnBranch(this.activeRepo(), branch);
+  selectBranch(branch: string, ref = branch): void {
+    const commits = commitsOnBranch(this.activeRepo(), ref);
     const cwd = findWorktree(this.activeRepo(), branch);
     if (!cwd) {
       this.notice.set('This branch has no worktree.');

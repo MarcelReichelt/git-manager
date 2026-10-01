@@ -170,4 +170,56 @@ describe('branch row', () => {
       behind: '0 behind',
     });
   });
+
+  it('shows the commits on a remote-only branch that has no checkout', () => {
+    root = mkdtempSync(join(tmpdir(), 'git-manager-status-'));
+    const repo = join(root, 'billing');
+    const remote = join(root, 'remote.git');
+    initRepo(repo);
+    execFileSync('git', ['init', '--bare', remote], { stdio: 'ignore' });
+    git(repo, ['remote', 'add', 'origin', remote]);
+    git(repo, ['push', '-u', 'origin', 'trunk']);
+    git(repo, ['checkout', '-b', 'shipped']);
+    writeFileSync(join(repo, 'note.txt'), 'note\n');
+    git(repo, ['add', 'note.txt']);
+    git(repo, ['commit', '-m', 'ship note']);
+    git(repo, ['checkout', 'trunk']);
+    git(repo, ['push', 'origin', 'shipped']);
+    git(repo, ['branch', '-D', 'shipped']);
+    fixture = renderWorkspace(repo);
+
+    clickBranch(fixture, 'shipped');
+
+    expect(shownCommits(fixture)).toEqual({
+      ahead: '1 ahead',
+      behind: '0 behind',
+      commits: ['ship note'],
+    });
+    expect(fixture.nativeElement.querySelector('.terminal-pane')).toBeNull();
+  });
 });
+
+function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
+  const button = branchRow(fixture, name).querySelector('button');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Branch ${name} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
+function shownCommits(fixture: ComponentFixture<WorkspaceComponent>): {
+  ahead: string;
+  behind: string;
+  commits: string[];
+} {
+  const region = fixture.nativeElement.querySelector('.branch-commits');
+  if (!(region instanceof HTMLElement)) {
+    throw new Error('Branch commits are not shown');
+  }
+  return {
+    ahead: region.querySelector('.ahead')?.textContent?.trim() ?? '',
+    behind: region.querySelector('.behind')?.textContent?.trim() ?? '',
+    commits: Array.from(region.querySelectorAll('li'), (item) => (item.textContent ?? '').trim()),
+  };
+}

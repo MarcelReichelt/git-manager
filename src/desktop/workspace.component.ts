@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 
 @Component({
   selector: 'gm-workspace',
@@ -14,12 +14,28 @@ import { Component } from '@angular/core';
     `,
   ],
   template: `
-    <div class="start-screen">
-      <section data-testid="repository-card">
-        <button type="button" data-testid="repository" data-name="Harbor">Harbor</button>
-        <button type="button" data-testid="repository" data-name="Atlas">Atlas</button>
-      </section>
-    </div>
+    @if (selectedName() === null) {
+      <div class="start-screen">
+        <section data-testid="repository-card">
+          <button type="button" data-testid="repository" data-name="Harbor" (click)="choose('Harbor')">
+            Harbor
+          </button>
+          <button type="button" data-testid="repository" data-name="Atlas" (click)="choose('Atlas')">
+            Atlas
+          </button>
+        </section>
+      </div>
+    } @else {
+      <main data-testid="workspace">
+        <h1 data-testid="repository-name">{{ selectedName() }}</h1>
+      </main>
+    }
   `,
 })
-export class WorkspaceComponent {}
+export class WorkspaceComponent {
+  readonly selectedName = signal<string | null>(null);
+
+  choose(name: string): void {
+    this.selectedName.set(name);
+  }
+}

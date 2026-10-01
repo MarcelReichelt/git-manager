@@ -31,4 +31,20 @@ describe('desktop workspace', () => {
     expect(card.textContent).toContain('Harbor');
     expect(card.textContent).toContain('Atlas');
   });
+
+  it('shows the Harbor workspace after choosing Harbor', async () => {
+    const fixture = await render();
+    const harbor = fixture.nativeElement.querySelector(
+      '[data-testid="repository"][data-name="Harbor"]',
+    );
+
+    harbor.click();
+    fixture.detectChanges();
+
+    const workspace = fixture.nativeElement.querySelector('[data-testid="workspace"]');
+    expect(workspace).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+  });
 });

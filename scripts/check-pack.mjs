@@ -6,10 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const required = [
-  'package/dist/cli.js',
-  'package/dist/tui/index.js',
-];
+const required = ['package/dist/cli.js'];
 
 const tarball = execSync('npm pack --silent', { cwd: root, encoding: 'utf8' }).trim();
 const path = join(root, tarball);

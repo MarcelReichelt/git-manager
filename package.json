@@ -1,7 +1,7 @@
 {
   "name": "@git-manager/main",
   "version": "0.2.5",
-  "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
+  "description": "Register local git repositories and create, merge, and remove worktrees",
   "type": "module",
   "bin": {
     "git-manager": "./dist/cli.js"
@@ -16,15 +16,12 @@
     "start": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:e2e:docker": "docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e",
-    "test:all": "yarn test && yarn test:e2e:docker",
     "link:global": "node scripts/link-global.mjs",
     "unlink:global": "node scripts/unlink-global.mjs",
     "bump": "yarn version patch --immediate",
     "bump:minor": "yarn version minor --immediate",
     "bump:major": "yarn version major --immediate",
-    "publish": "yarn build && yarn pack:check && yarn link:global && yarn test:all && yarn npm publish",
+    "publish": "yarn build && yarn pack:check && yarn link:global && yarn test && yarn npm publish",
     "publish:patch": "yarn bump && yarn publish",
     "publish:minor": "yarn bump:minor && yarn publish",
     "publish:major": "yarn bump:major && yarn publish"
@@ -35,21 +32,13 @@
   "packageManager": "yarn@4.17.0",
   "dependencies": {
     "@iarna/toml": "^2.2.5",
-    "@inquirer/prompts": "^7.3.2",
     "better-sqlite3": "^12.11.1",
     "commander": "^13.1.0",
-    "execa": "^9.5.2",
-    "ink": "^5.2.0",
-    "jiti": "^2.4.2",
-    "react": "^18.3.1",
-    "simple-git": "^3.27.0",
-    "zod": "^3.24.2"
+    "jiti": "^2.4.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.13.10",
-    "@types/react": "^18.3.18",
-    "ink-testing-library": "^4.0.0",
     "tsup": "^8.4.0",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"

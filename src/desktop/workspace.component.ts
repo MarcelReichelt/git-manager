@@ -55,7 +55,14 @@ const harborBranches: SampleBranch[] = [
   },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
   { name: 'origin/release', status: 'remote-only', changedFileCount: 0, ahead: 4, behind: 0 },
-  { name: 'abandoned', status: 'remote-deleted', changedFileCount: 1, ahead: 2, behind: 0 },
+  {
+    name: 'abandoned',
+    status: 'remote-deleted',
+    changedFileCount: 1,
+    ahead: 2,
+    behind: 0,
+    files: [{ path: 'assets/logo.png', added: null, deleted: null }],
+  },
   {
     name: 'rename-docs',
     status: 'local-and-remote',
@@ -204,8 +211,12 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                   (click)="selectFile(file.path)"
                 >
                   <button type="button" (click)="selectFile(file.path)">{{ file.path }}</button>
-                  <span data-testid="lines-added">{{ file.added }}</span>
-                  <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                  @if (file.added !== null) {
+                    <span data-testid="lines-added">{{ file.added }}</span>
+                  }
+                  @if (file.deleted !== null) {
+                    <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                  }
                 </li>
               }
             </ul>
@@ -222,8 +233,12 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                   @for (file of commit.files ?? []; track file.path) {
                     <li data-testid="changed-file" [attr.data-path]="file.path">
                       {{ file.path }}
-                      <span data-testid="lines-added">{{ file.added }}</span>
-                      <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                      @if (file.added !== null) {
+                        <span data-testid="lines-added">{{ file.added }}</span>
+                      }
+                      @if (file.deleted !== null) {
+                        <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                      }
                     </li>
                   }
                 </ul>

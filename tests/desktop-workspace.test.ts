@@ -280,6 +280,20 @@ describe('desktop workspace', () => {
     expect(files[0].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('4');
     expect(files[0].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('1');
   });
+
+  it('shows the abandoned binary logo with no line counts', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="abandoned"]').click();
+    fixture.detectChanges();
+
+    const files = [...fixture.nativeElement.querySelectorAll('[data-testid="changed-files"] [data-testid="changed-file"]')];
+    expect(files).toHaveLength(1);
+    expect(files[0].getAttribute('data-path')).toBe('assets/logo.png');
+    expect(files[0].querySelector('[data-testid="lines-added"]')).toBeNull();
+    expect(files[0].querySelector('[data-testid="lines-deleted"]')).toBeNull();
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

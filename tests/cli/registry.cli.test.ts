@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -41,5 +42,49 @@ describe('git-manager registry', () => {
     const after = runGitManager(['list'], env);
     expect(after.status).toBe(0);
     expect(after.stdout).toBe('');
+  });
+
+  it('lists the layout stored for that repository', () => {
+    const root = makeTempDir('git-manager-layout-');
+    roots.push(root);
+    const repoPath = join(root, 'atlas');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const env = gitManagerEnv(registryPath);
+
+    const added = runGitManager(
+      ['add', '--path', repoPath, '--name', 'Atlas', '--layout', 'sibling'],
+      env,
+    );
+    expect(added.status).toBe(0);
+
+    const listed = runGitManager(['list'], env);
+    expect(listed.stdout).toBe(`Atlas\t${resolve(repoPath)}\tsibling\n`);
+  });
+
+  it('stores a repositories table and no worktree or session table', () => {
+    const root = makeTempDir('git-manager-schema-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const env = gitManagerEnv(registryPath);
+
+    const added = runGitManager(
+      ['add', '--path', repoPath, '--name', 'Harbor'],
+      env,
+    );
+    expect(added.status).toBe(0);
+
+    const db = new Database(registryPath, { readonly: true });
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as Array<{ name: string }>;
+    db.close();
+    const names = tables.map((table) => table.name);
+
+    expect(names).toContain('repositories');
+    expect(names.filter((name) => name.toLowerCase().includes('worktree'))).toEqual([]);
+    expect(names.filter((name) => name.toLowerCase().includes('session'))).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WorkspaceComponent } from '../../apps/workspace/workspace.component';
+import { addRepository } from '../../src/registry.js';
 
 function initRepo(repo: string): void {
   mkdirSync(repo, { recursive: true });
@@ -57,6 +58,15 @@ function clickCardButton(fixture: ComponentFixture<WorkspaceComponent>, label: s
   fixture.detectChanges();
 }
 
+function cardNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const buttons = Array.from(repositoryCard(fixture).querySelectorAll('li button')) as HTMLButtonElement[];
+  return buttons.map((button) => button.textContent?.trim() ?? '');
+}
+
+function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return Array.from(fixture.nativeElement.querySelectorAll('.branch-name'), (name) => (name.textContent ?? '').trim());
+}
+
 describe('repository card', () => {
   let root = '';
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
@@ -93,4 +103,65 @@ describe('repository card', () => {
     expect(repositoryCard(fixture).textContent).toContain('Billing');
     expect(fixture.nativeElement.textContent).not.toContain(repo);
   });
+
+  it('lists registered repositories and opens the branches of the one you choose', () => {
+    root = mkdtempSync(join(tmpdir(), 'git-manager-card-'));
+    const billing = join(root, 'billing');
+    const ledger = join(root, 'ledger');
+    initRepo(billing);
+    initRepo(ledger);
+    execFileSync('git', ['branch', 'feature'], { cwd: billing, stdio: 'ignore' });
+    execFileSync('git', ['branch', 'release'], { cwd: ledger, stdio: 'ignore' });
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(billing, 'Billing');
+    addRepository(ledger, 'Ledger');
+    fixture = renderWorkspace();
+
+    expect(cardNames(fixture)).toEqual(['Billing', 'Ledger']);
+    expect(fixture.nativeElement.textContent).not.toContain(billing);
+    expect(fixture.nativeElement.textContent).not.toContain(ledger);
+
+    clickCardButton(fixture, 'Billing');
+
+    expect(branchNames(fixture)).toEqual(['feature', 'trunk']);
+  });
+
+  it('opens a switching overlay that lists repositories and can add one', () => {
+    root = mkdtempSync(join(tmpdir(), 'git-manager-card-'));
+    const billing = join(root, 'billing');
+    const ledger = join(root, 'ledger');
+    const payroll = join(root, 'payroll');
+    initRepo(billing);
+    initRepo(ledger);
+    initRepo(payroll);
+    execFileSync('git', ['branch', 'feature'], { cwd: billing, stdio: 'ignore' });
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(billing, 'Billing');
+    addRepository(ledger, 'Ledger');
+    fixture = renderWorkspace();
+    clickCardButton(fixture, 'Billing');
+
+    clickButton(fixture, 'Switch');
+
+    expect(cardNames(fixture)).toEqual(['Billing', 'Ledger']);
+    expect(branchNames(fixture)).toEqual(['feature', 'trunk']);
+
+    setField(fixture, 'Path', payroll);
+    setField(fixture, 'Display name', 'Payroll');
+    clickCardButton(fixture, 'Add');
+
+    expect(cardNames(fixture)).toEqual(['Billing', 'Ledger', 'Payroll']);
+    expect(fixture.nativeElement.textContent).not.toContain(payroll);
+    expect(branchNames(fixture)).toEqual(['feature', 'trunk']);
+  });
 });
+
+function clickButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
+  const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+  const button = buttons.find((candidate) => candidate.textContent?.trim() === label);
+  if (!button) {
+    throw new Error(`${label} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}

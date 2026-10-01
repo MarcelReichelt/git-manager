@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, OnInit, computed, input, signal } from '@angular/core';
 import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from '../../src/merge.js';
 import { addRepository, listRepositories, type RegisteredRepository } from '../../src/registry.js';
@@ -14,38 +15,27 @@ import {
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [TerminalPane, ShellPane],
+  imports: [TerminalPane, ShellPane, NgTemplateOutlet],
   styles: [
     `
       .repository-card {
         position: fixed;
         top: 50%;
         left: 50%;
+        z-index: 2;
         transform: translate(-50%, -50%);
+        padding: 1.5rem;
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
       }
     `,
   ],
   template: `
-    @if (!repoPath()) {
-      <section class="repository-card" aria-label="Repositories">
-        <ul>
-          @for (repo of repositories(); track repo.path) {
-            <li>
-              <button type="button">{{ repo.displayName }}</button>
-            </li>
-          }
-        </ul>
-        <label>
-          Path
-          <input aria-label="Path" [value]="addPath()" (input)="onAddPath($event)" />
-        </label>
-        <label>
-          Display name
-          <input aria-label="Display name" [value]="addName()" (input)="onAddName($event)" />
-        </label>
-        <button type="button" (click)="addRegisteredRepository()">Add</button>
-      </section>
+    @if (!activeRepo()) {
+      <ng-container *ngTemplateOutlet="repositoryCard" />
     } @else {
+    <button type="button" (click)="openSwitcher()">Switch</button>
     <aside>
       @for (branch of branches(); track branch) {
         <div class="branch-row" (mouseenter)="showMenu(branch)" (mouseleave)="hideMenu()">
@@ -121,14 +111,40 @@ import {
         <button type="button" (click)="confirmMerge()">Merge</button>
       </dialog>
     }
+    @if (switcherOpen()) {
+      <ng-container *ngTemplateOutlet="repositoryCard" />
     }
+    }
+    <ng-template #repositoryCard>
+      <section class="repository-card" aria-label="Repositories">
+        <ul>
+          @for (repo of repositories(); track repo.path) {
+            <li>
+              <button type="button" (click)="chooseRepository(repo.path)">{{ repo.displayName }}</button>
+            </li>
+          }
+        </ul>
+        <label>
+          Path
+          <input aria-label="Path" [value]="addPath()" (input)="onAddPath($event)" />
+        </label>
+        <label>
+          Display name
+          <input aria-label="Display name" [value]="addName()" (input)="onAddName($event)" />
+        </label>
+        <button type="button" (click)="addRegisteredRepository()">Add</button>
+      </section>
+    </ng-template>
   `,
 })
 export class WorkspaceComponent implements OnInit {
   readonly repoPath = input('');
+  readonly chosenPath = signal('');
+  readonly activeRepo = computed(() => this.chosenPath() || this.repoPath());
   readonly repositories = signal<RegisteredRepository[]>([]);
   readonly addPath = signal('');
   readonly addName = signal('');
+  readonly switcherOpen = signal(false);
   readonly platform = input(hostPlatform());
   readonly branches = signal<string[]>([]);
   readonly notice = signal('');
@@ -163,8 +179,8 @@ export class WorkspaceComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    if (this.repoPath()) {
-      this.branches.set(listBranches(this.repoPath()));
+    if (this.activeRepo()) {
+      this.branches.set(listBranches(this.activeRepo()));
       return;
     }
     this.repositories.set(listRepositories());
@@ -196,6 +212,28 @@ export class WorkspaceComponent implements OnInit {
     this.repositories.set(listRepositories());
   }
 
+  openSwitcher(): void {
+    this.repositories.set(listRepositories());
+    this.switcherOpen.set(true);
+  }
+
+  chooseRepository(path: string): void {
+    this.switcherOpen.set(false);
+    this.chosenPath.set(path);
+    this.notice.set('');
+    this.selectedBranch.set('');
+    this.ahead.set(0);
+    this.behind.set(0);
+    this.commitsOnlyOnBranch.set([]);
+    this.worktreePath.set('');
+    this.sessions.set([]);
+    this.focused.set('');
+    this.splitView.set(false);
+    this.menuBranch.set('');
+    this.mergeOpen.set(false);
+    this.branches.set(listBranches(path));
+  }
+
   showMenu(branch: string): void {
     this.menuBranch.set(branch);
   }
@@ -205,7 +243,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   openMerge(mode: 'into' | 'from' | 'generic', branch: string): void {
-    const primary = primaryCheckoutBranch(this.repoPath());
+    const primary = primaryCheckoutBranch(this.activeRepo());
     this.mergeMode.set(mode);
     this.mergeBranch.set(branch);
     this.squash.set(false);
@@ -254,16 +292,16 @@ export class WorkspaceComponent implements OnInit {
     const squash = this.squash();
     try {
       if (mode === 'into') {
-        mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), squash);
+        mergeIntoMasterTree(this.activeRepo(), this.mergeBranch(), squash);
       } else if (mode === 'from') {
-        mergeFromMasterTree(this.repoPath(), this.mergeBranch(), squash);
+        mergeFromMasterTree(this.activeRepo(), this.mergeBranch(), squash);
       } else {
         const source = this.mergeSource().trim();
         const target = this.mergeTarget().trim();
         if (!source || !target) {
           return;
         }
-        mergeSourceIntoTarget(this.repoPath(), source, target, squash);
+        mergeSourceIntoTarget(this.activeRepo(), source, target, squash);
       }
       this.mergeOpen.set(false);
     } catch (error) {
@@ -272,8 +310,8 @@ export class WorkspaceComponent implements OnInit {
   }
 
   selectBranch(branch: string): void {
-    const commits = commitsOnBranch(this.repoPath(), branch);
-    const cwd = findWorktree(this.repoPath(), branch);
+    const commits = commitsOnBranch(this.activeRepo(), branch);
+    const cwd = findWorktree(this.activeRepo(), branch);
     if (!cwd) {
       this.notice.set('This branch has no worktree.');
       this.clearTerminals();
@@ -295,9 +333,9 @@ export class WorkspaceComponent implements OnInit {
       this.focused.set('');
       return;
     }
-    const existing = sessionsForBranch(this.repoPath(), branch);
+    const existing = sessionsForBranch(this.activeRepo(), branch);
     if (existing.length === 0) {
-      const name = createBranchSession(this.repoPath(), branch, cwd, 1);
+      const name = createBranchSession(this.activeRepo(), branch, cwd, 1);
       this.sessions.set([name]);
       this.focused.set(name);
       return;
@@ -313,7 +351,7 @@ export class WorkspaceComponent implements OnInit {
     if (branch === this.selectedBranch()) {
       return this.sessions().length;
     }
-    return sessionsForBranch(this.repoPath(), branch).length;
+    return sessionsForBranch(this.activeRepo(), branch).length;
   }
 
   focusSession(session: string): void {
@@ -328,8 +366,8 @@ export class WorkspaceComponent implements OnInit {
     if (!branch || !cwd) {
       return;
     }
-    const index = nextSessionIndex(this.repoPath(), branch, this.sessions());
-    const name = createBranchSession(this.repoPath(), branch, cwd, index);
+    const index = nextSessionIndex(this.activeRepo(), branch, this.sessions());
+    const name = createBranchSession(this.activeRepo(), branch, cwd, index);
     this.sessions.update((sessions) => [...sessions, name]);
     this.focused.set(name);
   }
@@ -341,8 +379,8 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     if (this.sessions().length < 2) {
-      const index = nextSessionIndex(this.repoPath(), branch, this.sessions());
-      const name = createBranchSession(this.repoPath(), branch, cwd, index);
+      const index = nextSessionIndex(this.activeRepo(), branch, this.sessions());
+      const name = createBranchSession(this.activeRepo(), branch, cwd, index);
       this.sessions.update((sessions) => [...sessions, name]);
     }
     this.splitView.set(true);

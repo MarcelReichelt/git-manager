@@ -137,6 +137,20 @@ describe('desktop workspace', () => {
       expect(row.textContent).not.toMatch(/local only|local-only|remote only|remote-only|gone|remote-deleted/i);
     }
   });
+
+  it('shows a terminal count only while that branch has running terminals', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const login = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    expect(login.querySelector('[data-testid="terminal-count"]').textContent.trim()).toBe('2');
+
+    for (const branch of ['wip', 'origin/release', 'abandoned', 'rename-docs']) {
+      const row = fixture.nativeElement.querySelector(`[data-branch="${branch}"]`);
+      expect(row.querySelector('[data-testid="terminal-count"]')).toBeNull();
+    }
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

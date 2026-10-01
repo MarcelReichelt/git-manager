@@ -9,10 +9,18 @@ interface SampleBranch {
   changedFileCount: number;
   ahead: number;
   behind: number;
+  terminalCount?: number;
 }
 
 const harborBranches: SampleBranch[] = [
-  { name: 'feature/login', status: 'local-and-remote', changedFileCount: 2, ahead: 3, behind: 1 },
+  {
+    name: 'feature/login',
+    status: 'local-and-remote',
+    changedFileCount: 2,
+    ahead: 3,
+    behind: 1,
+    terminalCount: 2,
+  },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
   { name: 'origin/release', status: 'remote-only', changedFileCount: 0, ahead: 4, behind: 0 },
   { name: 'abandoned', status: 'remote-deleted', changedFileCount: 1, ahead: 2, behind: 0 },
@@ -97,6 +105,9 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 <span data-testid="changed-file-count">{{ branch.changedFileCount }}</span>
                 <span data-testid="ahead">{{ branch.ahead }}</span>
                 <span data-testid="behind">{{ branch.behind }}</span>
+                @if (branch.terminalCount) {
+                  <span data-testid="terminal-count">{{ branch.terminalCount }}</span>
+                }
               </li>
             }
           </ul>

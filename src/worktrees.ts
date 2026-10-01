@@ -98,6 +98,47 @@ function addGitWorktree(repoPath: string, target: string, branch: string, remote
   }
 }
 
+export function findCheckedOutWorktree(repoPath: string, branch: string): string {
+  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  });
+  const blocks = output.split('\n\n');
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    const pathLine = lines.find((line) => line.startsWith('worktree '));
+    const branchLine = lines.find((line) => line.startsWith('branch '));
+    if (!pathLine || !branchLine) {
+      continue;
+    }
+    const path = pathLine.slice('worktree '.length);
+    const name = branchLine.slice('branch refs/heads/'.length);
+    if (name === branch && resolve(path) !== resolve(repoPath)) {
+      return path;
+    }
+  }
+  throw new Error(`No worktree is checked out for ${branch}`);
+}
+
+export function removeWorktree(repoQuery: string, branch: string): void {
+  const repo = findRepository(repoQuery);
+  if (!repo) {
+    throw new Error(`Repository is not registered: ${repoQuery}`);
+  }
+  const checkout = findCheckedOutWorktree(repo.path, branch);
+  try {
+    execFileSync('git', ['worktree', 'remove', checkout], {
+      cwd: repo.path,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const stderr =
+      error instanceof Error && 'stderr' in error ? String((error as { stderr?: unknown }).stderr).trim() : '';
+    throw new Error(stderr || `Failed to remove worktree for ${branch}`);
+  }
+}
+
 export async function createWorktree(repoQuery: string, branch: string): Promise<string> {
   const repo = findRepository(repoQuery);
   if (!repo) {

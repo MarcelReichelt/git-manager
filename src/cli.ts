@@ -2,7 +2,8 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { addRepository, listRepositories, unregisterRepository } from './registry.js';
-import { createWorktree } from './worktrees.js';
+import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from './merge.js';
+import { createWorktree, removeWorktree } from './worktrees.js';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 
@@ -65,6 +66,66 @@ worktree
       fail(error);
     }
   });
+
+worktree
+  .command('remove <branch>')
+  .description('Remove a branch worktree')
+  .requiredOption('--repo <repo>', 'Registered repository path or display name')
+  .action((branch: string, opts: { repo: string }) => {
+    try {
+      removeWorktree(opts.repo, branch);
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+program
+  .command('merge')
+  .description('Merge into or from the master tree')
+  .requiredOption('--repo <repo>', 'Registered repository path or display name')
+  .option('--into-master-tree <branch>', 'Merge this branch into the master tree')
+  .option('--from-master-tree <branch>', 'Merge the master tree into this branch')
+  .option('--source <branch>', 'Branch to merge from')
+  .option('--target <branch>', 'Branch to merge into')
+  .option('--squash', 'Squash the merge into one commit')
+  .action(
+    (opts: {
+      repo: string;
+      intoMasterTree?: string;
+      fromMasterTree?: string;
+      source?: string;
+      target?: string;
+      squash?: boolean;
+    }) => {
+      try {
+        const squash = opts.squash === true;
+        if (opts.intoMasterTree && opts.fromMasterTree) {
+          throw new Error('Choose either into the master tree or from the master tree');
+        }
+        if ((opts.intoMasterTree || opts.fromMasterTree) && (opts.source || opts.target)) {
+          throw new Error('Use master-tree options or an explicit source and target');
+        }
+        if (opts.intoMasterTree) {
+          mergeIntoMasterTree(opts.repo, opts.intoMasterTree, squash);
+          return;
+        }
+        if (opts.fromMasterTree) {
+          mergeFromMasterTree(opts.repo, opts.fromMasterTree, squash);
+          return;
+        }
+        if (opts.source || opts.target) {
+          if (!opts.source || !opts.target) {
+            throw new Error('Name both a source and a target');
+          }
+          mergeSourceIntoTarget(opts.repo, opts.source, opts.target, squash);
+          return;
+        }
+        throw new Error('Name the branch to merge into or from the master tree');
+      } catch (error) {
+        fail(error);
+      }
+    },
+  );
 
 function fail(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);

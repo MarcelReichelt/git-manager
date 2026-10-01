@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { findRepository, type RegisteredRepository } from './registry.js';
 
@@ -21,6 +21,9 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   const checkout = checkoutPath(repository, folderName(branch));
+  if (existsSync(checkout)) {
+    throw new Error(`Worktree folder already exists: ${checkout}`);
+  }
   mkdirSync(dirname(checkout), { recursive: true });
   execFileSync('git', ['worktree', 'add', checkout, branch], {
     cwd: repository.path,

@@ -45,7 +45,11 @@ const harborBranches: SampleBranch[] = [
         files: [{ path: 'src/login.ts', added: 10, deleted: 0 }],
         diff: '+function login',
       },
-      { subject: 'Wire the session' },
+      {
+        subject: 'Wire the session',
+        files: [{ path: 'src/session.ts', added: 8, deleted: 2 }],
+        diff: '+export function session',
+      },
     ],
   },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },

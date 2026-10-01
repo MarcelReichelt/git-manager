@@ -246,6 +246,25 @@ describe('desktop workspace', () => {
     expect(diff.textContent).toContain('+function login');
     expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
   });
+
+  it('shows the files and diff for Wire the session', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Wire the session"]').click();
+    fixture.detectChanges();
+
+    const file = fixture.nativeElement.querySelector('[data-testid="commit-files"] [data-testid="changed-file"]');
+    expect(file.getAttribute('data-path')).toBe('src/session.ts');
+    expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('8');
+    expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('2');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain(
+      '+export function session',
+    );
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

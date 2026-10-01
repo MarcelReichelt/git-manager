@@ -1,32 +1,17 @@
 # CLI reference
 
-## Global flags
-
-- `--verbose` — show filesystem paths
-- `--no-hooks` — skip all hooks
-- `--no-pre-hooks` / `--no-post-hooks` — partial skip
-
-## Commands
+The registry stores each repository's path and display name. Layout is not a registry field.
 
 | Command | Description |
 | --- | --- |
-| `(default)` | Interactive menu |
-| `setup` | Settings wizard |
-| `register` | Register cwd repo |
-| `repo list` | List registered repos |
-| `repo current` | Show active repo/worktree |
-| `repo switch [name]` | Unified picker or switch by name |
-| `repo add [--path]` | Add existing repo |
-| `repo unregister [name]` | Remove from registry |
-| `clone <url>` | Clone and register |
-| `branch list` / `fetch` | Remote branches |
-| `worktree list/switch/path/open/create/remove/pull/push` | Worktree ops |
-| `changes [--all] [--files]` | Working tree status |
-| `merge into-primary/from-primary/<src> <tgt>` | Merge flows |
-| `doctor [--fix]` | Registry health |
-| `settings show/edit/set/reset/wizard` | Global settings |
-| `config init/show` | Per-repo config |
-| `docs [topic]` | Open documentation |
-| `ui` | Launch TUI |
+| `add --path <path> --name <name>` | Register an existing local git repository |
+| `list` | List registered repositories as display name and path |
+| `unregister --path <path>` | Remove a repository from the registry |
+| `worktree create <branch> --repo <repo>` | Create a worktree. Prints the checkout path |
+| `worktree remove <branch> --repo <repo>` | Remove that branch's worktree and keep the branch |
+| `merge --repo <repo> --update-from-master <branch>` | Bring master into that branch's worktree |
+| `merge --repo <repo> --into-master <branch>` | Merge that branch into master on the primary checkout |
 
-See `git-manager <command> --help` for flags.
+`<repo>` is a registered path or display name. `--squash` squashes that merge into one commit. Pass only one of `--update-from-master` or `--into-master`.
+
+`git-manager <command> --help` prints the flags for one command.

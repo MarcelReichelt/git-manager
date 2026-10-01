@@ -12,5 +12,8 @@ export default defineConfig({
   build: {
     outDir: '../../dist/desktop-app',
     emptyOutDir: true,
+    rollupOptions: {
+      external: ['node-pty', 'better-sqlite3'],
+    },
   },
 });

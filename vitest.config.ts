@@ -13,7 +13,13 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-          exclude: ['tests/desktop-workspace.test.ts', 'tests/e2e/**', '**/node_modules/**', '**/dist/**'],
+          exclude: [
+            'tests/desktop-workspace.test.ts',
+            'tests/desktop-terminal.test.ts',
+            'tests/e2e/**',
+            '**/node_modules/**',
+            '**/dist/**',
+          ],
         },
       },
       {
@@ -30,8 +36,15 @@ export default defineConfig({
           // The Angular plugin defaults this project to vmThreads, whose
           // synthetic node:module cannot host jiti plugin loading.
           pool: 'forks',
-          include: ['tests/desktop-workspace.test.ts'],
+          maxWorkers: 1,
+          fileParallelism: false,
+          include: ['tests/desktop-workspace.test.ts', 'tests/desktop-terminal.test.ts'],
           setupFiles: ['src/desktop/test-setup.ts'],
+          server: {
+            deps: {
+              inline: [/@angular/, /zone\.js/, /@xterm/],
+            },
+          },
         },
       },
     ],

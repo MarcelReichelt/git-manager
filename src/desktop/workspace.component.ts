@@ -3,7 +3,15 @@ import { Component, computed, inject, input, NgZone, OnInit, signal } from '@ang
 import { basename } from 'node:path';
 import { findRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
-import { createWorktree, removeWorktree } from '../worktrees.js';
+import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
+import { ShellPane } from './shell-pane';
+import { TerminalPane } from './terminal-pane';
+import {
+  createBranchSession,
+  killTmuxSession,
+  nextSessionIndex,
+  sessionsForBranch,
+} from './tmux-sessions';
 import {
   listBranches,
   readChangedFiles,
@@ -37,7 +45,6 @@ interface SampleBranch {
   changedFileCount: number;
   ahead: number;
   behind: number;
-  terminalCount?: number;
   files?: SampleFile[];
   commits?: SampleCommit[];
 }
@@ -49,7 +56,6 @@ const harborBranches: SampleBranch[] = [
     changedFileCount: 2,
     ahead: 3,
     behind: 1,
-    terminalCount: 2,
     files: [
       { path: 'src/login.ts', added: 12, deleted: 3, diff: '+export function login' },
       { path: 'README.md', added: 4, deleted: 1 },
@@ -94,7 +100,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, TerminalPane, ShellPane],
   styles: [
     `
       .start-screen {
@@ -168,6 +174,11 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
         top: 0;
         left: 256px;
       }
+
+      .terminal-pane {
+        background-color: #1e1e1e;
+        min-height: 12rem;
+      }
     `,
   ],
   template: `
@@ -202,7 +213,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 [attr.data-status]="branch.status"
                 (click)="selectBranch(branch.name)"
               >
-                <button type="button" (click)="selectBranch(branch.name)">{{ branch.name }}</button>
+                <button type="button" (click)="selectBranch(branch.name, $event)">{{ branch.name }}</button>
                 <span
                   data-testid="changed-file-count"
                   [attr.aria-label]="branch.changedFileCount + ' changed files'"
@@ -215,12 +226,12 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 <span data-testid="behind" [attr.aria-label]="branch.behind + ' commits behind'">
                   {{ branch.behind }}
                 </span>
-                @if (branch.terminalCount) {
+                @if (terminalCount(branch.name) > 0) {
                   <span
                     data-testid="terminal-count"
-                    [attr.aria-label]="branch.terminalCount + ' terminals'"
+                    [attr.aria-label]="terminalCount(branch.name) + ' terminals'"
                   >
-                    {{ branch.terminalCount }}
+                    {{ terminalCount(branch.name) }}
                   </span>
                 }
                 <button
@@ -326,6 +337,35 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
             } @else if (selectedDiff(); as diff) {
               <pre data-testid="diff">{{ diff }}</pre>
             }
+            @if (platform() === 'win32' && shellRunning() && worktreePath()) {
+              <div
+                class="terminal-pane"
+                data-testid="terminal-pane"
+                [gmShell]="worktreePath()"
+                (shellEnded)="onShellEnded()"
+                style="background-color: #1e1e1e"
+              ></div>
+            } @else if (sessions().length > 0) {
+              <div class="terminal-chrome">
+                <div role="tablist">
+                  @for (session of sessions(); track session) {
+                    <button type="button" role="tab" (click)="focusSession(session)">{{ session }}</button>
+                  }
+                </div>
+                <button type="button" (click)="splitSession()">Split</button>
+                <button type="button" (click)="newSession()">New</button>
+                <button type="button" (click)="killSession()">Kill</button>
+              </div>
+              @for (session of visibleSessions(); track session) {
+                <div
+                  class="terminal-pane"
+                  data-testid="terminal-pane"
+                  [gmTerminal]="session"
+                  (sessionEnded)="onSessionEnded(session)"
+                  style="background-color: #1e1e1e"
+                ></div>
+              }
+            }
           }
         </section>
       </main>
@@ -340,6 +380,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
 export class WorkspaceComponent implements OnInit {
   private readonly zone = inject(NgZone);
   readonly repositoryPath = input<string | null>(null);
+  readonly platform = input(hostPlatform());
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
@@ -353,6 +394,23 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedDiff = signal<string | null>(null);
   readonly createBranchName = signal('');
   readonly workspaceError = signal<string | null>(null);
+  readonly worktreePath = signal('');
+  readonly sessions = signal<string[]>([]);
+  readonly focused = signal('');
+  readonly splitView = signal(false);
+  readonly shellRunning = signal(false);
+  readonly visibleSessions = computed(() => {
+    const focused = this.focused();
+    const sessions = this.sessions();
+    if (!focused) {
+      return [];
+    }
+    if (!this.splitView() || sessions.length < 2) {
+      return [focused];
+    }
+    const other = sessions.find((session) => session !== focused) ?? focused;
+    return [focused, other];
+  });
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
     if (path === null) {
@@ -475,7 +533,8 @@ export class WorkspaceComponent implements OnInit {
     this.openBranch.set(name);
   }
 
-  selectBranch(name: string): void {
+  selectBranch(name: string, event?: Event): void {
+    event?.stopPropagation();
     this.selectedBranchName.set(name);
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
@@ -489,6 +548,84 @@ export class WorkspaceComponent implements OnInit {
     }
     this.loadedFiles.set(readChangedFiles(path, name));
     this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+    this.openTerminals(name);
+  }
+
+  terminalCount(name: string): number {
+    if (this.platform() === 'win32') {
+      return name === this.selectedBranchName() && this.shellRunning() ? 1 : 0;
+    }
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return 0;
+    }
+    return sessionsForBranch(repo, name).length;
+  }
+
+  focusSession(session: string): void {
+    if (this.sessions().includes(session)) {
+      this.focused.set(session);
+    }
+  }
+
+  newSession(): void {
+    const repo = this.repositoryPath();
+    const branch = this.selectedBranchName();
+    const cwd = this.worktreePath();
+    if (!repo || !branch || !cwd || this.platform() === 'win32') {
+      return;
+    }
+    const index = nextSessionIndex(repo, branch, this.sessions());
+    const name = createBranchSession(repo, branch, cwd, index);
+    this.sessions.update((sessions) => [...sessions, name]);
+    this.focused.set(name);
+  }
+
+  splitSession(): void {
+    const repo = this.repositoryPath();
+    const branch = this.selectedBranchName();
+    const cwd = this.worktreePath();
+    if (!repo || !branch || !cwd || this.platform() === 'win32') {
+      return;
+    }
+    if (this.sessions().length < 2) {
+      const index = nextSessionIndex(repo, branch, this.sessions());
+      const name = createBranchSession(repo, branch, cwd, index);
+      this.sessions.update((sessions) => [...sessions, name]);
+    }
+    this.splitView.set(true);
+  }
+
+  killSession(): void {
+    const current = this.focused();
+    if (!current) {
+      return;
+    }
+    killTmuxSession(current);
+    const remaining = this.sessions().filter((session) => session !== current);
+    this.sessions.set(remaining);
+    if (remaining.length < 2) {
+      this.splitView.set(false);
+    }
+    this.focused.set(remaining[0] ?? '');
+  }
+
+  onShellEnded(): void {
+    this.shellRunning.set(false);
+  }
+
+  onSessionEnded(session: string): void {
+    if (!this.sessions().includes(session)) {
+      return;
+    }
+    const remaining = this.sessions().filter((name) => name !== session);
+    this.sessions.set(remaining);
+    if (remaining.length < 2) {
+      this.splitView.set(false);
+    }
+    if (this.focused() === session) {
+      this.focused.set(remaining[0] ?? '');
+    }
   }
 
   openSwitch(): void {
@@ -560,6 +697,49 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
+  private openTerminals(branch: string): void {
+    const repo = this.repositoryPath();
+    if (!repo) {
+      this.clearTerminals();
+      return;
+    }
+    const cwd = findCheckout(repo, branch);
+    if (!cwd) {
+      this.clearTerminals();
+      return;
+    }
+    this.worktreePath.set(cwd);
+    this.splitView.set(false);
+    if (this.platform() === 'win32') {
+      this.sessions.set([]);
+      this.focused.set('');
+      this.shellRunning.set(true);
+      return;
+    }
+    this.shellRunning.set(false);
+    const existing = sessionsForBranch(repo, branch);
+    if (existing.length === 0) {
+      const name = createBranchSession(repo, branch, cwd, 1);
+      this.sessions.set([name]);
+      this.focused.set(name);
+      return;
+    }
+    if (existing.join('\n') !== this.sessions().join('\n')) {
+      this.sessions.set(existing);
+    }
+    if (!existing.includes(this.focused())) {
+      this.focused.set(existing[0] ?? '');
+    }
+  }
+
+  private clearTerminals(): void {
+    this.worktreePath.set('');
+    this.sessions.set([]);
+    this.focused.set('');
+    this.splitView.set(false);
+    this.shellRunning.set(false);
+  }
+
   private refreshBranches(): void {
     const path = this.repositoryPath();
     if (path === null) {
@@ -575,6 +755,13 @@ export class WorkspaceComponent implements OnInit {
       })),
     );
   }
+}
+
+function hostPlatform(): string {
+  if (typeof process !== 'undefined' && typeof process.platform === 'string') {
+    return process.platform;
+  }
+  return 'linux';
 }
 
 function squashChecked(event: Event): boolean {

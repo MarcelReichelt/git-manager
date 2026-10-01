@@ -35,7 +35,7 @@ describe('git-manager registry', () => {
 
     const listed = runGitManager(['list'], env);
     expect(listed.status).toBe(0);
-    expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\tworkspaces\n`);
+    expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\n`);
 
     const removed = runGitManager(['unregister', '--path', repoPath], env);
     expect(removed.status).toBe(0);
@@ -45,7 +45,7 @@ describe('git-manager registry', () => {
     expect(after.stdout).toBe('');
   });
 
-  it('lists the layout stored for that repository', () => {
+  it('records only a path and a display name', () => {
     const root = makeTempDir('git-manager-layout-');
     roots.push(root);
     const repoPath = join(root, 'atlas');
@@ -53,14 +53,22 @@ describe('git-manager registry', () => {
     initGitRepo(repoPath);
     const env = gitManagerEnv(registryPath);
 
-    const added = runGitManager(
-      ['add', '--path', repoPath, '--name', 'Atlas', '--layout', 'sibling'],
-      env,
-    );
+    const added = runGitManager(['add', '--path', repoPath, '--name', 'Atlas'], env);
     expect(added.status).toBe(0);
 
     const listed = runGitManager(['list'], env);
-    expect(listed.stdout).toBe(`Atlas\t${resolve(repoPath)}\tsibling\n`);
+    expect(listed.stdout).toBe(`Atlas\t${resolve(repoPath)}\n`);
+
+    const rejected = runGitManager(
+      ['add', '--path', repoPath, '--name', 'Atlas', '--layout', 'sibling'],
+      env,
+    );
+    expect(rejected.status).not.toBe(0);
+
+    const db = new Database(registryPath, { readonly: true });
+    const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>;
+    db.close();
+    expect(columns.map((column) => column.name)).toEqual(['path', 'display_name']);
   });
 
   it('stores a repositories table and no worktree or session table', () => {

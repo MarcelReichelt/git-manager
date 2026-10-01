@@ -1086,6 +1086,7 @@ __metadata:
     "@types/jsdom": "npm:^30.0.0"
     "@types/node": "npm:^22.13.10"
     "@types/react": "npm:^18.3.18"
+    "@xterm/xterm": "npm:6.0.0"
     better-sqlite3: "npm:^12.11.1"
     commander: "npm:^13.1.0"
     electron: "npm:35.7.5"
@@ -1094,6 +1095,7 @@ __metadata:
     ink-testing-library: "npm:^4.0.0"
     jiti: "npm:^2.4.2"
     jsdom: "npm:26.1.0"
+    node-pty: "npm:1.1.0"
     react: "npm:^18.3.1"
     rxjs: "npm:7.8.2"
     simple-git: "npm:^3.27.0"
@@ -3099,6 +3101,13 @@ __metadata:
     loupe: "npm:^3.1.4"
     tinyrainbow: "npm:^2.0.0"
   checksum: 10c0/452da757082ebcadf43ce697bf4077d546ea06e094763969440c3cb0d7bb950be0f69d6dbdab297cd0307bdf956294e20b0184d0218a4ef942d3d253995d44ed
+  languageName: node
+  linkType: hard
+
+"@xterm/xterm@npm:6.0.0":
+  version: 6.0.0
+  resolution: "@xterm/xterm@npm:6.0.0"
+  checksum: 10c0/b99122553f323a65b708e5eba9903d4c5a1bcb59fe576d29d6e91a33002bccfd1b99403e1e839e1942f4952039db6d3d74ca9d65ed0399b4e9a0a5f35b8c12d9
   languageName: node
   linkType: hard
 
@@ -5390,7 +5399,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-addon-api@npm:^7.0.0":
+"node-addon-api@npm:^7.0.0, node-addon-api@npm:^7.1.0":
   version: 7.1.1
   resolution: "node-addon-api@npm:7.1.1"
   dependencies:
@@ -5429,6 +5438,16 @@ __metadata:
   bin:
     node-gyp: bin/node-gyp.js
   checksum: 10c0/e7525c427db2d16aa368b8947187de83083d2a8dda23e3e096a71c22ae637ac5bb8ed7cf6c871f1b9118cd2729dbfee4ff3a4245e2b79226900227b15831b492
+  languageName: node
+  linkType: hard
+
+"node-pty@npm:1.1.0":
+  version: 1.1.0
+  resolution: "node-pty@npm:1.1.0"
+  dependencies:
+    node-addon-api: "npm:^7.1.0"
+    node-gyp: "npm:latest"
+  checksum: 10c0/e527305263da36d554b7d2116aee6430b898675fc50e7bd82fbd762f14cb6b948fb8d997736af1f70d76bf9ffd4f5179bc1ed1d8002567dfcf3b29f039291798
   languageName: node
   linkType: hard
 

@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
+import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
 
@@ -22,7 +23,14 @@ describe('desktop workspace', () => {
     } else {
       process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
-    for (const root of roots.splice(0)) {
+    const removing = roots.splice(0);
+    for (const name of listTmuxSessions()) {
+      const directory = sessionDirectory(name);
+      if (removing.some((root) => directory.startsWith(root))) {
+        killTmuxSession(name);
+      }
+    }
+    for (const root of removing) {
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -180,16 +188,12 @@ describe('desktop workspace', () => {
     }
   });
 
-  it('shows a terminal count only while that branch has running terminals', async () => {
+  it('shows no terminal count on the sample branches', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    const login = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    expect(login.querySelector('[data-testid="terminal-count"]').textContent.trim()).toBe('2');
-
-    for (const branch of ['wip', 'origin/release', 'abandoned', 'rename-docs']) {
-      const row = fixture.nativeElement.querySelector(`[data-branch="${branch}"]`);
+    for (const row of fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')) {
       expect(row.querySelector('[data-testid="terminal-count"]')).toBeNull();
     }
   });
@@ -440,7 +444,7 @@ describe('desktop workspace', () => {
   it('titles a registered repository with its display name', async () => {
     const repoPath = createEmptyRepository(roots);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
 
     const fixture = await renderRepository(repoPath);
 
@@ -453,7 +457,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'notes']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
     const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
@@ -478,7 +482,7 @@ describe('desktop workspace', () => {
     mkdirSync(checkout, { recursive: true });
     writeFileSync(join(checkout, 'keep.txt'), 'stay');
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
@@ -520,7 +524,7 @@ describe('desktop workspace', () => {
       '[hooks]\nmodules = ["plugins/abort.ts"]\n',
     );
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
@@ -582,7 +586,7 @@ describe('desktop workspace', () => {
       ].join('\n'),
     );
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
     const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
@@ -605,7 +609,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
     writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[copy]\nfiles = [".env"]\n');
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
     const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
@@ -650,7 +654,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
@@ -670,7 +674,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['checkout', '-b', 'other']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
@@ -689,7 +693,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
     writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
@@ -715,7 +719,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
     writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
@@ -741,7 +745,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
     writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
@@ -767,7 +771,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
-    addRepository(repoPath, 'Harbor', 'workspaces');
+    addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
     const branchSha = git(repoPath, ['rev-parse', 'refs/heads/feature']);

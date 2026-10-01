@@ -1,28 +1,6 @@
 # Configuration
 
-## Global: `~/.config/git-manager/config.toml`
-
-```toml
-[meta]
-setup_completed = true
-
-[editor]
-command = "cursor"
-args = []
-
-[defaults]
-clone_root = "~/DEV"
-layout_mode = "workspaces"
-
-[tui]
-refresh_interval_ms = 2000
-diff_context_lines = 3
-diff_max_file_bytes = 512000
-diff_max_changed_lines = 8000
-
-[hooks]
-global_modules = ["setup-db.js"]
-```
+The registered-repository list is `~/.config/git-manager/registry.db`. `GIT_MANAGER_REGISTRY_PATH` overrides that path. Each row is a path and a display name. Layout, worktrees, and terminal sessions are not stored there.
 
 ## Per-repo: `.git-manager/config.toml`
 
@@ -41,8 +19,4 @@ modules = ["./plugins/setup-db.ts"]
 commands = ["yarn"]
 ```
 
-## Merge order
-
-`defaults (code) → global config → per-repo config → CLI flags`
-
-Edit via `git-manager settings edit` or TUI settings (`S` or `,` in the UI).
+`[layout].mode` is `workspaces` or `sibling`. When it is unset, worktree create uses `workspaces`.

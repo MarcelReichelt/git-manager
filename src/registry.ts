@@ -4,12 +4,9 @@ import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-export type LayoutMode = 'workspaces' | 'sibling';
-
 export interface RegisteredRepository {
   path: string;
   displayName: string;
-  layout: LayoutMode;
 }
 
 export function resolveRegistryPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -23,8 +20,7 @@ function openDatabase(env: NodeJS.ProcessEnv = process.env): Database.Database {
   db.exec(`
     CREATE TABLE IF NOT EXISTS repositories (
       path TEXT PRIMARY KEY,
-      display_name TEXT NOT NULL,
-      layout TEXT NOT NULL
+      display_name TEXT NOT NULL
     );
   `);
   return db;
@@ -41,28 +37,20 @@ function isGitRepository(repoPath: string): boolean {
   }
 }
 
-export function addRepository(
-  repoPath: string,
-  displayName: string,
-  layout: LayoutMode,
-): RegisteredRepository {
-  if (layout !== 'workspaces' && layout !== 'sibling') {
-    throw new Error(`Unsupported layout: ${layout}`);
-  }
+export function addRepository(repoPath: string, displayName: string): RegisteredRepository {
   const path = resolve(repoPath);
   if (!isGitRepository(path)) {
     throw new Error(`Not a git repository: ${path}`);
   }
-  const record = { path, displayName, layout };
+  const record = { path, displayName };
   const db = openDatabase();
   try {
     db.prepare(
-      `INSERT INTO repositories (path, display_name, layout)
-       VALUES (?, ?, ?)
+      `INSERT INTO repositories (path, display_name)
+       VALUES (?, ?)
        ON CONFLICT(path) DO UPDATE SET
-         display_name = excluded.display_name,
-         layout = excluded.layout`,
-    ).run(path, displayName, layout);
+         display_name = excluded.display_name`,
+    ).run(path, displayName);
     return record;
   } finally {
     db.close();
@@ -73,14 +61,11 @@ export function listRepositories(): RegisteredRepository[] {
   const db = openDatabase();
   try {
     const rows = db
-      .prepare(
-        'SELECT path, display_name, layout FROM repositories ORDER BY path',
-      )
-      .all() as Array<{ path: string; display_name: string; layout: LayoutMode }>;
+      .prepare('SELECT path, display_name FROM repositories ORDER BY path')
+      .all() as Array<{ path: string; display_name: string }>;
     return rows.map((row) => ({
       path: row.path,
       displayName: row.display_name,
-      layout: row.layout,
     }));
   } finally {
     db.close();

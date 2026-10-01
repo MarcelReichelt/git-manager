@@ -29,10 +29,7 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['branch', 'login']);
     const env = gitManagerEnv(registryPath);
 
-    const added = runGitManager(
-      ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'workspaces'],
-      env,
-    );
+    const added = runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
     expect(added.status).toBe(0);
 
     const created = runGitManager(
@@ -56,10 +53,9 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['branch', 'login']);
     const env = gitManagerEnv(registryPath);
 
-    const added = runGitManager(
-      ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'sibling'],
-      env,
-    );
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    const added = runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
     expect(added.status).toBe(0);
 
     const created = runGitManager(
@@ -83,12 +79,7 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['branch', 'feature/foo']);
     const env = gitManagerEnv(registryPath);
 
-    expect(
-      runGitManager(
-        ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'workspaces'],
-        env,
-      ).status,
-    ).toBe(0);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
     const created = runGitManager(
       ['worktree', 'create', 'feature/foo', '--repo', 'Harbor'],
@@ -144,12 +135,7 @@ describe('git-manager worktree create', () => {
       '[layout]\nmode = "sibling"\n',
     );
     const env = gitManagerEnv(registryPath);
-    expect(
-      runGitManager(
-        ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'workspaces'],
-        env,
-      ).status,
-    ).toBe(0);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
     const created = runGitManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
@@ -376,7 +362,7 @@ describe('git-manager worktree create', () => {
     ).toBe(0);
 
     const listed = runGitManager(['list'], env);
-    expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\tworkspaces\n`);
+    expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\n`);
   });
 
   it('removes the worktree and leaves the branch', () => {

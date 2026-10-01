@@ -1,7 +1,7 @@
 {
   "name": "@git-manager/main",
   "version": "0.2.5",
-  "description": "TypeScript git repository manager with worktrees, merge, push/pull, and TUI",
+  "description": "Desktop workspace and CLI for registered git repositories",
   "type": "module",
   "bin": {
     "git-manager": "./dist/cli.js"
@@ -46,11 +46,13 @@
     "@angular/platform-browser-dynamic": "22.2.1",
     "@iarna/toml": "^2.2.5",
     "@inquirer/prompts": "^7.3.2",
+    "@xterm/xterm": "6.0.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^13.1.0",
     "execa": "^9.5.2",
     "ink": "^5.2.0",
     "jiti": "^2.4.2",
+    "node-pty": "1.1.0",
     "react": "^18.3.1",
     "rxjs": "7.8.2",
     "simple-git": "^3.27.0",

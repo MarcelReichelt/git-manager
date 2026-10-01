@@ -1,20 +1,16 @@
 # git-manager
 
-A TypeScript CLI and TUI for managing git repositories with worktrees, push/pull, merges, hooks, and a global registry.
+A desktop workspace and Node CLI for one registered git repository at a time.
 
 Requires **Node.js 20** or later.
 
 ## Features
 
-- Global repository registry with active repo and worktree context
-- Two layout modes: sibling folders or `.workspaces/` inside the repo
-- Clone, register, and unified repo picker (switch / clone / add)
-- Worktree create, remove, push, pull, and merge flows
-- Working tree changes and diff view in CLI and carousel TUI
-- Stash list, create, apply, pop, and drop from the TUI
-- Pre/post hooks via declarative commands and TypeScript plugins (jiti)
-- First-run setup wizard and in-tool settings
-- Registry health checks via `doctor`
+- Desktop window: centered repository card, every local and remote branch, diffs, and a branch terminal
+- Registry of path and display name in `~/.config/git-manager/registry.db`
+- Worktree create in the workspaces or sibling layout, from the repository's own config
+- Merge into master or update from master, with squash, and worktree remove
+- Create hooks: shell commands and TypeScript plugins, including abort
 
 ## Install
 
@@ -24,23 +20,19 @@ Requires **Node.js 20+** and **git** on your `PATH`.
 npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
 npm install -g @git-manager/main
 
-git-manager          # interactive menu
-git-manager ui       # Ink TUI
-git-manager setup    # settings wizard
+git-manager add --path ~/src/harbor --name Harbor
+git-manager list
 ```
 
-Run without a global install:
+Open the desktop window from a checkout:
 
 ```bash
-npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
-npx @git-manager/main setup
+yarn desktop
 ```
 
 On minimal Linux (Alpine, slim images), you may need build tools for the
 `better-sqlite3` native dependency: `python3`, `make`, and `g++`. See
 [Troubleshooting](docs/troubleshooting.md#npm-install-fails).
-
-On first run, the setup wizard asks for your editor, clone location, and default layout mode.
 
 ## Development
 
@@ -66,18 +58,14 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 
 ## Documentation
 
-Browse from the CLI: `git-manager docs [topic]` (e.g. `git-manager docs tui`).
-
 | Guide | Topic |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Install, register, clone, switch worktrees |
-| [Use cases](docs/use-cases.md) | Parallel features, hotfixes, post-merge tasks |
-| [CLI reference](docs/cli-reference.md) | All subcommands and flags |
-| [TUI guide](docs/tui-guide.md) | Carousel layout and keybindings |
-| [Configuration](docs/configuration.md) | Global and per-repo TOML |
+| [Getting started](docs/getting-started.md) | Install, register, open the workspace |
+| [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
+| [Configuration](docs/configuration.md) | Registry file and per-repo TOML |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
 | [Plugins](docs/plugins.md) | Hook actions and plugin authoring |
-| [Troubleshooting](docs/troubleshooting.md) | Install issues, doctor, stale entries, editor issues |
+| [Troubleshooting](docs/troubleshooting.md) | Install issues |
 
 ## License
 

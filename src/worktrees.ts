@@ -3,11 +3,9 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { createJiti } from 'jiti';
-import {
-  findRepository,
-  type LayoutMode,
-  type RegisteredRepository,
-} from './registry.js';
+import { findRepository } from './registry.js';
+
+type LayoutMode = 'workspaces' | 'sibling';
 
 interface RepoConfig {
   layout?: { mode?: string };
@@ -37,10 +35,10 @@ function readRepoConfig(repoPath: string): RepoConfig {
   return TOML.parse(readFileSync(configPath, 'utf8')) as RepoConfig;
 }
 
-function layoutForCreate(repository: RegisteredRepository, config: RepoConfig): LayoutMode {
+function layoutForCreate(config: RepoConfig): LayoutMode {
   const mode = config.layout?.mode;
   if (mode === undefined) {
-    return repository.layout;
+    return 'workspaces';
   }
   if (mode !== 'workspaces' && mode !== 'sibling') {
     throw new Error(`Unsupported layout: ${mode}`);
@@ -115,6 +113,28 @@ function copyConfiguredFiles(
   }
 }
 
+export function findCheckout(repoPath: string, branch: string): string | undefined {
+  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  });
+  for (const block of output.split('\n\n')) {
+    let path: string | undefined;
+    let ref: string | undefined;
+    for (const line of block.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        path = line.slice('worktree '.length);
+      } else if (line.startsWith('branch ')) {
+        ref = line.slice('branch '.length);
+      }
+    }
+    if (path && ref === `refs/heads/${branch}`) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
 export function findBranchCheckout(repoPath: string, branch: string): string {
   const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
     cwd: repoPath,
@@ -152,11 +172,7 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   const config = readRepoConfig(repository.path);
-  const checkout = checkoutPath(
-    repository.path,
-    layoutForCreate(repository, config),
-    folderName(branch),
-  );
+  const checkout = checkoutPath(repository.path, layoutForCreate(config), folderName(branch));
   if (existsSync(checkout)) {
     throw new Error(`Worktree folder already exists: ${checkout}`);
   }

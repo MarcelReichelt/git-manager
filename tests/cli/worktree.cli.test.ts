@@ -72,4 +72,31 @@ describe('git-manager worktree create', () => {
     expect(git(checkout, ['branch', '--show-current'])).toBe('login');
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
   });
+
+  it('creates feature/foo in a feature-foo folder without renaming the branch', () => {
+    const root = makeTempDir('git-manager-sanitize-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'feature/foo']);
+    const env = gitManagerEnv(registryPath);
+
+    expect(
+      runGitManager(
+        ['add', '--path', repoPath, '--name', 'Harbor', '--layout', 'workspaces'],
+        env,
+      ).status,
+    ).toBe(0);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'feature/foo', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+
+    const checkout = resolve(repoPath, '.workspaces', 'feature-foo');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature/foo');
+  });
 });

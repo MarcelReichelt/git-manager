@@ -3,6 +3,10 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { findRepository, type RegisteredRepository } from './registry.js';
 
+function folderName(branch: string): string {
+  return branch.replace(/[/\\<>:"|?*\u0000-\u001f\u007f]/g, '-');
+}
+
 function checkoutPath(repository: RegisteredRepository, folder: string): string {
   if (repository.layout === 'sibling') {
     return join(dirname(repository.path), folder);
@@ -16,7 +20,7 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
     throw new Error(`Repository not found: ${repoQuery}`);
   }
 
-  const checkout = checkoutPath(repository, branch);
+  const checkout = checkoutPath(repository, folderName(branch));
   mkdirSync(dirname(checkout), { recursive: true });
   execFileSync('git', ['worktree', 'add', checkout, branch], {
     cwd: repository.path,

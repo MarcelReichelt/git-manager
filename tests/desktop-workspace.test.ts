@@ -166,6 +166,28 @@ describe('desktop workspace', () => {
     const controls = [...sidebar.querySelectorAll('button, a, input, select, textarea')];
     expect(controls.at(-1)).toBe(create);
   });
+
+  it('opens a branch menu where squash is inside Merge and remove is outside it', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    const group = menu.querySelector('fieldset');
+    expect(group.querySelector('legend').textContent.trim()).toBe('Merge');
+    expect(group.querySelector('[data-testid="update-from-master"]')).not.toBeNull();
+    expect(group.querySelector('[data-testid="merge-into-master"]')).not.toBeNull();
+    const squash = group.querySelector('[data-testid="squash"]');
+    expect(squash.getAttribute('type')).toBe('checkbox');
+    const remove = menu.querySelector('[data-testid="remove-worktree"]');
+    expect(group.contains(remove)).toBe(false);
+    expect(squash.parentElement).not.toBe(remove.parentElement);
+    expect(squash.parentElement).not.toBe(group.parentElement);
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

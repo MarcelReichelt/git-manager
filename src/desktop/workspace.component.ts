@@ -108,6 +108,28 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 @if (branch.terminalCount) {
                   <span data-testid="terminal-count">{{ branch.terminalCount }}</span>
                 }
+                <button
+                  type="button"
+                  data-testid="branch-menu"
+                  [attr.aria-label]="'Branch actions for ' + branch.name"
+                  (click)="openBranchMenu(branch.name)"
+                >
+                  Branch actions
+                </button>
+                @if (openBranch() === branch.name) {
+                  <div data-testid="hover-menu">
+                    <fieldset>
+                      <legend>Merge</legend>
+                      <button type="button" data-testid="update-from-master">Update from master</button>
+                      <button type="button" data-testid="merge-into-master">Merge into master</button>
+                      <label>
+                        Squash
+                        <input data-testid="squash" type="checkbox" />
+                      </label>
+                    </fieldset>
+                    <button type="button" data-testid="remove-worktree">Remove worktree</button>
+                  </div>
+                }
               </li>
             }
           </ul>
@@ -126,11 +148,17 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
 export class WorkspaceComponent {
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
+  readonly openBranch = signal<string | null>(null);
   readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
 
   choose(name: string): void {
     this.selectedName.set(name);
     this.overlayOpen.set(false);
+    this.openBranch.set(null);
+  }
+
+  openBranchMenu(name: string): void {
+    this.openBranch.set(name);
   }
 
   openSwitch(): void {

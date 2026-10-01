@@ -12,6 +12,8 @@ interface SampleFile {
 
 interface SampleCommit {
   subject: string;
+  files?: SampleFile[];
+  diff?: string;
 }
 
 interface SampleBranch {
@@ -37,7 +39,14 @@ const harborBranches: SampleBranch[] = [
       { path: 'src/login.ts', added: 12, deleted: 3, diff: '+export function login' },
       { path: 'README.md', added: 4, deleted: 1 },
     ],
-    commits: [{ subject: 'Add the login form' }, { subject: 'Wire the session' }],
+    commits: [
+      {
+        subject: 'Add the login form',
+        files: [{ path: 'src/login.ts', added: 10, deleted: 0 }],
+        diff: '+function login',
+      },
+      { subject: 'Wire the session' },
+    ],
   },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
   { name: 'origin/release', status: 'remote-only', changedFileCount: 0, ahead: 4, behind: 0 },
@@ -88,6 +97,24 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
 
       [data-status='remote-deleted'] {
         background-color: red;
+      }
+
+      .commit-detail {
+        position: relative;
+        min-height: 12rem;
+      }
+
+      .commit-files {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 240px;
+      }
+
+      .commit-diff {
+        position: absolute;
+        top: 0;
+        left: 256px;
       }
     `,
   ],
@@ -171,10 +198,25 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
             </ul>
             <ul data-testid="branch-commits">
               @for (commit of branch.commits ?? []; track commit.subject) {
-                <li data-testid="commit" [attr.data-subject]="commit.subject">{{ commit.subject }}</li>
+                <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
+                  <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
+                </li>
               }
             </ul>
-            @if (selectedDiff(); as diff) {
+            @if (selectedCommit(); as commit) {
+              <div class="commit-detail">
+                <ul class="commit-files" data-testid="commit-files">
+                  @for (file of commit.files ?? []; track file.path) {
+                    <li data-testid="changed-file" [attr.data-path]="file.path">
+                      {{ file.path }}
+                      <span data-testid="lines-added">{{ file.added }}</span>
+                      <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                    </li>
+                  }
+                </ul>
+                <pre class="commit-diff" data-testid="diff">{{ commit.diff }}</pre>
+              </div>
+            } @else if (selectedDiff(); as diff) {
               <pre data-testid="diff">{{ diff }}</pre>
             }
           }
@@ -194,6 +236,7 @@ export class WorkspaceComponent {
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
   readonly selectedFilePath = signal<string | null>(null);
+  readonly selectedCommitSubject = signal<string | null>(null);
   readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
@@ -202,6 +245,9 @@ export class WorkspaceComponent {
     const file = this.selectedBranch()?.files?.find((item) => item.path === this.selectedFilePath());
     return file?.diff ?? null;
   });
+  readonly selectedCommit = computed(
+    () => this.selectedBranch()?.commits?.find((commit) => commit.subject === this.selectedCommitSubject()) ?? null,
+  );
 
   choose(name: string): void {
     this.selectedName.set(name);
@@ -209,10 +255,17 @@ export class WorkspaceComponent {
     this.openBranch.set(null);
     this.selectedBranchName.set(null);
     this.selectedFilePath.set(null);
+    this.selectedCommitSubject.set(null);
   }
 
   selectFile(path: string): void {
     this.selectedFilePath.set(path);
+    this.selectedCommitSubject.set(null);
+  }
+
+  selectCommit(subject: string): void {
+    this.selectedCommitSubject.set(subject);
+    this.selectedFilePath.set(null);
   }
 
   openBranchMenu(name: string, event: Event): void {
@@ -223,6 +276,7 @@ export class WorkspaceComponent {
   selectBranch(name: string): void {
     this.selectedBranchName.set(name);
     this.selectedFilePath.set(null);
+    this.selectedCommitSubject.set(null);
   }
 
   openSwitch(): void {

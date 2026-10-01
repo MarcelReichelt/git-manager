@@ -225,7 +225,36 @@ describe('desktop workspace', () => {
       '+export function login',
     );
   });
+
+  it('shows Add the login form files with the diff in the column to the right', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const file = commitFiles.querySelector('[data-testid="changed-file"]');
+    expect(file.getAttribute('data-path')).toBe('src/login.ts');
+    expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('10');
+    expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(diff.textContent).toContain('+function login');
+    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+  });
 });
+
+function leftEdge(element: HTMLElement): number {
+  const rect = element.getBoundingClientRect();
+  if (rect.left !== 0 || rect.width !== 0) {
+    return rect.left;
+  }
+  return Number.parseFloat(getComputedStyle(element).left);
+}
 
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');

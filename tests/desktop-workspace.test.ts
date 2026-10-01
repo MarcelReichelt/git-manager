@@ -343,6 +343,32 @@ describe('desktop workspace', () => {
       fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="master"]'),
     ).not.toBeNull();
   });
+
+  it('shows the guide edit and the commits only on rewrite', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+
+    const files = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="changed-files"] [data-testid="changed-file"]',
+      ),
+    ];
+    expect(files).toHaveLength(1);
+    expect(files[0].getAttribute('data-path')).toBe('docs/guide.md');
+    expect(files[0].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('1');
+    expect(files[0].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
+
+    const commits = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]'),
+    ];
+    expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
+      'Add the logo',
+      'Retitle the guide',
+    ]);
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

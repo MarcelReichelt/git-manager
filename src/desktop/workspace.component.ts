@@ -1,7 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, input, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
-import { listBranches } from '../branches.js';
+import {
+  listBranches,
+  readChangedFiles,
+  readCommitsOnlyOnBranch,
+  type BranchCommit,
+  type ChangedFile,
+} from '../branches.js';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -229,7 +235,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
             <ul data-testid="changed-files">
-              @for (file of branch.files ?? []; track file.path) {
+              @for (file of visibleFiles(); track file.path) {
                 <li
                   data-testid="changed-file"
                   [attr.data-path]="file.path"
@@ -247,7 +253,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
               }
             </ul>
             <ul data-testid="branch-commits">
-              @for (commit of branch.commits ?? []; track commit.subject) {
+              @for (commit of visibleCommits(); track commit.subject) {
                 <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
                   <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
                 </li>
@@ -293,6 +299,8 @@ export class WorkspaceComponent implements OnInit {
   readonly selectedFilePath = signal<string | null>(null);
   readonly selectedCommitSubject = signal<string | null>(null);
   readonly realBranches = signal<SampleBranch[]>([]);
+  readonly loadedFiles = signal<ChangedFile[]>([]);
+  readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
     if (path === null) {
@@ -316,6 +324,18 @@ export class WorkspaceComponent implements OnInit {
   readonly selectedCommit = computed(
     () => this.selectedBranch()?.commits?.find((commit) => commit.subject === this.selectedCommitSubject()) ?? null,
   );
+  readonly visibleFiles = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.loadedFiles();
+    }
+    return this.selectedBranch()?.files ?? [];
+  });
+  readonly visibleCommits = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.loadedCommits();
+    }
+    return this.selectedBranch()?.commits ?? [];
+  });
 
   ngOnInit(): void {
     this.refreshBranches();
@@ -349,6 +369,14 @@ export class WorkspaceComponent implements OnInit {
     this.selectedBranchName.set(name);
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
+    const path = this.repositoryPath();
+    if (path === null) {
+      this.loadedFiles.set([]);
+      this.loadedCommits.set([]);
+      return;
+    }
+    this.loadedFiles.set(readChangedFiles(path, name));
+    this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
   }
 
   openSwitch(): void {

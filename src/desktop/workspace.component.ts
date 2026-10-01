@@ -1,5 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, input, OnInit, signal } from '@angular/core';
+import { basename } from 'node:path';
+import { listBranches } from '../branches.js';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -159,14 +161,14 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
       </section>
     </ng-template>
 
-    @if (selectedName() === null) {
+    @if (repositoryPath() === null && selectedName() === null) {
       <div class="start-screen">
         <ng-container [ngTemplateOutlet]="repositoryCard" />
       </div>
     } @else {
       <main data-testid="workspace">
         <aside>
-          <h1 data-testid="repository-name">{{ selectedName() }}</h1>
+          <h1 data-testid="repository-name">{{ workspaceTitle() }}</h1>
           <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
@@ -282,14 +284,28 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
     }
   `,
 })
-export class WorkspaceComponent {
+export class WorkspaceComponent implements OnInit {
+  readonly repositoryPath = input<string | null>(null);
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
   readonly selectedFilePath = signal<string | null>(null);
   readonly selectedCommitSubject = signal<string | null>(null);
-  readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
+  readonly realBranches = signal<SampleBranch[]>([]);
+  readonly workspaceTitle = computed(() => {
+    const path = this.repositoryPath();
+    if (path === null) {
+      return this.selectedName();
+    }
+    return basename(path);
+  });
+  readonly branches = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.realBranches();
+    }
+    return branchesByRepository[this.selectedName() ?? ''] ?? [];
+  });
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
@@ -300,6 +316,10 @@ export class WorkspaceComponent {
   readonly selectedCommit = computed(
     () => this.selectedBranch()?.commits?.find((commit) => commit.subject === this.selectedCommitSubject()) ?? null,
   );
+
+  ngOnInit(): void {
+    this.refreshBranches();
+  }
 
   choose(name: string): void {
     this.selectedName.set(name);
@@ -333,5 +353,21 @@ export class WorkspaceComponent {
 
   openSwitch(): void {
     this.overlayOpen.set(true);
+  }
+
+  private refreshBranches(): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      return;
+    }
+    this.realBranches.set(
+      listBranches(path).map((branch) => ({
+        name: branch.name,
+        status: branch.status,
+        changedFileCount: branch.changedFileCount,
+        ahead: branch.ahead,
+        behind: branch.behind,
+      })),
+    );
   }
 }

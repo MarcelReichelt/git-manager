@@ -1,7 +1,19 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
 describe('desktop workspace', () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   async function render() {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
@@ -9,6 +21,20 @@ describe('desktop workspace', () => {
     }).compileComponents();
 
     const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  async function renderRepository(repoPath: string) {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [WorkspaceComponent],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixture.componentRef.setInput('repositoryPath', repoPath);
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
   }
@@ -294,6 +320,29 @@ describe('desktop workspace', () => {
     expect(files[0].querySelector('[data-testid="lines-added"]')).toBeNull();
     expect(files[0].querySelector('[data-testid="lines-deleted"]')).toBeNull();
   });
+
+  it('opens the repository path on rewrite without the sample card', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-card"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(
+      'harbor',
+    );
+
+    const rewrite = fixture.nativeElement.querySelector(
+      '[data-testid="branch-row"][data-branch="rewrite"]',
+    );
+    expect(rewrite.getAttribute('data-status')).toBe('local-only');
+    expect(rewrite.querySelector('[data-testid="changed-file-count"]').textContent.trim()).toBe('1');
+    expect(rewrite.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('2');
+    expect(rewrite.querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+    expect(rewrite.querySelector('[data-testid="terminal-count"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="master"]'),
+    ).not.toBeNull();
+  });
 });
 
 function leftEdge(element: HTMLElement): number {
@@ -306,4 +355,49 @@ function leftEdge(element: HTMLElement): number {
 
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
+}
+
+function createRewriteRepository(roots: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  roots.push(root);
+  const repoPath = join(root, 'harbor');
+  mkdirSync(join(repoPath, 'docs'), { recursive: true });
+  initGitRepo(repoPath);
+  writeFileSync(join(repoPath, 'docs', 'old-guide.md'), 'harbor notes\nold guide\nkeep the rest\n');
+  writeFileSync(join(repoPath, '.gitattributes'), '*.png binary\n');
+  git(repoPath, ['add', '.']);
+  git(repoPath, ['commit', '-m', 'Add the old guide']);
+  git(repoPath, ['checkout', '-b', 'rewrite']);
+  git(repoPath, ['mv', 'docs/old-guide.md', 'docs/guide.md']);
+  writeFileSync(join(repoPath, 'docs', 'guide.md'), 'harbor notes\nnew guide\nkeep the rest\n');
+  git(repoPath, ['add', '-A']);
+  git(repoPath, ['commit', '-m', 'Retitle the guide']);
+  mkdirSync(join(repoPath, 'assets'), { recursive: true });
+  writeFileSync(join(repoPath, 'assets', 'logo.png'), Buffer.from([0x89]));
+  git(repoPath, ['add', 'assets/logo.png']);
+  git(repoPath, ['commit', '-m', 'Add the logo']);
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'rewrite'), 'rewrite']);
+  writeFileSync(
+    join(repoPath, '.workspaces', 'rewrite', 'docs', 'guide.md'),
+    'harbor notes\nnew guide\nkeep the rest\npier note\n',
+  );
+  return repoPath;
+}
+
+function initGitRepo(repoPath: string): void {
+  mkdirSync(repoPath, { recursive: true });
+  execFileSync('git', ['init', '-b', 'master'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-manager test'], {
+    cwd: repoPath,
+    stdio: 'ignore',
+  });
+  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], {
+    cwd: repoPath,
+    stdio: 'ignore',
+  });
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }

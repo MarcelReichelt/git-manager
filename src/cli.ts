@@ -6,6 +6,7 @@ import {
   unregisterRepository,
   type LayoutMode,
 } from './registry.js';
+import { mergeIntoMaster, updateFromMaster } from './merge.js';
 import { createWorktree } from './worktrees.js';
 
 const program = new Command();
@@ -53,6 +54,35 @@ worktree
     const checkout = await createWorktree(options.repo, branch);
     process.stdout.write(`${checkout}\n`);
   });
+
+program
+  .command('merge')
+  .requiredOption('--repo <path-or-name>')
+  .option('--update-from-master <branch>')
+  .option('--into-master <branch>')
+  .option('--squash')
+  .action(
+    (options: {
+      repo: string;
+      updateFromMaster?: string;
+      intoMaster?: string;
+      squash?: boolean;
+    }) => {
+      const squash = options.squash ?? false;
+      if (options.updateFromMaster && options.intoMaster) {
+        throw new Error('Pass only one of --update-from-master or --into-master');
+      }
+      if (options.updateFromMaster) {
+        updateFromMaster(options.repo, options.updateFromMaster, squash);
+        return;
+      }
+      if (options.intoMaster) {
+        mergeIntoMaster(options.repo, options.intoMaster, squash);
+        return;
+      }
+      throw new Error('Pass --update-from-master or --into-master');
+    },
+  );
 
 try {
   await program.parseAsync(process.argv);

@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
 import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from '../../src/merge.js';
+import { addRepository, listRepositories, type RegisteredRepository } from '../../src/registry.js';
 import { commitsOnBranch, findWorktree, listBranches, primaryCheckoutBranch } from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
@@ -14,7 +15,37 @@ import {
   selector: 'gm-workspace',
   standalone: true,
   imports: [TerminalPane, ShellPane],
+  styles: [
+    `
+      .repository-card {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+    `,
+  ],
   template: `
+    @if (!repoPath()) {
+      <section class="repository-card" aria-label="Repositories">
+        <ul>
+          @for (repo of repositories(); track repo.path) {
+            <li>
+              <button type="button">{{ repo.displayName }}</button>
+            </li>
+          }
+        </ul>
+        <label>
+          Path
+          <input aria-label="Path" [value]="addPath()" (input)="onAddPath($event)" />
+        </label>
+        <label>
+          Display name
+          <input aria-label="Display name" [value]="addName()" (input)="onAddName($event)" />
+        </label>
+        <button type="button" (click)="addRegisteredRepository()">Add</button>
+      </section>
+    } @else {
     <aside>
       @for (branch of branches(); track branch) {
         <div class="branch-row" (mouseenter)="showMenu(branch)" (mouseleave)="hideMenu()">
@@ -90,10 +121,14 @@ import {
         <button type="button" (click)="confirmMerge()">Merge</button>
       </dialog>
     }
+    }
   `,
 })
 export class WorkspaceComponent implements OnInit {
-  readonly repoPath = input.required<string>();
+  readonly repoPath = input('');
+  readonly repositories = signal<RegisteredRepository[]>([]);
+  readonly addPath = signal('');
+  readonly addName = signal('');
   readonly platform = input(hostPlatform());
   readonly branches = signal<string[]>([]);
   readonly notice = signal('');
@@ -128,7 +163,37 @@ export class WorkspaceComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.branches.set(listBranches(this.repoPath()));
+    if (this.repoPath()) {
+      this.branches.set(listBranches(this.repoPath()));
+      return;
+    }
+    this.repositories.set(listRepositories());
+  }
+
+  onAddPath(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) {
+      this.addPath.set(target.value);
+    }
+  }
+
+  onAddName(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) {
+      this.addName.set(target.value);
+    }
+  }
+
+  addRegisteredRepository(): void {
+    const path = this.addPath().trim();
+    const displayName = this.addName().trim();
+    if (!path || !displayName) {
+      return;
+    }
+    addRepository(path, displayName);
+    this.addPath.set('');
+    this.addName.set('');
+    this.repositories.set(listRepositories());
   }
 
   showMenu(branch: string): void {

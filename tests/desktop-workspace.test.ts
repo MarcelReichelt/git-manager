@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
@@ -35,46 +35,43 @@ describe('desktop workspace', () => {
     }
   });
 
-  async function render() {
+  async function setupWorkspace(
+    apply?: (fixture: ComponentFixture<WorkspaceComponent>) => void,
+  ) {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [WorkspaceComponent],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(WorkspaceComponent);
+    apply?.(fixture);
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
+  }
+
+  function render() {
+    return setupWorkspace();
   }
 
   async function renderLive() {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [WorkspaceComponent],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(WorkspaceComponent);
-    fixture.componentRef.setInput('liveRegistry', true);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    return fixture;
+    const previousSearch = location.search;
+    history.replaceState(null, '', `${location.pathname}?live=1`);
+    try {
+      return await setupWorkspace();
+    } finally {
+      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+    }
   }
 
-  async function renderRepository(repoPath: string) {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [WorkspaceComponent],
-    }).compileComponents();
-
+  function renderRepository(repoPath: string) {
     if (!process.env.GIT_MANAGER_REGISTRY_PATH) {
       process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     }
-    const fixture = TestBed.createComponent(WorkspaceComponent);
-    fixture.componentRef.setInput('repositoryPath', repoPath);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    return fixture;
+    return setupWorkspace((fixture) => {
+      fixture.componentRef.setInput('repositoryPath', repoPath);
+    });
   }
 
   it('shows a centered repository card and no branch list on first start', async () => {

@@ -188,6 +188,28 @@ describe('desktop workspace', () => {
     expect(squash.parentElement).not.toBe(remove.parentElement);
     expect(squash.parentElement).not.toBe(group.parentElement);
   });
+
+  it('shows the changed files and the commits only on feature/login', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const files = [...fixture.nativeElement.querySelectorAll('[data-testid="changed-files"] [data-testid="changed-file"]')];
+    expect(files.map((file) => file.getAttribute('data-path'))).toEqual(['src/login.ts', 'README.md']);
+    expect(files[0].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('12');
+    expect(files[0].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('3');
+    expect(files[1].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('4');
+    expect(files[1].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('1');
+
+    const commits = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')];
+    expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
+      'Add the login form',
+      'Wire the session',
+    ]);
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

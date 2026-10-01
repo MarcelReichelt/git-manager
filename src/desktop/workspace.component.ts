@@ -3,6 +3,16 @@ import { Component, computed, signal } from '@angular/core';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
+interface SampleFile {
+  path: string;
+  added: number | null;
+  deleted: number | null;
+}
+
+interface SampleCommit {
+  subject: string;
+}
+
 interface SampleBranch {
   name: string;
   status: BranchStatus;
@@ -10,6 +20,8 @@ interface SampleBranch {
   ahead: number;
   behind: number;
   terminalCount?: number;
+  files?: SampleFile[];
+  commits?: SampleCommit[];
 }
 
 const harborBranches: SampleBranch[] = [
@@ -20,6 +32,11 @@ const harborBranches: SampleBranch[] = [
     ahead: 3,
     behind: 1,
     terminalCount: 2,
+    files: [
+      { path: 'src/login.ts', added: 12, deleted: 3 },
+      { path: 'README.md', added: 4, deleted: 1 },
+    ],
+    commits: [{ subject: 'Add the login form' }, { subject: 'Wire the session' }],
   },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
   { name: 'origin/release', status: 'remote-only', changedFileCount: 0, ahead: 4, behind: 0 },
@@ -100,8 +117,9 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 data-testid="branch-row"
                 [attr.data-branch]="branch.name"
                 [attr.data-status]="branch.status"
+                (click)="selectBranch(branch.name)"
               >
-                <span>{{ branch.name }}</span>
+                <button type="button" (click)="selectBranch(branch.name)">{{ branch.name }}</button>
                 <span data-testid="changed-file-count">{{ branch.changedFileCount }}</span>
                 <span data-testid="ahead">{{ branch.ahead }}</span>
                 <span data-testid="behind">{{ branch.behind }}</span>
@@ -112,7 +130,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                   type="button"
                   data-testid="branch-menu"
                   [attr.aria-label]="'Branch actions for ' + branch.name"
-                  (click)="openBranchMenu(branch.name)"
+                  (click)="openBranchMenu(branch.name, $event)"
                 >
                   Branch actions
                 </button>
@@ -135,7 +153,24 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
           </ul>
           <button type="button" data-testid="create-worktree">Create</button>
         </aside>
-        <section class="content-sheet" data-testid="content-sheet"></section>
+        <section class="content-sheet" data-testid="content-sheet">
+          @if (selectedBranch(); as branch) {
+            <ul data-testid="changed-files">
+              @for (file of branch.files ?? []; track file.path) {
+                <li data-testid="changed-file" [attr.data-path]="file.path">
+                  {{ file.path }}
+                  <span data-testid="lines-added">{{ file.added }}</span>
+                  <span data-testid="lines-deleted">{{ file.deleted }}</span>
+                </li>
+              }
+            </ul>
+            <ul data-testid="branch-commits">
+              @for (commit of branch.commits ?? []; track commit.subject) {
+                <li data-testid="commit" [attr.data-subject]="commit.subject">{{ commit.subject }}</li>
+              }
+            </ul>
+          }
+        </section>
       </main>
       @if (overlayOpen()) {
         <div class="start-screen switching-overlay" data-testid="switching-overlay">
@@ -149,16 +184,26 @@ export class WorkspaceComponent {
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
+  readonly selectedBranchName = signal<string | null>(null);
   readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
+  readonly selectedBranch = computed(
+    () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
+  );
 
   choose(name: string): void {
     this.selectedName.set(name);
     this.overlayOpen.set(false);
     this.openBranch.set(null);
+    this.selectedBranchName.set(null);
   }
 
-  openBranchMenu(name: string): void {
+  openBranchMenu(name: string, event: Event): void {
+    event.stopPropagation();
     this.openBranch.set(name);
+  }
+
+  selectBranch(name: string): void {
+    this.selectedBranchName.set(name);
   }
 
   openSwitch(): void {

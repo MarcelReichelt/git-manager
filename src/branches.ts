@@ -254,6 +254,9 @@ export function readWorkingTreeDiff(repoPath: string, branch: string, filePath: 
   if (tracked !== '') {
     return tracked;
   }
+  if (gitOptional(checkout, ['ls-files', '--error-unmatch', '--', filePath]) !== undefined) {
+    return '';
+  }
   return gitText(checkout, ['diff', '--no-index', '--', '/dev/null', filePath], true);
 }
 

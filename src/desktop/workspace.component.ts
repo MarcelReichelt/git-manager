@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
-import { findRepository } from '../registry.js';
+import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import { ShellPane } from './shell-pane';
@@ -97,99 +97,562 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
   Harbor: harborBranches,
 };
 
+interface CardRepository {
+  name: string;
+  path: string | null;
+}
+
+const sampleCard: CardRepository[] = [
+  { name: 'Harbor', path: null },
+  { name: 'Atlas', path: null },
+];
+
 @Component({
   selector: 'gm-workspace',
   standalone: true,
   imports: [NgTemplateOutlet, TerminalPane, ShellPane],
   styles: [
     `
-      .start-screen {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-      }
+:host {
+  --paper: #f7f7f5;
+  --surface: #ffffff;
+  --forest: #1a3c2b;
+  --grid: #3a3a38;
+  --coral: #ff8c69;
+  --mint: #9effbf;
+  --gold: #f4d35e;
+  --statusred: #ff5c5c;
+  --statusgreen: #3ddc97;
+  --statusblue: #8ecae6;
+  display: block;
+  min-height: 100vh;
+  background: var(--forest);
+  color: var(--grid);
+  font-family: "General Sans", "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
 
-      .switching-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 2;
-        background: white;
-      }
+h1, h2, h3, p { margin: 0; }
 
-      aside {
-        position: relative;
-        z-index: 1;
-        width: 18rem;
-      }
+button, input { font: inherit; color: inherit; }
 
-      .content-sheet {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        left: 18rem;
-        overflow: auto;
-      }
+.start-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--forest);
+}
 
-      [data-status='local-only'] {
-        background-color: lightblue;
-      }
+.switching-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  background: rgba(26, 60, 43, 0.2);
+}
 
-      [data-status='local-and-remote'] {
-        background-color: green;
-      }
+[data-testid='repository-card'] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+}
 
-      [data-status='remote-only'] {
-        background-color: yellow;
-      }
+[data-testid='repository-card'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
 
-      [data-status='remote-deleted'] {
-        background-color: red;
-      }
+[data-testid='repository'],
+[data-testid='add-repository'] {
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
 
-      .branch-actions {
-        display: none;
-      }
+[data-testid='repository']:hover,
+[data-testid='add-repository']:hover,
+[data-testid='create-worktree']:hover,
+[data-testid='switch-repository']:hover {
+  background: var(--surface);
+}
 
-      .branch-row:hover > .branch-actions,
-      .branch-actions.is-open {
-        display: block;
-      }
+[data-testid='add-repository'] {
+  background: var(--forest);
+  color: white;
+  border-color: var(--forest);
+}
 
-      .commit-detail {
-        position: relative;
-        min-height: 12rem;
-      }
+[data-testid='repository-card'] label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
 
-      .commit-files {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 240px;
-      }
+[data-testid='repository-card'] input,
+.create-row input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
 
-      .commit-diff {
-        position: absolute;
-        top: 0;
-        left: 256px;
-      }
+aside {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  padding: 16px 12px 12px;
+  overflow: auto;
+  background: var(--forest);
+  color: white;
+}
 
-      .terminal-pane {
-        background-color: #1e1e1e;
-        min-height: 12rem;
-      }
+.sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 0 4px;
+}
+
+h1 {
+  color: white;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.repo-path {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+[data-testid='switch-repository'] {
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--grid);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.branch-label {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 4px 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+ul { margin: 0; padding: 0; list-style: none; }
+
+.branch-list,
+[data-testid='branch-list'] {
+  min-height: 0;
+  flex: 1;
+}
+
+.branch-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 0 0 4px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: white;
+}
+
+.branch-row:hover,
+.branch-row.is-selected {
+  background: var(--surface);
+  color: var(--forest);
+}
+
+.status-color {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+}
+
+[data-status='local-only'] .status-color { background-color: #8ecae6; }
+[data-status='local-and-remote'] .status-color { background-color: #3ddc97; }
+[data-status='remote-only'] .status-color { background-color: #f4d35e; }
+[data-status='remote-deleted'] .status-color { background-color: #ff5c5c; }
+
+.branch-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.branch-row.is-selected .branch-name { font-weight: 500; }
+
+.terminal-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #3ddc97;
+  color: var(--forest);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.branch-stats {
+  color: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.branch-stats > span { display: block; }
+
+[data-testid='branch-menu'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--grid);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.branch-row:hover > [data-testid='branch-menu'],
+.branch-row:focus-within > [data-testid='branch-menu'],
+.branch-row.is-selected > [data-testid='branch-menu'] {
+  opacity: 1;
+}
+
+.branch-actions { display: none; }
+
+.branch-row:hover > .branch-actions,
+.branch-actions.is-open {
+  display: block;
+  position: absolute;
+  top: 36px;
+  right: 0;
+  z-index: 3;
+  width: 176px;
+  padding: 4px 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--grid);
+}
+
+.branch-actions fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.branch-actions legend {
+  padding: 8px 12px 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.branch-actions button,
+.branch-actions label {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--grid);
+  text-align: left;
+  cursor: pointer;
+}
+
+.branch-actions button:hover,
+.branch-actions label:hover { background: var(--surface); }
+
+.branch-actions [data-testid='remove-worktree'] { color: var(--coral); }
+
+.create-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.create-row input {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.create-row input::placeholder { color: rgba(255, 255, 255, 0.55); }
+
+[data-testid='create-worktree'] {
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--forest);
+  cursor: pointer;
+}
+
+.create-note {
+  margin-top: 8px;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.content-sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 320px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--paper);
+  color: var(--grid);
+  border-radius: 36px 0 0 36px;
+}
+
+.branch-heading {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(58, 58, 56, 0.2);
+}
+
+.branch-heading h2 {
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.branch-heading p {
+  margin-top: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.empty-sheet {
+  padding: 16px;
+  color: rgba(58, 58, 56, 0.7);
+}
+
+.sheet-columns {
+  display: grid;
+  grid-template-columns: minmax(16rem, 340px) minmax(16rem, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.sheet-columns > div {
+  min-width: 0;
+  padding: 12px 16px 24px;
+}
+
+.sheet-columns > div + div {
+  border-left: 1px solid rgba(58, 58, 56, 0.2);
+}
+
+.sheet-columns h3 {
+  margin: 12px 0 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+[data-testid='changed-file'],
+[data-testid='commit'] {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(58, 58, 56, 0.2);
+  cursor: pointer;
+}
+
+[data-testid='changed-file']:hover,
+[data-testid='commit']:hover { background: var(--surface); }
+
+[data-testid='changed-file'] button,
+[data-testid='commit'] button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+[data-testid='lines-added'] {
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--mint);
+  color: var(--forest);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+[data-testid='lines-deleted'] {
+  color: var(--coral);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+[data-testid='diff'] {
+  margin: 8px 0 0;
+  padding: 8px;
+  overflow: auto;
+  background: transparent;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.commit-detail {
+  position: relative;
+  min-height: 12rem;
+}
+
+.commit-files {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 240px;
+}
+
+.commit-diff {
+  position: absolute;
+  top: 0;
+  left: 256px;
+}
+
+.terminal-chrome {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 36px;
+  margin-top: auto;
+  padding: 0 8px;
+  background: #252526;
+  color: #cccccc;
+}
+
+.terminal-chrome button {
+  border: 0;
+  background: transparent;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.terminal-pane {
+  background-color: #1e1e1e;
+  min-height: 12rem;
+}
+
+[data-testid='workspace-error'],
+[data-testid='card-error'] { color: var(--coral); }
     `,
   ],
   template: `
     <ng-template #repositoryCard>
       <section data-testid="repository-card">
-        <button type="button" data-testid="repository" data-name="Harbor" (click)="choose('Harbor')">
-          Harbor
-        </button>
-        <button type="button" data-testid="repository" data-name="Atlas" (click)="choose('Atlas')">
-          Atlas
-        </button>
+        <h2>Repositories</h2>
+        @for (repository of cardRepositories(); track repository.name + (repository.path ?? '')) {
+          <button
+            type="button"
+            data-testid="repository"
+            [attr.data-name]="repository.name"
+            (click)="choose(repository.name)"
+          >
+            {{ repository.name }}
+          </button>
+        }
+        @if (registryMode()) {
+          <label>
+            Path
+            <input data-testid="add-repository-path" [value]="addPath()" (input)="setAddPath($event)" />
+          </label>
+          <label>
+            Name
+            <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
+          </label>
+          <button type="button" data-testid="add-repository" (click)="addRegistered()">Add repository</button>
+          @if (cardError(); as message) {
+            <p data-testid="card-error">{{ message }}</p>
+          }
+        }
       </section>
     </ng-template>
 
@@ -200,47 +663,61 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
     } @else {
       <main data-testid="workspace">
         <aside>
-          <h1 data-testid="repository-name">{{ workspaceTitle() }}</h1>
-          @if (repositoryPath() === null) {
-            <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
-          }
+          <div class="sidebar-head">
+            <div>
+              <h1 data-testid="repository-name">{{ workspaceTitle() }}</h1>
+              @if (effectivePath(); as path) {
+                <p class="repo-path">{{ path }}</p>
+              }
+            </div>
+            @if (repositoryPath() === null) {
+              <button type="button" data-testid="switch-repository" (click)="openSwitch()">Change</button>
+            }
+          </div>
+          <p class="branch-label"><span>Branches</span></p>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
               <li
                 class="branch-row"
                 data-testid="branch-row"
+                [class.is-selected]="selectedBranchName() === branch.name"
                 [attr.data-branch]="branch.name"
                 [attr.data-status]="branch.status"
                 (click)="selectBranch(branch.name)"
               >
-                <button type="button" (click)="selectBranch(branch.name, $event)">{{ branch.name }}</button>
-                <span
-                  data-testid="changed-file-count"
-                  [attr.aria-label]="branch.changedFileCount + ' changed files'"
-                >
-                  {{ branch.changedFileCount }}
-                </span>
-                <span data-testid="ahead" [attr.aria-label]="branch.ahead + ' commits ahead'">
-                  {{ branch.ahead }}
-                </span>
-                <span data-testid="behind" [attr.aria-label]="branch.behind + ' commits behind'">
-                  {{ branch.behind }}
-                </span>
+                <span class="status-color" data-testid="status-color" [attr.title]="statusLabel(branch.status)"></span>
+                <button type="button" class="branch-name" (click)="selectBranch(branch.name, $event)">
+                  {{ branch.name }}
+                </button>
                 @if (terminalCount(branch.name) > 0) {
                   <span
+                    class="terminal-count"
                     data-testid="terminal-count"
                     [attr.aria-label]="terminalCount(branch.name) + ' terminals'"
                   >
                     {{ terminalCount(branch.name) }}
                   </span>
                 }
+                <span class="branch-stats">
+                  <span>
+                    <span
+                      data-testid="changed-file-count"
+                      [attr.aria-label]="branch.changedFileCount + ' changed files'"
+                    >{{ branch.changedFileCount }}</span>
+                    {{ branch.changedFileCount === 1 ? 'file' : 'files' }}
+                  </span>
+                  <span>
+                    ↑<span data-testid="ahead" [attr.aria-label]="branch.ahead + ' commits ahead'">{{ branch.ahead }}</span>
+                    ↓<span data-testid="behind" [attr.aria-label]="branch.behind + ' commits behind'">{{ branch.behind }}</span>
+                  </span>
+                </span>
                 <button
                   type="button"
                   data-testid="branch-menu"
                   [attr.aria-label]="'Branch actions for ' + branch.name"
                   (click)="openBranchMenu(branch.name, $event)"
                 >
-                  Branch actions
+                  ···
                 </button>
                 <div
                   data-testid="hover-menu"
@@ -279,14 +756,31 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
               </li>
             }
           </ul>
-          <input data-testid="create-branch" (input)="setCreateBranchName($event)" />
-          <button type="button" data-testid="create-worktree" (click)="createBranch()">Create</button>
+          <div class="create-row">
+            <input
+              data-testid="create-branch"
+              placeholder="Branch name"
+              [value]="createBranchName()"
+              (input)="setCreateBranchName($event)"
+            />
+            <button type="button" data-testid="create-worktree" (click)="createBranch()">Create worktree</button>
+          </div>
+          <p class="create-note">Remote branches are fetched first. Hooks run after checkout.</p>
           @if (workspaceError(); as message) {
             <p data-testid="workspace-error">{{ message }}</p>
           }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
+            <header class="branch-heading">
+              <h2>{{ branch.name }}</h2>
+              <p>
+                {{ visibleCommits().length }} commits not in master · {{ visibleFiles().length }} changed files
+              </p>
+            </header>
+            <div class="sheet-columns">
+            <div>
+            <h3>Changes</h3>
             <ul data-testid="changed-files">
               @for (file of visibleFiles(); track file.path) {
                 <li
@@ -305,6 +799,14 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 </li>
               }
             </ul>
+            @if (!showingCommit()) {
+              @if (selectedDiff(); as diff) {
+                <pre data-testid="diff">{{ diff }}</pre>
+              }
+            }
+            </div>
+            <div>
+            <h3>Commits only on this branch</h3>
             <ul data-testid="branch-commits">
               @for (commit of visibleCommits(); track commit.subject) {
                 <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
@@ -334,9 +836,9 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 </ul>
                 <pre class="commit-diff" data-testid="diff">{{ visibleCommitDiff() }}</pre>
               </div>
-            } @else if (selectedDiff(); as diff) {
-              <pre data-testid="diff">{{ diff }}</pre>
             }
+            </div>
+            </div>
             @if (platform() === 'win32' && shellRunning() && worktreePath()) {
               <div
                 class="terminal-pane"
@@ -366,6 +868,8 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 ></div>
               }
             }
+          } @else {
+            <p class="empty-sheet">Select a branch</p>
           }
         </section>
       </main>
@@ -380,8 +884,14 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
 export class WorkspaceComponent implements OnInit {
   private readonly zone = inject(NgZone);
   readonly repositoryPath = input<string | null>(null);
+  readonly liveRegistry = input(false);
   readonly platform = input(hostPlatform());
   readonly selectedName = signal<string | null>(null);
+  readonly openedPath = signal<string | null>(null);
+  readonly registered = signal<RegisteredRepository[]>([]);
+  readonly addPath = signal('');
+  readonly addName = signal('');
+  readonly cardError = signal<string | null>(null);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
@@ -411,15 +921,26 @@ export class WorkspaceComponent implements OnInit {
     const other = sessions.find((session) => session !== focused) ?? focused;
     return [focused, other];
   });
+  readonly registryMode = computed(() => this.liveRegistry() || windowReadsRegistry());
+  readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
+  readonly cardRepositories = computed((): CardRepository[] => {
+    if (!this.registryMode()) {
+      return sampleCard;
+    }
+    return this.registered().map((repository) => ({
+      name: repository.displayName,
+      path: repository.path,
+    }));
+  });
   readonly workspaceTitle = computed(() => {
-    const path = this.repositoryPath();
+    const path = this.effectivePath();
     if (path === null) {
       return this.selectedName();
     }
     return findRepository(path)?.displayName ?? basename(path);
   });
   readonly branches = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.realBranches();
     }
     return branchesByRepository[this.selectedName() ?? ''] ?? [];
@@ -428,7 +949,7 @@ export class WorkspaceComponent implements OnInit {
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
   readonly selectedDiff = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.loadedDiff();
     }
     const file = this.selectedBranch()?.files?.find((item) => item.path === this.selectedFilePath());
@@ -438,13 +959,13 @@ export class WorkspaceComponent implements OnInit {
     () => this.selectedBranch()?.commits?.find((commit) => commit.subject === this.selectedCommitSubject()) ?? null,
   );
   readonly visibleFiles = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.loadedFiles();
     }
     return this.selectedBranch()?.files ?? [];
   });
   readonly visibleCommits = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.loadedCommits();
     }
     return this.selectedBranch()?.commits ?? [];
@@ -453,41 +974,85 @@ export class WorkspaceComponent implements OnInit {
     if (this.selectedCommitSubject() === null) {
       return false;
     }
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return true;
     }
     return this.selectedCommit() !== null;
   });
   readonly visibleCommitFiles = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.loadedCommitFiles();
     }
     return this.selectedCommit()?.files ?? [];
   });
   readonly visibleCommitDiff = computed(() => {
-    if (this.repositoryPath() !== null) {
+    if (this.effectivePath() !== null) {
       return this.loadedDiff() ?? '';
     }
     return this.selectedCommit()?.diff ?? '';
   });
 
+  statusLabel(status: BranchStatus): string {
+    switch (status) {
+      case 'local-only':
+        return 'Local only';
+      case 'local-and-remote':
+        return 'Local and remote';
+      case 'remote-only':
+        return 'Remote only';
+      case 'remote-deleted':
+        return 'Remote deleted';
+    }
+  }
+
   ngOnInit(): void {
+    if (this.registryMode()) {
+      this.registered.set(listRepositories());
+    }
     this.refreshBranches();
   }
 
   choose(name: string): void {
+    const entry = this.cardRepositories().find((repository) => repository.name === name);
     this.selectedName.set(name);
+    this.openedPath.set(entry?.path ?? null);
     this.overlayOpen.set(false);
     this.openBranch.set(null);
     this.selectedBranchName.set(null);
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
+    this.loadedFiles.set([]);
+    this.loadedCommits.set([]);
+    this.loadedDiff.set(null);
+    this.clearTerminals();
+    this.refreshBranches();
+  }
+
+  setAddPath(event: Event): void {
+    this.addPath.set(inputValue(event));
+  }
+
+  setAddName(event: Event): void {
+    this.addName.set(inputValue(event));
+  }
+
+  addRegistered(): void {
+    this.cardError.set(null);
+    try {
+      addRepository(this.addPath(), this.addName());
+      this.addPath.set('');
+      this.addName.set('');
+      this.registered.set(listRepositories());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cardError.set(message);
+    }
   }
 
   selectFile(path: string): void {
     this.selectedFilePath.set(path);
     this.selectedCommitSubject.set(null);
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     if (!repo || !branch) {
       return;
@@ -498,7 +1063,7 @@ export class WorkspaceComponent implements OnInit {
   selectCommit(subject: string): void {
     this.selectedCommitSubject.set(subject);
     this.selectedFilePath.set(null);
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     if (!repo) {
       return;
     }
@@ -516,7 +1081,7 @@ export class WorkspaceComponent implements OnInit {
 
   selectCommitFile(path: string, event: Event): void {
     event.stopPropagation();
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     const subject = this.selectedCommitSubject();
     if (!repo || !subject) {
       return;
@@ -540,7 +1105,7 @@ export class WorkspaceComponent implements OnInit {
     this.selectedCommitSubject.set(null);
     this.loadedDiff.set(null);
     this.loadedCommitFiles.set([]);
-    const path = this.repositoryPath();
+    const path = this.effectivePath();
     if (path === null) {
       this.loadedFiles.set([]);
       this.loadedCommits.set([]);
@@ -555,7 +1120,7 @@ export class WorkspaceComponent implements OnInit {
     if (this.platform() === 'win32') {
       return name === this.selectedBranchName() && this.shellRunning() ? 1 : 0;
     }
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     if (!repo) {
       return 0;
     }
@@ -569,7 +1134,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   newSession(): void {
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     const cwd = this.worktreePath();
     if (!repo || !branch || !cwd || this.platform() === 'win32') {
@@ -582,7 +1147,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   splitSession(): void {
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     const cwd = this.worktreePath();
     if (!repo || !branch || !cwd || this.platform() === 'win32') {
@@ -634,18 +1199,18 @@ export class WorkspaceComponent implements OnInit {
 
   updateBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => updateFromMaster(this.repositoryPath() ?? '', name, squashChecked(event)));
+    this.runBranchAction(name, () => updateFromMaster(this.effectivePath() ?? '', name, squashChecked(event)));
   }
 
   mergeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => mergeIntoMaster(this.repositoryPath() ?? '', name, squashChecked(event)));
+    this.runBranchAction(name, () => mergeIntoMaster(this.effectivePath() ?? '', name, squashChecked(event)));
   }
 
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
     this.runBranchAction(name, () => {
-      removeWorktree(this.repositoryPath() ?? '', name);
+      removeWorktree(this.effectivePath() ?? '', name);
       if (this.openBranch() === name) {
         this.openBranch.set(null);
       }
@@ -658,7 +1223,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   async createBranch(): Promise<void> {
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     if (!repo) {
       return;
     }
@@ -677,7 +1242,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   private runBranchAction(name: string, action: () => void): void {
-    if (!this.repositoryPath()) {
+    if (!this.effectivePath()) {
       return;
     }
     this.workspaceError.set(null);
@@ -698,7 +1263,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   private openTerminals(branch: string): void {
-    const repo = this.repositoryPath();
+    const repo = this.effectivePath();
     if (!repo) {
       this.clearTerminals();
       return;
@@ -741,7 +1306,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   private refreshBranches(): void {
-    const path = this.repositoryPath();
+    const path = this.effectivePath();
     if (path === null) {
       return;
     }
@@ -755,6 +1320,18 @@ export class WorkspaceComponent implements OnInit {
       })),
     );
   }
+}
+
+function windowReadsRegistry(): boolean {
+  if (typeof location === 'undefined') {
+    return false;
+  }
+  return new URLSearchParams(location.search).get('live') === '1';
+}
+
+function inputValue(event: Event): string {
+  const target = event.target as { value?: string } | null;
+  return target?.value ?? '';
 }
 
 function hostPlatform(): string {

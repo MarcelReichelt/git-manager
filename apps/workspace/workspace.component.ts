@@ -2,7 +2,14 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, OnInit, computed, input, signal } from '@angular/core';
 import { mergeFromMasterTree, mergeIntoMasterTree, mergeSourceIntoTarget } from '../../src/merge.js';
 import { addRepository, listRepositories, type RegisteredRepository } from '../../src/registry.js';
-import { commitsOnBranch, findWorktree, listBranches, primaryCheckoutBranch } from './branches';
+import {
+  commitsOnBranch,
+  findWorktree,
+  listBranches,
+  primaryCheckoutBranch,
+  type BranchStatus,
+  type BranchRow,
+} from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
@@ -29,6 +36,13 @@ import {
         border-radius: 8px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
       }
+      .branch-status {
+        display: inline-block;
+        width: 0.75rem;
+        height: 0.75rem;
+        margin-right: 0.4rem;
+        border-radius: 999px;
+      }
     `,
   ],
   template: `
@@ -37,19 +51,26 @@ import {
     } @else {
     <button type="button" (click)="openSwitcher()">Switch</button>
     <aside>
-      @for (branch of branches(); track branch) {
-        <div class="branch-row" (mouseenter)="showMenu(branch)" (mouseleave)="hideMenu()">
-          <button type="button" (click)="selectBranch(branch)">
-            <span class="branch-name">{{ branch }}</span>
-            @if (terminalCount(branch) > 0) {
-              <span class="terminal-count">{{ terminalCount(branch) }}</span>
+      @for (branch of branches(); track branch.name) {
+        <div class="branch-row" (mouseenter)="showMenu(branch.name)" (mouseleave)="hideMenu()">
+          <span
+            class="branch-status"
+            role="img"
+            [attr.data-status]="branch.status"
+            [attr.aria-label]="statusName(branch.status)"
+            [style.background-color]="statusColor(branch.status)"
+          ></span>
+          <button type="button" (click)="selectBranch(branch.name)">
+            <span class="branch-name">{{ branch.name }}</span>
+            @if (terminalCount(branch.name) > 0) {
+              <span class="terminal-count">{{ terminalCount(branch.name) }}</span>
             }
           </button>
-          @if (menuBranch() === branch) {
+          @if (menuBranch() === branch.name) {
             <div role="menu">
-              <button type="button" (click)="openMerge('into', branch)">Merge into the master tree</button>
-              <button type="button" (click)="openMerge('from', branch)">Merge from the master tree</button>
-              <button type="button" (click)="openMerge('generic', branch)">Generic merge</button>
+              <button type="button" (click)="openMerge('into', branch.name)">Merge into the master tree</button>
+              <button type="button" (click)="openMerge('from', branch.name)">Merge from the master tree</button>
+              <button type="button" (click)="openMerge('generic', branch.name)">Generic merge</button>
             </div>
           }
         </div>
@@ -146,7 +167,7 @@ export class WorkspaceComponent implements OnInit {
   readonly addName = signal('');
   readonly switcherOpen = signal(false);
   readonly platform = input(hostPlatform());
-  readonly branches = signal<string[]>([]);
+  readonly branches = signal<BranchRow[]>([]);
   readonly notice = signal('');
   readonly selectedBranch = signal('');
   readonly ahead = signal(0);
@@ -232,6 +253,32 @@ export class WorkspaceComponent implements OnInit {
     this.menuBranch.set('');
     this.mergeOpen.set(false);
     this.branches.set(listBranches(path));
+  }
+
+  statusName(status: BranchStatus): string {
+    if (status === 'local-only') {
+      return 'Local only';
+    }
+    if (status === 'local-and-remote') {
+      return 'On the remote';
+    }
+    if (status === 'remote-only') {
+      return 'Remote only';
+    }
+    return 'Remote deleted';
+  }
+
+  statusColor(status: BranchStatus): string {
+    if (status === 'local-only') {
+      return 'lightblue';
+    }
+    if (status === 'local-and-remote') {
+      return 'green';
+    }
+    if (status === 'remote-only') {
+      return 'yellow';
+    }
+    return 'red';
   }
 
   showMenu(branch: string): void {

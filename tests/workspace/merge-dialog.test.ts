@@ -175,4 +175,26 @@ describe('merge dialog', () => {
     expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(featureTip);
     expect(git(repo.repo, ['rev-parse', 'HEAD'])).not.toBe(featureTip);
   });
+
+  it('merges from the master tree while the branch is checked out in its worktree', () => {
+    const repo = createRepo();
+    root = repo.root;
+    commitFile(repo.repo, 'trunk.txt', 'from trunk\n', 'ship billing');
+    const worktree = addWorktree(repo.repo, 'feature');
+    commitFile(worktree, 'feature.txt', 'from feature\n', 'add feature');
+    const primaryHead = git(repo.repo, ['rev-parse', 'HEAD']);
+    expect(git(worktree, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    fixture = renderWorkspace(repo.repo);
+
+    hoverBranch(fixture, 'feature');
+    clickMenu(fixture, 'Merge from the master tree');
+    confirmMerge(fixture);
+
+    expect(git(repo.repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('trunk');
+    expect(git(repo.repo, ['rev-parse', 'HEAD'])).toBe(primaryHead);
+    expect(git(worktree, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature');
+    expect(readFileSync(join(worktree, 'trunk.txt'), 'utf8')).toBe('from trunk\n');
+  });
 });

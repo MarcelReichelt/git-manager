@@ -1,5 +1,5 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
-import { mergeIntoMasterTree } from '../../src/merge.js';
+import { mergeFromMasterTree, mergeIntoMasterTree } from '../../src/merge.js';
 import { findWorktree, listBranches, primaryCheckoutBranch } from './branches';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
@@ -144,11 +144,16 @@ export class WorkspaceComponent implements OnInit {
   }
 
   confirmMerge(): void {
-    if (this.mergeMode() !== 'into') {
+    const mode = this.mergeMode();
+    if (mode === 'generic') {
       return;
     }
     try {
-      mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), false);
+      if (mode === 'into') {
+        mergeIntoMasterTree(this.repoPath(), this.mergeBranch(), false);
+      } else {
+        mergeFromMasterTree(this.repoPath(), this.mergeBranch(), false);
+      }
       this.mergeOpen.set(false);
     } catch (error) {
       this.notice.set(error instanceof Error ? error.message : String(error));

@@ -1,7 +1,7 @@
 import { Directive, ElementRef, OnDestroy, OnInit, afterRenderEffect, inject, input } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
-import { TMUX, tmuxEnvironment } from './tmux-sessions';
+import { TMUX, terminalEnvironment } from './tmux-sessions';
 
 @Directive({
   selector: '[gmTerminal]',
@@ -59,7 +59,7 @@ export class TerminalPane implements OnInit, OnDestroy {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
-      env: tmuxEnvironment(),
+      env: terminalEnvironment(),
     });
     this.pty = pty;
     this.attachedSession = session;

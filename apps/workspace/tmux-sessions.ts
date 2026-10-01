@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 export const TMUX = '/usr/bin/tmux';
 
-export function tmuxEnvironment(): NodeJS.ProcessEnv {
+export function terminalEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.TMUX;
   delete env.TMUX_PANE;
@@ -15,7 +15,7 @@ export function listTmuxSessions(): string[] {
   try {
     const output = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], {
       encoding: 'utf8',
-      env: tmuxEnvironment(),
+      env: terminalEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     return output
@@ -56,7 +56,7 @@ export function createBranchSession(repoPath: string, branch: string, cwd: strin
   const name = sessionName(repoPath, branch, index);
   if (!listTmuxSessions().includes(name)) {
     execFileSync(TMUX, ['new-session', '-d', '-s', name, '-c', cwd], {
-      env: tmuxEnvironment(),
+      env: terminalEnvironment(),
       stdio: 'ignore',
     });
   }
@@ -66,7 +66,7 @@ export function createBranchSession(repoPath: string, branch: string, cwd: strin
 export function killTmuxSession(name: string): void {
   try {
     execFileSync(TMUX, ['kill-session', '-t', name], {
-      env: tmuxEnvironment(),
+      env: terminalEnvironment(),
       stdio: 'ignore',
     });
   } catch {

@@ -58,12 +58,15 @@ function createRepo(): { root: string; repo: string } {
   return { root, repo };
 }
 
-function renderWorkspace(repo: string): ComponentFixture<WorkspaceComponent> {
+function renderWorkspace(repo: string, platform?: string): ComponentFixture<WorkspaceComponent> {
   TestBed.configureTestingModule({
     imports: [WorkspaceComponent],
   });
   const fixture = TestBed.createComponent(WorkspaceComponent);
   fixture.componentRef.setInput('repoPath', repo);
+  if (platform) {
+    fixture.componentRef.setInput('platform', platform);
+  }
   fixture.detectChanges();
   return fixture;
 }
@@ -101,9 +104,13 @@ function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number
   return fixture.nativeElement.querySelectorAll('.terminal-pane').length;
 }
 
-function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
+function controlButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): HTMLButtonElement | null {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
-  const button = buttons.find((candidate) => candidate.textContent?.trim() === label);
+  return buttons.find((candidate) => candidate.textContent?.trim() === label) ?? null;
+}
+
+function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
+  const button = controlButton(fixture, label);
   if (!button) {
     throw new Error(`${label} is not shown`);
   }
@@ -268,5 +275,28 @@ describe('branch terminal', () => {
     clickControl(fixture, 'Kill');
     await waitFor(() => terminalCount(fixture!, 'feature') === null);
     expect(branchRow(fixture, 'feature').textContent ?? '').not.toContain('0');
+  });
+
+  it('opens one shell in the worktree on Windows and does not create a tmux session', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const worktree = join(repo.repo, '.workspaces', 'feature');
+    before = listSessions();
+    fixture = renderWorkspace(repo.repo, 'win32');
+
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    clickBranch(fixture, 'feature');
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    expect(visiblePaneCount(fixture!)).toBe(1);
+    expect(tabNames(fixture!)).toEqual([]);
+    expect(controlButton(fixture!, 'Split')).toBeNull();
+    expect(controlButton(fixture!, 'New')).toBeNull();
+    expect(controlButton(fixture!, 'Kill')).toBeNull();
+    expect(terminalCount(fixture!, 'feature')).toBe('1');
+
+    submitCommand(fixture!.nativeElement, 'pwd');
+    await waitFor(() => paneText(fixture!).includes(worktree));
+    expect(listSessions().filter((name) => !before.includes(name))).toEqual([]);
   });
 });

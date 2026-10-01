@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, input, signal } from '@angular/core';
 import { findWorktree, listBranches } from './branches';
+import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
   createBranchSession,
@@ -11,7 +12,7 @@ import {
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [TerminalPane],
+  imports: [TerminalPane, ShellPane],
   template: `
     <aside>
       @for (branch of branches(); track branch) {
@@ -27,7 +28,9 @@ import {
       @if (notice()) {
         <p>{{ notice() }}</p>
       }
-      @if (sessions().length > 0) {
+      @if (platform() === 'win32' && worktreePath()) {
+        <div class="terminal-pane" [gmShell]="worktreePath()" style="background-color: #1e1e1e"></div>
+      } @else if (sessions().length > 0) {
         <div class="terminal-chrome">
           <div role="tablist">
             @for (session of sessions(); track session) {
@@ -47,6 +50,7 @@ import {
 })
 export class WorkspaceComponent implements OnInit {
   readonly repoPath = input.required<string>();
+  readonly platform = input(hostPlatform());
   readonly branches = signal<string[]>([]);
   readonly notice = signal('');
   readonly selectedBranch = signal('');
@@ -82,6 +86,11 @@ export class WorkspaceComponent implements OnInit {
     this.selectedBranch.set(branch);
     this.worktreePath.set(cwd);
     this.splitView.set(false);
+    if (this.platform() === 'win32') {
+      this.sessions.set([]);
+      this.focused.set('');
+      return;
+    }
     const existing = sessionsForBranch(this.repoPath(), branch);
     if (existing.length === 0) {
       const name = createBranchSession(this.repoPath(), branch, cwd, 1);
@@ -94,6 +103,9 @@ export class WorkspaceComponent implements OnInit {
   }
 
   terminalCount(branch: string): number {
+    if (this.platform() === 'win32') {
+      return branch === this.selectedBranch() && this.worktreePath().length > 0 ? 1 : 0;
+    }
     if (branch === this.selectedBranch()) {
       return this.sessions().length;
     }
@@ -153,4 +165,11 @@ export class WorkspaceComponent implements OnInit {
     this.focused.set('');
     this.splitView.set(false);
   }
+}
+
+function hostPlatform(): string {
+  if (typeof process !== 'undefined' && typeof process.platform === 'string') {
+    return process.platform;
+  }
+  return 'linux';
 }

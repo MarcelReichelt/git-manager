@@ -179,7 +179,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-actions { display: none; }
 
-.branch-row:hover > .branch-actions,
 .branch-actions.is-open {
   display: block;
   position: absolute;

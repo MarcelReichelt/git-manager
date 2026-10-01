@@ -267,6 +267,65 @@ describe('desktop workspace', () => {
     expect(squash.parentElement).not.toBe(group.parentElement);
   });
 
+  it('keeps branch actions closed while the pointer is only hovering the row', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const hoverOpensActions = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some((match) => {
+      const selector = match[1] ?? '';
+      const body = match[2] ?? '';
+      return (
+        selector.includes('.branch-row') &&
+        selector.includes(':hover') &&
+        selector.includes('.branch-actions') &&
+        /display\s*:\s*block/.test(body)
+      );
+    });
+    expect(hoverOpensActions).toBe(false);
+
+    const menu = fixture.nativeElement.querySelector(
+      '[data-branch="feature/login"] [data-testid="hover-menu"]',
+    );
+    expect(menu.classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(menu).display).toBe('none');
+  });
+
+  it('opens one branch action menu and closes the other', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const login = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    const wip = fixture.nativeElement.querySelector('[data-branch="wip"]');
+    login.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const loginMenu = login.querySelector('[data-testid="hover-menu"]');
+    expect(loginMenu.classList.contains('is-open')).toBe(true);
+    expect(getComputedStyle(loginMenu).display).toBe('block');
+    expect(loginMenu.querySelector('[data-testid="update-from-master"]').textContent.trim()).toBe(
+      'Update from master',
+    );
+    expect(loginMenu.querySelector('[data-testid="merge-into-master"]').textContent.trim()).toBe(
+      'Merge into master',
+    );
+    expect(loginMenu.querySelector('[data-testid="squash"]').parentElement.textContent.trim()).toBe('Squash');
+    expect(loginMenu.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe(
+      'Remove worktree',
+    );
+
+    wip.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const wipMenu = wip.querySelector('[data-testid="hover-menu"]');
+    expect(loginMenu.classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(loginMenu).display).toBe('none');
+    expect(wipMenu.classList.contains('is-open')).toBe(true);
+    expect(getComputedStyle(wipMenu).display).toBe('block');
+  });
+
   it('counts the commits that exist only on feature/login in the branch summary', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

@@ -327,4 +327,35 @@ describe('git-manager worktree create', () => {
     expect(readFileSync(pluginMarker, 'utf8')).toBe('ran');
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(true);
   });
+
+  it('copies .env into the worktree as a file that can be edited', () => {
+    const root = makeTempDir('git-manager-copy-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    writeFileSync(join(repoPath, '.env'), 'SECRET=1\n');
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      '[copy]\nfiles = [".env"]\n',
+    );
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const created = runGitManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+
+    const copied = join(repoPath, '.workspaces', 'login', '.env');
+    expect(readFileSync(copied, 'utf8')).toBe('SECRET=1\n');
+    writeFileSync(copied, 'SECRET=2\n');
+    expect(readFileSync(copied, 'utf8')).toBe('SECRET=2\n');
+    expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SECRET=1\n');
+  });
 });

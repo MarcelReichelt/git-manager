@@ -1,5 +1,5 @@
 import { execFileSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { createJiti } from 'jiti';
@@ -11,6 +11,7 @@ import {
 
 interface RepoConfig {
   layout?: { mode?: string };
+  copy?: { files?: string[] };
   hooks?: {
     modules?: string[];
     pre_worktree_create?: { commands?: string[] };
@@ -92,6 +93,28 @@ async function runPrePlugins(plugins: WorktreePlugin[]): Promise<void> {
   }
 }
 
+async function runPostPlugins(plugins: WorktreePlugin[]): Promise<void> {
+  for (const plugin of plugins) {
+    await plugin.postWorktreeCreate?.();
+  }
+}
+
+function copyConfiguredFiles(
+  repoPath: string,
+  checkout: string,
+  files: string[] | undefined,
+): void {
+  for (const file of files ?? []) {
+    const source = join(repoPath, file);
+    if (!existsSync(source)) {
+      continue;
+    }
+    const target = join(checkout, file);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+  }
+}
+
 function checkoutPath(repositoryPath: string, layout: LayoutMode, folder: string): string {
   if (layout === 'sibling') {
     return join(dirname(repositoryPath), folder);
@@ -126,8 +149,9 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
     }
   }
 
+  const plugins = await loadPlugins(repository.path, config.hooks?.modules);
   runHookCommands(repository.path, config.hooks?.pre_worktree_create?.commands);
-  await runPrePlugins(await loadPlugins(repository.path, config.hooks?.modules));
+  await runPrePlugins(plugins);
 
   mkdirSync(dirname(checkout), { recursive: true });
   if (localBranch) {
@@ -142,5 +166,9 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
       { cwd: repository.path, stdio: 'inherit' },
     );
   }
+
+  copyConfiguredFiles(repository.path, checkout, config.copy?.files);
+  runHookCommands(repository.path, config.hooks?.post_worktree_create?.commands);
+  await runPostPlugins(plugins);
   return checkout;
 }

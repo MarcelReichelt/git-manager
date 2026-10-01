@@ -91,4 +91,34 @@ describe('desktop workspace', () => {
     expect(style.right).toBe('0px');
     expect(style.bottom).toBe('0px');
   });
+
+  it('lists every Harbor branch with status, changed files, and commits ahead and behind', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const rows = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-branch'))).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+    expect(rows.map((row) => row.getAttribute('data-status'))).toEqual([
+      'local-and-remote',
+      'local-only',
+      'remote-only',
+      'remote-deleted',
+      'local-and-remote',
+    ]);
+    expect(rowText(rows, 'changed-file-count')).toEqual(['2', '0', '0', '1', '1']);
+    expect(rowText(rows, 'ahead')).toEqual(['3', '0', '4', '2', '1']);
+    expect(rowText(rows, 'behind')).toEqual(['1', '0', '0', '0', '0']);
+    expect(fixture.nativeElement.querySelector('[data-branch="HEAD"]')).toBeNull();
+  });
 });
+
+function rowText(rows: Element[], testId: string): string[] {
+  return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
+}

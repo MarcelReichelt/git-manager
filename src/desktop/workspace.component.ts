@@ -1,5 +1,27 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
+
+type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
+
+interface SampleBranch {
+  name: string;
+  status: BranchStatus;
+  changedFileCount: number;
+  ahead: number;
+  behind: number;
+}
+
+const harborBranches: SampleBranch[] = [
+  { name: 'feature/login', status: 'local-and-remote', changedFileCount: 2, ahead: 3, behind: 1 },
+  { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
+  { name: 'origin/release', status: 'remote-only', changedFileCount: 0, ahead: 4, behind: 0 },
+  { name: 'abandoned', status: 'remote-deleted', changedFileCount: 1, ahead: 2, behind: 0 },
+  { name: 'rename-docs', status: 'local-and-remote', changedFileCount: 1, ahead: 1, behind: 0 },
+];
+
+const branchesByRepository: Record<string, SampleBranch[]> = {
+  Harbor: harborBranches,
+};
 
 @Component({
   selector: 'gm-workspace',
@@ -45,8 +67,24 @@ import { Component, signal } from '@angular/core';
       </div>
     } @else {
       <main data-testid="workspace">
-        <h1 data-testid="repository-name">{{ selectedName() }}</h1>
-        <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
+        <aside>
+          <h1 data-testid="repository-name">{{ selectedName() }}</h1>
+          <button type="button" data-testid="switch-repository" (click)="openSwitch()">Switch</button>
+          <ul data-testid="branch-list">
+            @for (branch of branches(); track branch.name) {
+              <li
+                data-testid="branch-row"
+                [attr.data-branch]="branch.name"
+                [attr.data-status]="branch.status"
+              >
+                <span>{{ branch.name }}</span>
+                <span data-testid="changed-file-count">{{ branch.changedFileCount }}</span>
+                <span data-testid="ahead">{{ branch.ahead }}</span>
+                <span data-testid="behind">{{ branch.behind }}</span>
+              </li>
+            }
+          </ul>
+        </aside>
         <section class="content-sheet" data-testid="content-sheet"></section>
       </main>
       @if (overlayOpen()) {
@@ -60,6 +98,7 @@ import { Component, signal } from '@angular/core';
 export class WorkspaceComponent {
   readonly selectedName = signal<string | null>(null);
   readonly overlayOpen = signal(false);
+  readonly branches = computed(() => branchesByRepository[this.selectedName() ?? ''] ?? []);
 
   choose(name: string): void {
     this.selectedName.set(name);

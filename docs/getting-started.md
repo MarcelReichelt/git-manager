@@ -2,7 +2,7 @@
 
 ## Install
 
-Requires **Node.js 20+** and **git** on your `PATH`.
+Requires **Node.js 20+** and **git** on your `PATH`. The desktop window also needs a display. On Linux and macOS the branch terminal uses `tmux`.
 
 ### From the npm registry
 
@@ -16,72 +16,39 @@ Global install:
 
 ```bash
 npm install -g @git-manager/main
-git-manager --version
-```
-
-Or run without installing:
-
-```bash
-npx @git-manager/main setup
+git-manager --help
 ```
 
 ### From source
-
-For contributors working in the cloned repository:
 
 ```bash
 yarn install
 yarn build
 yarn link:global
+yarn desktop
 ```
-
-## First run
-
-Run `git-manager` with no arguments. The setup wizard configures:
-
-1. Editor command (`cursor`, `code`, `nvim`, …)
-2. Default clone location (`~/DEV`)
-3. Default layout mode (sibling or workspaces)
-4. TUI refresh interval
 
 ## Register an existing repo
 
-Inside a git repository:
-
 ```bash
-git-manager register
-# or
-git-manager repo add
+git-manager add --path ~/src/harbor --name Harbor
+git-manager list
 ```
 
-## Clone a new repo
+The list is stored in `~/.config/git-manager/registry.db`. `GIT_MANAGER_REGISTRY_PATH` overrides that file. Each row is a path and a display name.
+
+## Open the workspace
 
 ```bash
-git-manager clone https://github.com/user/my-app.git
+yarn desktop
 ```
 
-Clones to `<clone_root>/<repo-name>/` using your configured layout.
+With nothing selected, a centered card lists registered repositories. Choosing one shows that repository's branches.
 
-## Switch repository
+## Create a worktree
+
+Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, the checkout goes under `.workspaces`.
 
 ```bash
-git-manager repo switch
+git-manager worktree create feature --repo Harbor
 ```
-
-The picker lists registered repos plus options to clone new or add existing.
-
-## Switch worktree
-
-```bash
-git-manager worktree list
-git-manager worktree switch feature-x
-git-manager worktree open
-```
-
-## TUI
-
-```bash
-git-manager ui
-```
-
-See [TUI guide](tui-guide.md) for keybindings.

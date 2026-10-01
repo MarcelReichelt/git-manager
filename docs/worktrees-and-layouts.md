@@ -1,17 +1,8 @@
 # Worktrees and layouts
 
-## Sibling mode
+Layout is a per-repository choice in `.git-manager/config.toml`. The registry does not store it. When `[layout].mode` is unset, create uses the workspaces layout.
 
-```
-my-project/
-├── main/              # primary checkout (folder = default branch)
-├── feature-x/         # worktree
-└── .git-manager/
-```
-
-Registry `path` = `my-project`, `git_root` = `my-project/main`.
-
-## Workspaces mode
+## Workspaces
 
 ```
 my-repo/
@@ -19,12 +10,20 @@ my-repo/
 ├── .workspaces/
 │   └── feature-x/
 └── .git-manager/
+    └── config.toml
 ```
 
-`.workspaces/` is auto-added to `.gitignore`.
+## Sibling
 
-## Auto-detection
+```toml
+[layout]
+mode = "sibling"
+```
 
-On register, sibling mode is used only when the primary checkout folder name matches `primary_branch`. Otherwise workspaces.
+```
+src/
+├── my-repo/           # primary checkout
+└── feature-x/         # worktree next to the repository, named from the branch
+```
 
-Explicit `[layout].mode` in repo config always wins.
+A branch name that is not a legal directory name is sanitized by turning path separators and illegal characters into `-`. `feature/foo` is checked out in `feature-foo`. The git branch name stays `feature/foo`. Creation stops when that folder already exists.

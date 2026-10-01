@@ -383,6 +383,38 @@ describe('desktop workspace', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+pier note');
   });
+
+  it('shows the renamed guide and the binary logo for commits on rewrite', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Retitle the guide"]').click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const files = [...commitFiles.querySelectorAll('[data-testid="changed-file"]')];
+    expect(files).toHaveLength(1);
+    expect(files[0].getAttribute('data-path')).toBe('docs/guide.md');
+    expect(files[0].getAttribute('data-previous-path')).toBe('docs/old-guide.md');
+    expect(files[0].querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('1');
+    expect(files[0].querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('1');
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(diff.textContent).toContain('new guide');
+    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the logo"]').click();
+    fixture.detectChanges();
+
+    const logo = fixture.nativeElement.querySelector(
+      '[data-testid="commit-files"] [data-testid="changed-file"]',
+    );
+    expect(logo.getAttribute('data-path')).toBe('assets/logo.png');
+    expect(logo.querySelector('[data-testid="lines-added"]')).toBeNull();
+    expect(logo.querySelector('[data-testid="lines-deleted"]')).toBeNull();
+  });
 });
 
 function leftEdge(element: HTMLElement): number {

@@ -4,6 +4,8 @@ import { basename } from 'node:path';
 import {
   listBranches,
   readChangedFiles,
+  readCommitFileDiff,
+  readCommitFiles,
   readCommitsOnlyOnBranch,
   readWorkingTreeDiff,
   type BranchCommit,
@@ -260,11 +262,15 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 </li>
               }
             </ul>
-            @if (selectedCommit(); as commit) {
+            @if (showingCommit()) {
               <div class="commit-detail">
                 <ul class="commit-files" data-testid="commit-files">
-                  @for (file of commit.files ?? []; track file.path) {
-                    <li data-testid="changed-file" [attr.data-path]="file.path">
+                  @for (file of visibleCommitFiles(); track file.path) {
+                    <li
+                      data-testid="changed-file"
+                      [attr.data-path]="file.path"
+                      [attr.data-previous-path]="file.previousPath ?? null"
+                    >
                       {{ file.path }}
                       @if (file.added !== null) {
                         <span data-testid="lines-added">{{ file.added }}</span>
@@ -275,7 +281,7 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                     </li>
                   }
                 </ul>
-                <pre class="commit-diff" data-testid="diff">{{ commit.diff }}</pre>
+                <pre class="commit-diff" data-testid="diff">{{ visibleCommitDiff() }}</pre>
               </div>
             } @else if (selectedDiff(); as diff) {
               <pre data-testid="diff">{{ diff }}</pre>
@@ -302,6 +308,7 @@ export class WorkspaceComponent implements OnInit {
   readonly realBranches = signal<SampleBranch[]>([]);
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
+  readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly workspaceTitle = computed(() => {
     const path = this.repositoryPath();
@@ -341,6 +348,27 @@ export class WorkspaceComponent implements OnInit {
     }
     return this.selectedBranch()?.commits ?? [];
   });
+  readonly showingCommit = computed(() => {
+    if (this.selectedCommitSubject() === null) {
+      return false;
+    }
+    if (this.repositoryPath() !== null) {
+      return true;
+    }
+    return this.selectedCommit() !== null;
+  });
+  readonly visibleCommitFiles = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.loadedCommitFiles();
+    }
+    return this.selectedCommit()?.files ?? [];
+  });
+  readonly visibleCommitDiff = computed(() => {
+    if (this.repositoryPath() !== null) {
+      return this.loadedDiff() ?? '';
+    }
+    return this.selectedCommit()?.diff ?? '';
+  });
 
   ngOnInit(): void {
     this.refreshBranches();
@@ -369,6 +397,20 @@ export class WorkspaceComponent implements OnInit {
   selectCommit(subject: string): void {
     this.selectedCommitSubject.set(subject);
     this.selectedFilePath.set(null);
+    const repo = this.repositoryPath();
+    if (!repo) {
+      return;
+    }
+    const commit = this.loadedCommits().find((item) => item.subject === subject);
+    if (!commit) {
+      this.loadedCommitFiles.set([]);
+      this.loadedDiff.set(null);
+      return;
+    }
+    const files = readCommitFiles(repo, commit.sha);
+    this.loadedCommitFiles.set(files);
+    const first = files[0];
+    this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path) : '');
   }
 
   openBranchMenu(name: string, event: Event): void {
@@ -381,6 +423,7 @@ export class WorkspaceComponent implements OnInit {
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
     this.loadedDiff.set(null);
+    this.loadedCommitFiles.set([]);
     const path = this.repositoryPath();
     if (path === null) {
       this.loadedFiles.set([]);

@@ -117,6 +117,26 @@ describe('desktop workspace', () => {
     expect(rowText(rows, 'behind')).toEqual(['1', '0', '0', '0', '0']);
     expect(fixture.nativeElement.querySelector('[data-branch="HEAD"]')).toBeNull();
   });
+
+  it('colors a branch row by status and shows no text badge', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const background = (branch: string) =>
+      getComputedStyle(
+        fixture.nativeElement.querySelector(`[data-testid="branch-row"][data-branch="${branch}"]`),
+      ).backgroundColor;
+
+    expect(background('wip')).toBe('rgb(173, 216, 230)');
+    expect(background('feature/login')).toBe('rgb(0, 128, 0)');
+    expect(background('origin/release')).toBe('rgb(255, 255, 0)');
+    expect(background('abandoned')).toBe('rgb(255, 0, 0)');
+
+    for (const row of fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')) {
+      expect(row.textContent).not.toMatch(/local only|local-only|remote only|remote-only|gone|remote-deleted/i);
+    }
+  });
 });
 
 function rowText(rows: Element[], testId: string): string[] {

@@ -47,6 +47,22 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
         right: 0;
         bottom: 0;
       }
+
+      [data-status='local-only'] {
+        background-color: lightblue;
+      }
+
+      [data-status='local-and-remote'] {
+        background-color: green;
+      }
+
+      [data-status='remote-only'] {
+        background-color: yellow;
+      }
+
+      [data-status='remote-deleted'] {
+        background-color: red;
+      }
     `,
   ],
   template: `

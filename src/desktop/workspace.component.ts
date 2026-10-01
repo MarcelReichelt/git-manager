@@ -93,6 +93,14 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
       .switching-overlay {
         position: fixed;
         inset: 0;
+        z-index: 2;
+        background: white;
+      }
+
+      aside {
+        position: relative;
+        z-index: 1;
+        width: 18rem;
       }
 
       .content-sheet {
@@ -100,6 +108,8 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
         top: 0;
         right: 0;
         bottom: 0;
+        left: 18rem;
+        overflow: auto;
       }
 
       [data-status='local-only'] {
@@ -167,11 +177,25 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
                 (click)="selectBranch(branch.name)"
               >
                 <button type="button" (click)="selectBranch(branch.name)">{{ branch.name }}</button>
-                <span data-testid="changed-file-count">{{ branch.changedFileCount }}</span>
-                <span data-testid="ahead">{{ branch.ahead }}</span>
-                <span data-testid="behind">{{ branch.behind }}</span>
+                <span
+                  data-testid="changed-file-count"
+                  [attr.aria-label]="branch.changedFileCount + ' changed files'"
+                >
+                  {{ branch.changedFileCount }}
+                </span>
+                <span data-testid="ahead" [attr.aria-label]="branch.ahead + ' commits ahead'">
+                  {{ branch.ahead }}
+                </span>
+                <span data-testid="behind" [attr.aria-label]="branch.behind + ' commits behind'">
+                  {{ branch.behind }}
+                </span>
                 @if (branch.terminalCount) {
-                  <span data-testid="terminal-count">{{ branch.terminalCount }}</span>
+                  <span
+                    data-testid="terminal-count"
+                    [attr.aria-label]="branch.terminalCount + ' terminals'"
+                  >
+                    {{ branch.terminalCount }}
+                  </span>
                 }
                 <button
                   type="button"

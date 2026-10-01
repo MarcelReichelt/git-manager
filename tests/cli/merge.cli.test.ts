@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -80,5 +80,36 @@ describe('git-manager merge', () => {
     expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('Squash master into feature');
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
     expect(git(repoPath, ['log', '-1', '--format=%s'])).toBe('master change');
+  });
+
+  it('merges a branch into master on the primary checkout', () => {
+    const root = makeTempDir('git-manager-merge-into-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'feature']);
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
+    git(checkout, ['add', 'feature.txt']);
+    git(checkout, ['commit', '-m', 'feature change']);
+    expect(existsSync(join(repoPath, 'feature.txt'))).toBe(false);
+
+    const merged = runGitManager(
+      ['merge', '--repo', 'Harbor', '--into-master', 'feature'],
+      env,
+    );
+    expect(merged.status).toBe(0);
+    expect(readFileSync(join(repoPath, 'feature.txt'), 'utf8')).toBe('from feature\n');
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
   });
 });

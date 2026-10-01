@@ -43,7 +43,19 @@ export function updateFromMaster(repoQuery: string, branch: string, squash: bool
 }
 
 export function mergeIntoMaster(repoQuery: string, branch: string, squash: boolean): void {
-  throw new Error(
-    `Merge into master is not implemented for ${repoQuery} ${branch} squash=${squash}`,
-  );
+  const repository = findRepository(repoQuery);
+  if (!repository) {
+    throw new Error(`Repository not found: ${repoQuery}`);
+  }
+  const current = execFileSync('git', ['branch', '--show-current'], {
+    cwd: repository.path,
+    encoding: 'utf8',
+  }).trim();
+  if (current !== 'master') {
+    throw new Error(`Primary checkout is on ${current}, not master`);
+  }
+  if (squash) {
+    throw new Error(`Squash is not implemented for ${branch}`);
+  }
+  execFileSync('git', ['merge', branch], { cwd: repository.path, stdio: 'inherit' });
 }

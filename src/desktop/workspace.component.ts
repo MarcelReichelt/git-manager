@@ -921,7 +921,7 @@ export class WorkspaceComponent implements OnInit {
     const other = sessions.find((session) => session !== focused) ?? focused;
     return [focused, other];
   });
-  readonly registryMode = computed(() => this.liveRegistry() || windowReadsRegistry());
+  readonly registryMode = computed(() => this.liveRegistry() || liveQueryFlag());
   readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
   readonly cardRepositories = computed((): CardRepository[] => {
     if (!this.registryMode()) {
@@ -1322,7 +1322,7 @@ export class WorkspaceComponent implements OnInit {
   }
 }
 
-function windowReadsRegistry(): boolean {
+function liveQueryFlag(): boolean {
   if (typeof location === 'undefined') {
     return false;
   }

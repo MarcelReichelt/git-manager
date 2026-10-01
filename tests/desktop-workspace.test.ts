@@ -833,6 +833,25 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).not.toBeNull();
   });
 
+  it('reads the registry on the centered card when the live query flag is set', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const previousSearch = location.search;
+    history.replaceState(null, '', `${location.pathname}?live=1`);
+    try {
+      const fixture = await render();
+      const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
+
+      expect(card).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
+      expect(card.querySelector('[data-testid="repository"][data-name="Harbor"]')).toBeNull();
+      expect(card.querySelector('[data-testid="repository"][data-name="Atlas"]')).toBeNull();
+    } finally {
+      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+    }
+  });
+
   it('lists registered repositories on the card and opens that repository', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);

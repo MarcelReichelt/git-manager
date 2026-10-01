@@ -229,6 +229,17 @@ describe('desktop workspace', () => {
     expect(controls.at(-1)).toBe(create);
   });
 
+  it('notes that a remote-only branch is fetched first and when create hooks run', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const note = fixture.nativeElement.querySelector('.create-note');
+    expect(note.textContent.trim()).toBe(
+      'A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
+    );
+  });
+
   it('opens a branch menu where squash is inside Merge and remove is outside it', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

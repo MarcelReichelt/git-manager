@@ -765,7 +765,7 @@ ul { margin: 0; padding: 0; list-style: none; }
             />
             <button type="button" data-testid="create-worktree" (click)="createBranch()">Create worktree</button>
           </div>
-          <p class="create-note">Remote branches are fetched first. Hooks run after checkout.</p>
+          <p class="create-note">A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.</p>
           @if (workspaceError(); as message) {
             <p data-testid="workspace-error">{{ message }}</p>
           }

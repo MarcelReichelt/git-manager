@@ -313,10 +313,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-radius: 999px;
 }
 
-[data-status='local-only'] .status-color { background-color: #8ecae6; }
-[data-status='local-and-remote'] .status-color { background-color: #3ddc97; }
-[data-status='remote-only'] .status-color { background-color: #f4d35e; }
-[data-status='remote-deleted'] .status-color { background-color: #ff5c5c; }
+[data-status='local-only'] .status-color { background-color: var(--statusblue); }
+[data-status='local-and-remote'] .status-color { background-color: var(--statusgreen); }
+[data-status='remote-only'] .status-color { background-color: var(--gold); }
+[data-status='remote-deleted'] .status-color { background-color: var(--statusred); }
 
 .branch-name {
   flex: 1;
@@ -344,7 +344,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #3ddc97;
+  background: var(--statusgreen);
   color: var(--forest);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;

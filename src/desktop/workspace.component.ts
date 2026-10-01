@@ -775,7 +775,7 @@ ul { margin: 0; padding: 0; list-style: none; }
             <header class="branch-heading">
               <h2>{{ branch.name }}</h2>
               <p>
-                {{ visibleCommits().length }} commits not in master · {{ visibleFiles().length }} changed files
+                {{ visibleCommits().length }} commits only on this branch · {{ visibleFiles().length }} changed files
               </p>
             </header>
             <div class="sheet-columns">

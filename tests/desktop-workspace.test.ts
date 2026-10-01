@@ -266,6 +266,24 @@ describe('desktop workspace', () => {
     expect(squash.parentElement).not.toBe(group.parentElement);
   });
 
+  it('counts the commits that exist only on feature/login in the branch summary', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('2 commits only on this branch · 2 changed files');
+
+    const commits = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')];
+    expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
+      'Add the login form',
+      'Wire the session',
+    ]);
+  });
+
   it('shows the changed files and the commits only on feature/login', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

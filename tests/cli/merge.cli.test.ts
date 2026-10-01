@@ -112,4 +112,35 @@ describe('git-manager merge', () => {
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
     expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
   });
+
+  it('squashes a branch into master with the squash commit message', () => {
+    const root = makeTempDir('git-manager-merge-squash-into-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'feature']);
+    const env = gitManagerEnv(registryPath);
+    expect(
+      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
+    git(checkout, ['add', 'feature.txt']);
+    git(checkout, ['commit', '-m', 'feature change']);
+
+    const merged = runGitManager(
+      ['merge', '--repo', 'Harbor', '--into-master', 'feature', '--squash'],
+      env,
+    );
+    expect(merged.status).toBe(0);
+    expect(readFileSync(join(repoPath, 'feature.txt'), 'utf8')).toBe('from feature\n');
+    expect(git(repoPath, ['log', '-1', '--format=%s'])).toBe('Squash feature into master');
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('feature change');
+  });
 });

@@ -55,7 +55,15 @@ export function mergeIntoMaster(repoQuery: string, branch: string, squash: boole
     throw new Error(`Primary checkout is on ${current}, not master`);
   }
   if (squash) {
-    throw new Error(`Squash is not implemented for ${branch}`);
+    execFileSync('git', ['merge', '--squash', branch], {
+      cwd: repository.path,
+      stdio: 'inherit',
+    });
+    execFileSync('git', ['commit', '-m', `Squash ${branch} into master`], {
+      cwd: repository.path,
+      stdio: 'inherit',
+    });
+    return;
   }
   execFileSync('git', ['merge', branch], { cwd: repository.path, stdio: 'inherit' });
 }

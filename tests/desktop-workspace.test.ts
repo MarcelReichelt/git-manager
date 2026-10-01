@@ -6,6 +6,12 @@ import { TestBed } from '@angular/core/testing';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
 
+const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
+writeFileSync(emptyGitConfig, '');
+process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
+process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
+process.env.GIT_TERMINAL_PROMPT = '0';
+
 describe('desktop workspace', () => {
   const roots: string[] = [];
   const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;

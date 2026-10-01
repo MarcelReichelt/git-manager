@@ -1,19 +1,23 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { findRepository } from './registry.js';
+import { dirname, join } from 'node:path';
+import { findRepository, type RegisteredRepository } from './registry.js';
+
+function checkoutPath(repository: RegisteredRepository, folder: string): string {
+  if (repository.layout === 'sibling') {
+    return join(dirname(repository.path), folder);
+  }
+  return join(repository.path, '.workspaces', folder);
+}
 
 export async function createWorktree(repoQuery: string, branch: string): Promise<string> {
   const repository = findRepository(repoQuery);
   if (!repository) {
     throw new Error(`Repository not found: ${repoQuery}`);
   }
-  if (repository.layout !== 'workspaces') {
-    throw new Error(`Unsupported layout: ${repository.layout}`);
-  }
 
-  const checkout = join(repository.path, '.workspaces', branch);
-  mkdirSync(join(repository.path, '.workspaces'), { recursive: true });
+  const checkout = checkoutPath(repository, branch);
+  mkdirSync(dirname(checkout), { recursive: true });
   execFileSync('git', ['worktree', 'add', checkout, branch], {
     cwd: repository.path,
     stdio: 'inherit',

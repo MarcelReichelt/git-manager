@@ -16,6 +16,14 @@
   align-items: center;
   justify-content: space-between;
   height: 36px;
+  -webkit-app-region: drag;
+}
+
+[data-testid='repository-name'],
+[data-testid='switch-repository'],
+[data-testid='repository-settings'],
+.window-controls button {
+  -webkit-app-region: no-drag;
 }
 
 .window-title {

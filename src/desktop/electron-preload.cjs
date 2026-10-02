@@ -17,6 +17,9 @@ window.gitManager = {
   closeWindow() {
     return ipcRenderer.invoke('window-close');
   },
+  dragWindow() {
+    return ipcRenderer.invoke('window-drag');
+  },
   copyText(text) {
     return ipcRenderer.invoke('copy-text', text);
   },

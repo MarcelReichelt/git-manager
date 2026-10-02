@@ -1,4 +1,4 @@
-export type WindowAction = 'minimize' | 'maximize' | 'close';
+export type WindowAction = 'minimize' | 'maximize' | 'close' | 'drag';
 
 export type WindowChrome = (action: WindowAction) => void;
 
@@ -7,6 +7,7 @@ interface WindowChromeHost {
     minimizeWindow?: () => void;
     maximizeWindow?: () => void;
     closeWindow?: () => void;
+    dragWindow?: () => void;
   };
 }
 
@@ -21,6 +22,10 @@ function hostWindowChrome(action: WindowAction): void {
   }
   if (action === 'maximize') {
     gitManager.maximizeWindow?.();
+    return;
+  }
+  if (action === 'drag') {
+    gitManager.dragWindow?.();
     return;
   }
   gitManager.closeWindow?.();

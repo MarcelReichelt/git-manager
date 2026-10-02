@@ -257,6 +257,53 @@ describe('desktop workspace', () => {
     expect(actions).toEqual(['minimize', 'maximize', 'close']);
   });
 
+  it('drags the workspace window from the top bar', async () => {
+    const actions: string[] = [];
+    setWindowChrome((action) => {
+      actions.push(action);
+    });
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    expect(getComputedStyle(bar).getPropertyValue('-webkit-app-region')).toBe('drag');
+
+    bar.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 20, clientY: 12 }));
+    bar.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 28, clientY: 14 }));
+
+    expect(actions).toEqual(['drag']);
+  });
+
+  it('does not drag the window from the top bar controls', async () => {
+    const actions: string[] = [];
+    setWindowChrome((action) => {
+      actions.push(action);
+    });
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const controls = [
+      bar.querySelector('[data-testid="repository-name"]'),
+      bar.querySelector('[data-testid="switch-repository"]'),
+      bar.querySelector('[data-testid="repository-settings"]'),
+      bar.querySelector('[data-testid="window-minimize"]'),
+      bar.querySelector('[data-testid="window-maximize"]'),
+      bar.querySelector('[data-testid="window-close"]'),
+    ];
+
+    for (const control of controls) {
+      expect(getComputedStyle(control).getPropertyValue('-webkit-app-region')).toBe('no-drag');
+      const hit = control.querySelector('svg') ?? control;
+      hit.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 4, clientY: 4 }));
+      hit.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 24, clientY: 18 }));
+    }
+
+    expect(actions).toEqual([]);
+  });
+
   it('puts the repository name and switcher in the top bar and leaves room for settings', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);

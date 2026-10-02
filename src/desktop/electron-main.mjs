@@ -36,6 +36,14 @@ ipcMain.handle('window-close', (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
 
+ipcMain.handle('window-drag', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+  // A frameless window moves from `-webkit-app-region: drag` on the top bar.
+});
+
 ipcMain.handle('copy-text', (_event, text) => {
   clipboard.writeText(typeof text === 'string' ? text : '');
 });

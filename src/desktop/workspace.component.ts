@@ -573,7 +573,7 @@ button, input { font: inherit; color: inherit; }
       </div>
     } @else {
       <main data-testid="workspace">
-        <header class="window-bar" data-testid="window-bar">
+        <header class="window-bar" data-testid="window-bar" (pointerdown)="dragWindow($event)">
           <div class="window-title">
             <h1 data-testid="repository-name" [attr.title]="repositoryLocation()" (click)="copyLocation()">{{ workspaceTitle() }}</h1>
             <button type="button" data-testid="switch-repository" aria-label="Switch repository" (click)="openSwitch()">
@@ -1327,6 +1327,19 @@ export class WorkspaceComponent implements OnInit {
 
   controlWindow(action: WindowAction): void {
     requestWindowAction(action);
+  }
+
+  dragWindow(event: PointerEvent): void {
+    const target = event.target;
+    const element = target instanceof Element ? target : null;
+    if (
+      element?.closest(
+        '[data-testid="repository-name"], [data-testid="switch-repository"], [data-testid="repository-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+      )
+    ) {
+      return;
+    }
+    requestWindowAction('drag');
   }
 
   copyLocation(): void {

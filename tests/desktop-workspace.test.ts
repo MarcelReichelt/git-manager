@@ -184,7 +184,7 @@ describe('desktop workspace', () => {
     const aside = fixture.nativeElement.querySelector('aside');
     const name = bar.querySelector('[data-testid="repository-name"]');
     const switcher = bar.querySelector('[data-testid="switch-repository"]');
-    const slot = bar.querySelector('[data-testid="repository-settings-slot"]');
+    const settings = bar.querySelector('[data-testid="repository-settings"]');
     const minimize = bar.querySelector('[data-testid="window-minimize"]');
 
     expect(name.textContent.trim()).toBe('harbor');
@@ -194,12 +194,11 @@ describe('desktop workspace', () => {
     expect(aside.contains(minimize)).toBe(false);
     expect(getComputedStyle(bar).justifyContent).toBe('space-between');
     expect(name.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(switcher.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(slot.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(switcher.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(settings.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(switcher.getAttribute('aria-label')).toBe('Switch repository');
     expect(switcher.querySelector('svg')).not.toBeNull();
-    expect(slot.textContent.trim()).toBe('');
-    expect(slot.querySelector('button')).toBeNull();
+    expect(bar.querySelector('[data-testid="repository-settings-slot"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
 
     switcher.click();
@@ -228,6 +227,195 @@ describe('desktop workspace', () => {
     expect(name.getAttribute('title')).toBe(repoPath);
     name.click();
     expect(copied).toEqual(['', repoPath]);
+  });
+
+  it('opens repository settings from an icon button beside the repository name', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const aside = fixture.nativeElement.querySelector('aside');
+    const name = bar.querySelector('[data-testid="repository-name"]');
+    const settings = bar.querySelector('[data-testid="repository-settings"]');
+
+    expect(settings).not.toBeNull();
+    expect(settings.tagName).toBe('BUTTON');
+    expect(settings.getAttribute('aria-label')).toBe('Repository settings');
+    expect(settings.querySelector('svg')).not.toBeNull();
+    expect(aside.querySelector('[data-testid="repository-settings"]')).toBeNull();
+    expect(bar.querySelector('[data-testid="repository-settings-slot"]')).toBeNull();
+    expect(name.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    settings.click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-label')).toBe('Repository settings');
+    expect(dialog.querySelector('h2').textContent.trim()).toBe('Repository settings');
+    const panel = dialog.querySelector('.dialog-panel');
+    const panelStyle = getComputedStyle(panel);
+    expect(panelStyle.backgroundColor).toBe('rgb(247, 247, 245)');
+    expect(panelStyle.borderRadius).toBe('8px');
+    expect(getComputedStyle(dialog.querySelector('h2')).color).toBe('rgb(26, 60, 43)');
+
+    dialog.querySelector('[data-testid="close-repository-settings"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
+  });
+
+  it('shows the open repository location in settings', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const opened = await renderRepository(repoPath);
+    opened.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    opened.detectChanges();
+
+    const openedDialog = opened.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(openedDialog.querySelector('[data-testid="repository-location"]').textContent).toBe(repoPath);
+
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+
+    const live = await renderLive();
+    live.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    live.detectChanges();
+    await live.whenStable();
+    live.detectChanges();
+    live.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    live.detectChanges();
+
+    const dialog = live.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="repository-location"]').textContent).toBe(pier);
+  });
+
+  it('lists each git remote once with its name and fetch URL', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'upstream', 'https://example.com/upstream.git']);
+    git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
+    git(repoPath, ['remote', 'set-url', '--push', 'origin', 'https://example.com/harbor-push.git']);
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-name"]')?.textContent?.trim())).toEqual([
+      'origin',
+      'upstream',
+    ]);
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+      'https://example.com/harbor.git',
+      'https://example.com/upstream.git',
+    ]);
+  });
+
+  it('adds a git remote by name and URL', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const nameField = dialog.querySelector('[data-testid="add-remote-name"]');
+    const urlField = dialog.querySelector('[data-testid="add-remote-url"]');
+    nameField.value = 'upstream';
+    nameField.dispatchEvent(new Event('input'));
+    urlField.value = 'https://example.com/upstream.git';
+    urlField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-remote"]').click();
+    fixture.detectChanges();
+
+    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin', 'upstream']);
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+      'https://example.com/harbor.git',
+      'https://example.com/upstream.git',
+    ]);
+  });
+
+  it('changes an existing remote URL', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
+    git(repoPath, ['remote', 'add', 'upstream', 'https://example.com/upstream.git']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const origin = dialog.querySelector('[data-testid="remote-row"][data-name="origin"]');
+    const field = origin.querySelector('[data-testid="remote-url-field"]');
+    field.value = 'https://example.com/harbor-next.git';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    origin.querySelector('[data-testid="confirm-change-remote"]').click();
+    fixture.detectChanges();
+
+    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin', 'upstream']);
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+      'https://example.com/harbor-next.git',
+      'https://example.com/upstream.git',
+    ]);
+  });
+
+  it('removes a git remote', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
+    git(repoPath, ['remote', 'add', 'upstream', 'https://example.com/upstream.git']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const upstream = dialog.querySelector('[data-testid="remote-row"][data-name="upstream"]');
+    upstream.querySelector('[data-testid="remove-remote"]').click();
+    fixture.detectChanges();
+
+    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin']);
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+      'https://example.com/harbor.git',
+    ]);
+  });
+
+  it('shows an error and leaves existing remotes unchanged when a remote name is rejected', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const nameField = dialog.querySelector('[data-testid="add-remote-name"]');
+    const urlField = dialog.querySelector('[data-testid="add-remote-url"]');
+    nameField.value = 'bad name';
+    nameField.dispatchEvent(new Event('input'));
+    urlField.value = 'https://example.com/other.git';
+    urlField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-remote"]').click();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="settings-error"]').textContent).toBe(
+      "fatal: 'bad name' is not a valid remote name",
+    );
+    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin']);
+    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+      'https://example.com/harbor.git',
+    ]);
   });
 
   it('insets the sidebar and the content sheet so the forest background shows around them', async () => {

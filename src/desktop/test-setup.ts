@@ -18,18 +18,26 @@ const customPropertyUse = /^var\(\s*(--[\w-]+)\s*\)$/;
 
 window.getComputedStyle = (element: Element, pseudoElt?: string | null): CSSStyleDeclaration => {
   const style = nativeGetComputedStyle(element, pseudoElt);
-  const background = style.backgroundColor;
-  const token = customPropertyUse.exec(background);
+  resolveCustomColor(style, element, 'backgroundColor');
+  resolveCustomColor(style, element, 'color');
+  return style;
+};
+
+function resolveCustomColor(
+  style: CSSStyleDeclaration,
+  element: Element,
+  property: 'backgroundColor' | 'color',
+): void {
+  const token = customPropertyUse.exec(style[property]);
   if (!token) {
-    return style;
+    return;
   }
   const specified = specifiedCustomProperty(element, token[1]);
   const used = specified ? hexToRgb(specified) : null;
   if (used) {
-    style.backgroundColor = used;
+    style[property] = used;
   }
-  return style;
-};
+}
 
 function specifiedCustomProperty(element: Element, name: string): string {
   let node: Element | null = element;

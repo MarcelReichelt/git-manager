@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
+import { addRemote, listRemotes, removeRemote, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
@@ -371,8 +372,107 @@ button, input { font: inherit; color: inherit; }
   line-height: 1.4;
 }
 
-[data-testid='create-worktree-dialog'] [data-testid='workspace-error'] {
+[data-testid='create-worktree-dialog'] [data-testid='workspace-error'],
+[data-testid='repository-settings-dialog'] [data-testid='settings-error'] {
   color: var(--coral);
+}
+
+[data-testid='repository-settings-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='repository-settings-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='repository-settings-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='repository-settings-dialog'] label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+[data-testid='repository-location'],
+[data-testid='remote-name'],
+[data-testid='remote-url'] {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  word-break: break-all;
+}
+
+[data-testid='remote-list'] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-testid='remote-row'] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+[data-testid='repository-settings-dialog'] input,
+[data-testid='confirm-add-remote'],
+[data-testid='confirm-change-remote'],
+[data-testid='remove-remote'],
+[data-testid='close-repository-settings'] {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='repository-settings-dialog'] input {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: text;
+}
+
+[data-testid='confirm-add-remote'] {
+  background: var(--forest);
+  color: white;
+  border-color: var(--forest);
 }
 
 .dialog-actions {
@@ -417,7 +517,11 @@ button, input { font: inherit; color: inherit; }
                 <path fill="currentColor" d="M1 3.5A1.5 1.5 0 0 1 2.5 2h4A1.5 1.5 0 0 1 8 3.5V5H6.5V3.5h-4v9h4V11H8v1.5A1.5 1.5 0 0 1 6.5 14h-4A1.5 1.5 0 0 1 1 12.5v-9zm7 0A1.5 1.5 0 0 1 9.5 2h4A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 8 12.5V11h1.5v1.5h4v-9h-4V5H8V3.5z" />
               </svg>
             </button>
-            <span data-testid="repository-settings-slot"></span>
+            <button type="button" data-testid="repository-settings" aria-label="Repository settings" (click)="openSettings()">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M8 1.2a.8.8 0 0 1 .78.6l.22.9a4.8 4.8 0 0 1 1.22.7l.82-.4a.8.8 0 0 1 1.06.3l.5.86a.8.8 0 0 1-.18 1.02l-.7.54a4.9 4.9 0 0 1 0 1.56l.7.54a.8.8 0 0 1 .18 1.02l-.5.86a.8.8 0 0 1-1.06.3l-.82-.4a4.8 4.8 0 0 1-1.22.7l-.22.9a.8.8 0 0 1-.78.6.8.8 0 0 1-.78-.6l-.22-.9a4.8 4.8 0 0 1-1.22-.7l-.82.4a.8.8 0 0 1-1.06-.3l-.5-.86a.8.8 0 0 1 .18-1.02l.7-.54a4.9 4.9 0 0 1 0-1.56l-.7-.54a.8.8 0 0 1-.18-1.02l.5-.86a.8.8 0 0 1 1.06-.3l.82.4a4.8 4.8 0 0 1 1.22-.7l.22-.9A.8.8 0 0 1 8 1.2zm0 4.3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+              </svg>
+            </button>
           </div>
           <div class="window-controls">
             <button type="button" data-testid="window-minimize" aria-label="Minimize" (click)="controlWindow('minimize')">–</button>
@@ -660,6 +764,47 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (settingsOpen()) {
+      <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings">
+        <section class="dialog-panel">
+          <h2>Repository settings</h2>
+          <label>
+            Location
+            <p data-testid="repository-location">{{ repositoryLocation() }}</p>
+          </label>
+          <ul data-testid="remote-list">
+            @for (remote of remotes(); track remote.name) {
+              <li data-testid="remote-row" [attr.data-name]="remote.name">
+                <span data-testid="remote-name">{{ remote.name }}</span>
+                <span data-testid="remote-url">{{ remote.url }}</span>
+                <input
+                  data-testid="remote-url-field"
+                  [value]="remoteDraft(remote.name)"
+                  (input)="setRemoteDraft(remote.name, $event)"
+                />
+                <button type="button" data-testid="confirm-change-remote" (click)="confirmChangeRemote(remote.name)">Change URL</button>
+                <button type="button" data-testid="remove-remote" (click)="confirmRemoveRemote(remote.name)">Remove</button>
+              </li>
+            }
+          </ul>
+          <label>
+            Remote name
+            <input data-testid="add-remote-name" [value]="addRemoteName()" (input)="setAddRemoteName($event)" />
+          </label>
+          <label>
+            Remote URL
+            <input data-testid="add-remote-url" [value]="addRemoteUrl()" (input)="setAddRemoteUrl($event)" />
+          </label>
+          @if (settingsError(); as message) {
+            <p data-testid="settings-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-add-remote" (click)="confirmAddRemote()">Add remote</button>
+            <button type="button" data-testid="close-repository-settings" (click)="closeSettings()">Close</button>
+          </div>
+        </section>
+      </div>
+    }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository">
         <section class="dialog-panel">
@@ -711,6 +856,12 @@ export class WorkspaceComponent implements OnInit {
   readonly recentHistoryComplete = signal(false);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
+  readonly settingsOpen = signal(false);
+  readonly remotes = signal<RepositoryRemote[]>([]);
+  readonly addRemoteName = signal('');
+  readonly addRemoteUrl = signal('');
+  readonly remoteDrafts = signal<Record<string, string>>({});
+  readonly settingsError = signal<string | null>(null);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
   readonly workspaceError = signal<string | null>(null);
@@ -1087,6 +1238,82 @@ export class WorkspaceComponent implements OnInit {
 
   openSwitch(): void {
     this.overlayOpen.set(true);
+  }
+
+  openSettings(): void {
+    this.settingsError.set(null);
+    this.addRemoteName.set('');
+    this.addRemoteUrl.set('');
+    this.loadRemotes();
+    this.settingsOpen.set(true);
+  }
+
+  closeSettings(): void {
+    this.settingsError.set(null);
+    this.settingsOpen.set(false);
+  }
+
+  remoteDraft(name: string): string {
+    return this.remoteDrafts()[name] ?? '';
+  }
+
+  setRemoteDraft(name: string, event: Event): void {
+    const value = inputValue(event);
+    this.remoteDrafts.update((drafts) => ({ ...drafts, [name]: value }));
+  }
+
+  confirmChangeRemote(name: string): void {
+    this.editRemotes(() => {
+      setRemoteUrl(this.effectivePath() ?? '', name, this.remoteDraft(name));
+    });
+  }
+
+  confirmRemoveRemote(name: string): void {
+    this.editRemotes(() => {
+      removeRemote(this.effectivePath() ?? '', name);
+    });
+  }
+
+  setAddRemoteName(event: Event): void {
+    this.addRemoteName.set(inputValue(event));
+  }
+
+  setAddRemoteUrl(event: Event): void {
+    this.addRemoteUrl.set(inputValue(event));
+  }
+
+  confirmAddRemote(): void {
+    this.editRemotes(() => {
+      addRemote(this.effectivePath() ?? '', this.addRemoteName(), this.addRemoteUrl());
+      this.addRemoteName.set('');
+      this.addRemoteUrl.set('');
+    });
+  }
+
+  private editRemotes(action: () => void): void {
+    if (!this.effectivePath()) {
+      return;
+    }
+    this.settingsError.set(null);
+    try {
+      action();
+      this.loadRemotes();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.settingsError.set(message);
+    }
+  }
+
+  private loadRemotes(): void {
+    const path = this.effectivePath();
+    if (!path) {
+      this.remotes.set([]);
+      this.remoteDrafts.set({});
+      return;
+    }
+    const remotes = listRemotes(path);
+    this.remotes.set(remotes);
+    this.remoteDrafts.set(Object.fromEntries(remotes.map((remote) => [remote.name, remote.url])));
   }
 
   updateBranch(name: string, event: Event): void {

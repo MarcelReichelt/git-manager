@@ -684,8 +684,10 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-branch="HEAD"]')).toBeNull();
   });
 
-  it('drops branches deleted on the remote and keeps branches that still exist locally', async () => {
+  it('drops branches deleted on the remote and keeps worktrees that still exist locally', async () => {
     const repoPath = createRepositoryWithDeletedRemoteBranches(roots);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'kept'), 'kept']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'tracked'), 'tracked']);
     const fixture = await renderRepository(repoPath);
 
     const rows = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')];
@@ -693,8 +695,8 @@ describe('desktop workspace', () => {
       ['master', 'local-and-remote'],
       ['kept', 'local-only'],
       ['tracked', 'remote-deleted'],
-      ['origin/still-remote', 'remote-only'],
     ]);
+    expect(fixture.nativeElement.querySelector('[data-branch="origin/still-remote"]')).toBeNull();
   });
 
   it('colors a branch row by status and shows no text badge', async () => {
@@ -985,7 +987,7 @@ describe('desktop workspace', () => {
       [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
         row.getAttribute('data-branch'),
       ),
-    ).toEqual(['master', 'notes', 'origin/feature']);
+    ).toEqual(['master', 'notes']);
   });
 
   it('opens a branch menu with merge actions and no squash control', async () => {
@@ -1596,6 +1598,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['add', 'docs.txt']);
     git(repoPath, ['commit', '-m', 'Add the feature note']);
     git(repoPath, ['checkout', 'main']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
@@ -1790,10 +1793,12 @@ describe('desktop workspace', () => {
     );
   });
 
-  it('lists master first when that is the default branch and keeps every other branch in order', async () => {
+  it('lists master first when that is the default branch and keeps every other worktree in order', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature/notes']);
     git(repoPath, ['branch', 'zeta']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature-notes'), 'feature/notes']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
@@ -1801,10 +1806,12 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['master', 'feature/notes', 'zeta']);
   });
 
-  it('lists main first when that is the default branch and keeps every other branch in order', async () => {
+  it('lists main first when that is the default branch and keeps every other worktree in order', async () => {
     const repoPath = createEmptyRepository(roots, 'main');
     git(repoPath, ['branch', 'feature/login']);
     git(repoPath, ['branch', 'zeta']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature-login'), 'feature/login']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
@@ -1812,26 +1819,25 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['main', 'feature/login', 'zeta']);
   });
 
-  it('pins main when the checkout is a feature branch', async () => {
+  it('omits the default branch when that checkout is on a feature branch', async () => {
     const repoPath = createEmptyRepository(roots, 'main');
     git(repoPath, ['checkout', '-b', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    expect(branchNames(fixture)[0]).toBe('main');
-    expect(branchNames(fixture)).toContain('feature');
+    expect(fixture.nativeElement.querySelector('.branch-label').textContent.trim()).toBe('Worktrees');
+    expect(branchNames(fixture)).toEqual(['feature']);
   });
 
-  it('pins master when the checkout is a feature branch', async () => {
+  it('omits master when the checkout is a feature branch', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['checkout', '-b', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    expect(branchNames(fixture)[0]).toBe('master');
-    expect(branchNames(fixture)).toContain('feature');
+    expect(branchNames(fixture)).toEqual(['feature']);
   });
 
   it('creates the notes worktree from the button', async () => {
@@ -1899,7 +1905,7 @@ describe('desktop workspace', () => {
       [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
         row.getAttribute('data-branch'),
       ),
-    ).toEqual(['master', 'feature/notes']);
+    ).toEqual(['master']);
   });
 
   it('adds no worktree when a plugin aborts create', async () => {
@@ -2075,6 +2081,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['add', 'a.txt', 'b.txt']);
     git(repoPath, ['commit', '-m', 'Add both files']);
     git(repoPath, ['checkout', 'master']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'topic'), 'topic']);
     const fixture = await renderRepository(repoPath);
 
     fixture.nativeElement.querySelector('[data-branch="topic"]').click();
@@ -2091,28 +2098,22 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('+alpha');
   });
 
-  it('shows an error when update from master has no worktree', async () => {
+  it('omits a branch that has no worktree', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
-    fixture.detectChanges();
-    row.querySelector('[data-testid="update-from-master"]').click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
-      'No worktree for branch: feature',
-    );
+    expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
+    expect(branchNames(fixture)).toEqual(['master']);
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
   });
 
   it('shows an error when merge into master is not run on master', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
     git(repoPath, ['checkout', '-b', 'other']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
@@ -2279,7 +2280,7 @@ describe('desktop workspace', () => {
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
   });
 
-  it('removes the worktree and keeps the branch in the sidebar', async () => {
+  it('removes the worktree and drops that branch from the sidebar', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
@@ -2297,7 +2298,8 @@ describe('desktop workspace', () => {
 
     expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
     expect(git(repoPath, ['rev-parse', 'refs/heads/feature'])).toBe(branchSha);
-    expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).toBeNull();
+    expect(branchNames(fixture)).toEqual(['master']);
   });
 
   it('reads the registry on the centered card when the live query flag is set', async () => {

@@ -18,8 +18,8 @@ import {
   sessionsForBranch,
 } from './tmux-sessions';
 import {
-  listBranches,
   listRemoteBranchesWithoutWorktree,
+  listWorktreeBranches,
   pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -696,7 +696,7 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
-          <p class="branch-label"><span>Branches</span></p>
+          <p class="branch-label"><span>Worktrees</span></p>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
               <li
@@ -2038,7 +2038,7 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     this.realBranches.set(
-      listBranches(path).map((branch) => ({
+      listWorktreeBranches(path).map((branch) => ({
         name: branch.name,
         status: branch.status,
         changedFileCount: branch.changedFileCount,

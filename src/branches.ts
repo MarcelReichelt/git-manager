@@ -297,6 +297,11 @@ export function listBranches(repoPath: string): BranchRow[] {
   return pinDefaultBranch(rows, defaultBranchName(repoPath));
 }
 
+export function listWorktreeBranches(repoPath: string): BranchRow[] {
+  const checkedOut = checkedOutBranches(repoPath);
+  return listBranches(repoPath).filter((branch) => checkedOut.has(branch.name));
+}
+
 export interface AvailableBranch {
   name: string;
   status: BranchStatus;

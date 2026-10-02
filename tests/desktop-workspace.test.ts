@@ -2538,6 +2538,23 @@ describe('desktop workspace', () => {
     ).toEqual(listedCommits);
   });
 
+  it('keeps the commits divider inside the sheet when the changes pane is dragged tall', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="commits-split"]');
+    const columns = split.parentElement as HTMLElement;
+    Object.defineProperty(columns, 'clientHeight', { configurable: true, value: 400 });
+
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 2000 });
+    fixture.detectChanges();
+
+    expect(paneTrack(columns, 'gridTemplateRows')).toBe(312);
+  });
+
   it('drags the divider between the open commit files and the diff', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

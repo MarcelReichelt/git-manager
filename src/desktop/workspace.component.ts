@@ -1065,6 +1065,7 @@ export class WorkspaceComponent implements OnInit {
     axis: 'x' | 'y';
     start: number;
     origin: number;
+    limit: number | undefined;
     apply: (value: number) => void;
   } | null = null;
   readonly visibleSessions = computed(() => {
@@ -1470,7 +1471,7 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     const point = drag.axis === 'x' ? event.clientX : event.clientY;
-    drag.apply(Math.max(80, drag.origin + (point - drag.start)));
+    drag.apply(clampSplit(drag.origin + (point - drag.start), drag.limit));
   }
 
   endSplit(event: PointerEvent): void {
@@ -1490,11 +1491,15 @@ export class WorkspaceComponent implements OnInit {
     }
     event.preventDefault();
     this.captureSplit(event);
+    const parent = (event.currentTarget as HTMLElement | null)?.parentElement ?? null;
+    const span = parent === null ? 0 : axis === 'x' ? parent.clientWidth : parent.clientHeight;
+    const room = span - 8 - 80;
     this.splitDrag = {
       pointerId: event.pointerId,
       axis,
       start: axis === 'x' ? event.clientX : event.clientY,
       origin,
+      limit: room >= 80 ? room : undefined,
       apply,
     };
   }
@@ -1827,6 +1832,14 @@ function liveQueryFlag(): boolean {
 function inputValue(event: Event): string {
   const target = event.target as { value?: string } | null;
   return target?.value ?? '';
+}
+
+function clampSplit(value: number, limit: number | undefined): number {
+  const floored = Math.max(80, value);
+  if (limit === undefined) {
+    return floored;
+  }
+  return Math.min(floored, limit);
 }
 
 function hostPlatform(): string {

@@ -146,6 +146,87 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
   });
 
+  it('closes the repository switcher from the card without changing the open repository', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+
+    const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
+    const close = overlay.querySelector('[data-testid="close-repository-switcher"]');
+    expect(close.textContent.trim()).toBe('Close');
+
+    close.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the repository switcher when the overlay outside the card is clicked', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+
+    const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
+    overlay.querySelector('[data-testid="repository-card"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+
+    overlay.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the repository switcher when Escape is pressed', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
   it('opens the workspace window without an operating-system frame', () => {
     const main = readFileSync('src/desktop/electron-main.mjs', 'utf8');
     expect(main).toContain('frame: false');

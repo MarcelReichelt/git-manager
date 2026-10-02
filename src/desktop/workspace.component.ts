@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
+import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { addRemote, listRemotes, removeRemote, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
@@ -197,7 +197,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='repository'],
-[data-testid='add-repository'] {
+[data-testid='add-repository'],
+[data-testid='close-repository-switcher'] {
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
@@ -207,7 +208,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='repository']:hover,
-[data-testid='add-repository']:hover {
+[data-testid='add-repository']:hover,
+[data-testid='close-repository-switcher']:hover {
   background: var(--surface);
 }
 
@@ -501,6 +503,9 @@ button, input { font: inherit; color: inherit; }
         @if (registryMode()) {
           <button type="button" data-testid="add-repository" (click)="openAddDialog()">Add repository</button>
         }
+        @if (overlayOpen()) {
+          <button type="button" data-testid="close-repository-switcher" (click)="closeSwitch()">Close</button>
+        }
       </section>
     </ng-template>
 
@@ -744,7 +749,7 @@ button, input { font: inherit; color: inherit; }
         </section>
       </main>
       @if (overlayOpen()) {
-        <div class="start-screen switching-overlay" data-testid="switching-overlay">
+        <div class="start-screen switching-overlay" data-testid="switching-overlay" (click)="closeSwitchOutside($event)">
           <ng-container [ngTemplateOutlet]="repositoryCard" />
         </div>
       }
@@ -1251,6 +1256,23 @@ export class WorkspaceComponent implements OnInit {
 
   openSwitch(): void {
     this.overlayOpen.set(true);
+  }
+
+  closeSwitch(): void {
+    this.overlayOpen.set(false);
+  }
+
+  closeSwitchOutside(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.closeSwitch();
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  closeSwitchOnEscape(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.overlayOpen()) {
+      this.closeSwitch();
+    }
   }
 
   openSettings(): void {

@@ -336,11 +336,32 @@ button, input { font: inherit; color: inherit; }
   border-color: var(--forest);
 }
 
-[data-testid='add-repository-path'] {
-  margin: 0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  word-break: break-all;
+.location-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-field [data-testid='add-repository-path'] {
+  flex: 1;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.location-field [data-testid='browse-repository-folder'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+}
+
+[data-testid='confirm-add-repository']:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 [data-testid='create-worktree-dialog'] {
@@ -1041,20 +1062,29 @@ button, input { font: inherit; color: inherit; }
           <h2>Add repository</h2>
           <label>
             Location
-            <button type="button" data-testid="browse-repository-folder" (click)="browseFolder()">Choose folder</button>
+            <span class="location-field">
+              <input
+                data-testid="add-repository-path"
+                [value]="addPath()"
+                placeholder="Choose folder"
+                (input)="setAddPath($event)"
+              />
+              <button type="button" data-testid="browse-repository-folder" aria-label="Choose folder" (click)="browseFolder()">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M1.75 1.5h3.13c.6 0 1.17.3 1.5.8l.72 1.08a.25.25 0 0 0 .21.12h7a1.75 1.75 0 0 1 1.75 1.75v7.5A1.75 1.75 0 0 1 14.25 14.5H1.75A1.75 1.75 0 0 1 0 12.75v-9.5A1.75 1.75 0 0 1 1.75 1.5z" />
+                </svg>
+              </button>
+            </span>
           </label>
-          @if (addPath()) {
-            <p data-testid="add-repository-path">{{ addPath() }}</p>
+          @if (cardError(); as message) {
+            <p data-testid="card-error">{{ message }}</p>
           }
           <label>
             Display name
             <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
           </label>
-          @if (cardError(); as message) {
-            <p data-testid="card-error">{{ message }}</p>
-          }
           <div class="dialog-actions">
-            <button type="button" data-testid="confirm-add-repository" (click)="addRegistered()">Add repository</button>
+            <button type="button" data-testid="confirm-add-repository" [disabled]="cardError() !== null" (click)="addRegistered()">Add repository</button>
             <button type="button" data-testid="cancel-add-repository" (click)="cancelAdd()">Cancel</button>
           </div>
         </section>
@@ -1272,7 +1302,15 @@ export class WorkspaceComponent implements OnInit {
 
   setAddName(event: Event): void {
     this.addNameTouched.set(true);
-    this.addName.set(inputValue(event));
+    const name = inputValue(event);
+    this.addName.set(name);
+    if (this.cardError() === 'Enter a display name' && name.trim() !== '') {
+      this.cardError.set(null);
+    }
+  }
+
+  setAddPath(event: Event): void {
+    this.applyRepositoryPath(inputValue(event));
   }
 
   async browseFolder(): Promise<void> {
@@ -1281,19 +1319,31 @@ export class WorkspaceComponent implements OnInit {
       if (!chosen) {
         return;
       }
-      this.addPath.set(chosen);
-      let name = '';
-      try {
-        name = readRepositoryName(chosen);
-        this.cardError.set(null);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.cardError.set(message);
-      }
-      if (!this.addNameTouched()) {
-        this.addName.set(name);
-      }
+      this.applyRepositoryPath(chosen);
     });
+  }
+
+  private applyRepositoryPath(path: string): void {
+    this.addPath.set(path);
+    const trimmed = path.trim();
+    if (trimmed === '') {
+      this.cardError.set(null);
+      if (!this.addNameTouched()) {
+        this.addName.set('');
+      }
+      return;
+    }
+    let name = '';
+    try {
+      name = readRepositoryName(trimmed);
+      this.cardError.set(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cardError.set(message);
+    }
+    if (!this.addNameTouched()) {
+      this.addName.set(name);
+    }
   }
 
   cancelAdd(): void {

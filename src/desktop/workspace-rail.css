@@ -347,7 +347,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .sheet-columns {
   display: grid;
-  grid-template-columns: minmax(16rem, 340px) minmax(16rem, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
@@ -358,7 +358,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .sheet-columns > div + div {
-  border-left: 1px solid rgba(58, 58, 56, 0.2);
+  border-top: 1px solid rgba(58, 58, 56, 0.2);
 }
 
 .sheet-columns h3 {

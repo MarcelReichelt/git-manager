@@ -24,6 +24,7 @@ import {
   readCommitFileDiff,
   readCommitFiles,
   readCommitsOnlyOnBranch,
+  readDefaultBranch,
   readRecentCommits,
   recentCommitPageSize,
   readWorkingTreeDiff,
@@ -115,8 +116,25 @@ const harborBranches: SampleBranch[] = [
 ];
 
 const atlasBranches: SampleBranch[] = [
-  { name: 'feature/login', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
-  { name: 'main', status: 'local-and-remote', changedFileCount: 0, ahead: 0, behind: 0 },
+  {
+    name: 'feature/login',
+    status: 'local-only',
+    changedFileCount: 0,
+    ahead: 0,
+    behind: 0,
+    commits: [
+      { subject: 'Sketch the login' },
+      { subject: 'Open the atlas', onDefaultBranch: true },
+    ],
+  },
+  {
+    name: 'main',
+    status: 'local-and-remote',
+    changedFileCount: 0,
+    ahead: 0,
+    behind: 0,
+    commits: [{ subject: 'Open the atlas' }, { subject: 'Chart the coast' }],
+  },
   { name: 'wip', status: 'local-only', changedFileCount: 0, ahead: 0, behind: 0 },
 ];
 
@@ -707,11 +725,11 @@ button, input { font: inherit; color: inherit; }
             <header class="branch-heading">
               <h2>{{ branch.name }}</h2>
               <p>
-                {{ visibleRecentCommits().length }} commits · {{ visibleFiles().length }} changed files
+                {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
             <div class="sheet-columns">
-            <div>
+            <div data-testid="changes">
             <h3>Changes</h3>
             <ul data-testid="changed-files">
               @for (file of visibleFiles(); track file.path) {
@@ -737,33 +755,36 @@ button, input { font: inherit; color: inherit; }
               }
             }
             </div>
-            <div>
-            <h3>Commits</h3>
-            <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
-              @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
-                <li
-                  data-testid="commit"
-                  [attr.data-sha]="commit.sha ?? null"
-                  [attr.data-subject]="commit.subject"
-                  (click)="selectCommit(commit.subject, commit.sha)"
-                >
-                  <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
-                </li>
-              }
-            </ul>
-            <h3>Commits only on this branch</h3>
-            <ul data-testid="branch-commits">
-              @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
-                <li
-                  data-testid="commit"
-                  [attr.data-sha]="commit.sha ?? null"
-                  [attr.data-subject]="commit.subject"
-                  (click)="selectCommit(commit.subject, commit.sha)"
-                >
-                  <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
-                </li>
-              }
-            </ul>
+            <div data-testid="commits">
+            @if (branchIsDefault()) {
+              <h3>Commits</h3>
+              <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
+                @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
+                  <li
+                    data-testid="commit"
+                    [attr.data-sha]="commit.sha ?? null"
+                    [attr.data-subject]="commit.subject"
+                    (click)="selectCommit(commit.subject, commit.sha)"
+                  >
+                    <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <h3>Commits only on this branch</h3>
+              <ul data-testid="branch-commits">
+                @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
+                  <li
+                    data-testid="commit"
+                    [attr.data-sha]="commit.sha ?? null"
+                    [attr.data-subject]="commit.subject"
+                    (click)="selectCommit(commit.subject, commit.sha)"
+                  >
+                    <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
+                  </li>
+                }
+              </ul>
+            }
             @if (showingCommit()) {
               <div class="commit-detail">
                 <ul class="commit-files" data-testid="commit-files">
@@ -1046,6 +1067,18 @@ export class WorkspaceComponent implements OnInit {
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
+  readonly defaultBranchName = computed(() => {
+    const path = this.effectivePath();
+    if (path !== null) {
+      return readDefaultBranch(path);
+    }
+    return branchesByRepository[this.selectedName() ?? '']?.defaultBranch;
+  });
+  readonly branchIsDefault = computed(() => {
+    const name = this.selectedBranchName();
+    const base = this.defaultBranchName();
+    return name !== null && base !== undefined && name === base;
+  });
   readonly selectedDiff = computed(() => {
     if (this.effectivePath() !== null) {
       return this.loadedDiff();
@@ -1074,6 +1107,9 @@ export class WorkspaceComponent implements OnInit {
     }
     return (this.selectedBranch()?.commits ?? []).filter((commit) => !commit.onDefaultBranch);
   });
+  readonly summaryCommitCount = computed(() =>
+    this.branchIsDefault() ? this.visibleRecentCommits().length : this.visibleCommits().length,
+  );
   readonly showingCommit = computed(() => {
     if (this.selectedCommitSubject() === null) {
       return false;
@@ -1258,10 +1294,16 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     this.loadedFiles.set(readChangedFiles(path, name));
-    this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
-    const page = readRecentCommits(path, name);
-    this.loadedRecentCommits.set(page);
-    this.recentHistoryComplete.set(page.length < recentCommitPageSize);
+    if (this.branchIsDefault()) {
+      this.loadedCommits.set([]);
+      const page = readRecentCommits(path, name);
+      this.loadedRecentCommits.set(page);
+      this.recentHistoryComplete.set(page.length < recentCommitPageSize);
+    } else {
+      this.loadedRecentCommits.set([]);
+      this.recentHistoryComplete.set(true);
+      this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+    }
     this.openTerminals(name);
   }
 

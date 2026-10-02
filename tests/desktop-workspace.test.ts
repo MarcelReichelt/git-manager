@@ -1128,7 +1128,7 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
   });
 
-  it('counts recent Harbor commits in the branch summary', async () => {
+  it('counts the Harbor commits that are not on the default branch', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -1137,7 +1137,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const summary = fixture.nativeElement.querySelector('.branch-heading p');
-    expect(summary.textContent.trim()).toBe('3 commits · 2 changed files');
+    expect(summary.textContent.trim()).toBe('2 commits · 2 changed files');
 
     const commits = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')];
     expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
@@ -1204,7 +1204,31 @@ describe('desktop workspace', () => {
     expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
   });
 
-  it('lists commits only on feature/login under the recent Harbor history', async () => {
+  it('lists only the Harbor commits that are not on the default branch, below the changes', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+    const commits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    expect(commits.previousElementSibling?.textContent?.trim()).toBe('Commits only on this branch');
+    expect(
+      [...commits.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Add the login form', 'Wire the session']);
+
+    const changes = sheetSection(fixture.nativeElement.querySelector('[data-testid="changed-files"]'));
+    expect(blockTop(sheetSection(commits))).toBeGreaterThanOrEqual(blockBottom(changes));
+
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent.trim()).toBe(
+      '2 commits · 2 changed files',
+    );
+  });
+
+  it('lists the commits that are not on the default branch for feature/login', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -1220,43 +1244,41 @@ describe('desktop workspace', () => {
     ).toEqual(['Add the login form', 'Wire the session']);
   });
 
-  it('shows recent Harbor commits under Commits, including one that is also on the default branch', async () => {
+  it('shows the Atlas main history under Commits and keeps feature/login to commits that are not on main', async () => {
     const fixture = await render();
-    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
     fixture.detectChanges();
 
     const recent = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
     expect(recent.previousElementSibling?.textContent?.trim()).toBe('Commits');
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-commits"]')).toBeNull();
     expect(
       [...recent.querySelectorAll('[data-testid="commit"]')].map((commit) =>
         commit.getAttribute('data-subject'),
       ),
-    ).toEqual(['Add the login form', 'Wire the session', 'Open the harbor']);
-  });
+    ).toEqual(['Open the atlas', 'Chart the coast']);
+    expect(blockTop(fixture.nativeElement.querySelector('[data-testid="commits"]'))).toBeGreaterThanOrEqual(
+      blockBottom(fixture.nativeElement.querySelector('[data-testid="changes"]')),
+    );
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('2 commits · 0 changed files');
+    expect(summary.textContent).not.toContain('commits only on this branch');
 
-  it('shows the files and diff for Open the harbor', async () => {
-    const fixture = await render();
-    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
-    fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement
-      .querySelector('[data-testid="recent-commits"] [data-testid="commit"][data-subject="Open the harbor"]')
-      .click();
-    fixture.detectChanges();
-
-    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
-    const file = commitFiles.querySelector('[data-testid="changed-file"]');
-    expect(file.getAttribute('data-path')).toBe('README.md');
-    expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('1');
-    expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
-
-    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
-    expect(diff.textContent).toContain('+# harbor');
-    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+    const only = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    expect(only.previousElementSibling?.textContent?.trim()).toBe('Commits only on this branch');
+    expect(
+      [...only.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Sketch the login']);
+    expect(fixture.nativeElement.querySelector('[data-subject="Open the atlas"]')).toBeNull();
   });
 
   it('shows the files and diff for Wire the session', async () => {
@@ -1331,10 +1353,10 @@ describe('desktop workspace', () => {
     ).not.toBeNull();
   });
 
-  it('shows the files and diff for the old guide commit that is also on master', async () => {
+  it('shows the files and diff for the old guide commit on the default branch', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
-    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
 
     fixture.nativeElement
@@ -1390,6 +1412,16 @@ describe('desktop workspace', () => {
     expect(subjects[0]).toBe('Record 30');
     expect(subjects[29]).toBe('Record 01');
     expect(subjects).not.toContain('init');
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-commits"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]').previousElementSibling?.textContent?.trim()).toBe(
+      'Commits',
+    );
+    expect(blockTop(fixture.nativeElement.querySelector('[data-testid="commits"]'))).toBeGreaterThanOrEqual(
+      blockBottom(fixture.nativeElement.querySelector('[data-testid="changes"]')),
+    );
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('30 commits · 0 changed files');
+    expect(summary.textContent).not.toContain('commits only on this branch');
   });
 
   it('lists commits that are not on main when main is the default branch', async () => {
@@ -1406,19 +1438,31 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
 
-    const recent = [
-      ...fixture.nativeElement.querySelectorAll(
-        '[data-testid="recent-commits"] [data-testid="commit"]',
-      ),
-    ].map((commit) => commit.getAttribute('data-subject'));
-    expect(recent).toEqual(['Add the feature note', 'Plant the main line', 'init']);
-
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
     const only = [
       ...fixture.nativeElement.querySelectorAll(
         '[data-testid="branch-commits"] [data-testid="commit"]',
       ),
     ].map((commit) => commit.getAttribute('data-subject'));
     expect(only).toEqual(['Add the feature note']);
+
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-commits"]')).toBeNull();
+    const recent = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    expect(recent.previousElementSibling?.textContent?.trim()).toBe('Commits');
+    expect(
+      [...recent.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Plant the main line', 'init']);
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent).not.toContain(
+      'commits only on this branch',
+    );
+    expect(blockTop(fixture.nativeElement.querySelector('[data-testid="commits"]'))).toBeGreaterThanOrEqual(
+      blockBottom(fixture.nativeElement.querySelector('[data-testid="changes"]')),
+    );
   });
 
   it('lists commits that are not on main when the checkout is the feature branch', async () => {
@@ -1434,6 +1478,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
     const only = [
       ...fixture.nativeElement.querySelectorAll(
         '[data-testid="branch-commits"] [data-testid="commit"]',
@@ -1471,19 +1516,32 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('beta line');
   });
 
-  it('lists recent rewrite commits, including the guide commit that is also on master', async () => {
+  it('lists the commits on master, including the commit that starts the branch', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
-    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-commits"]')).toBeNull();
     const recent = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
     expect(recent.previousElementSibling?.textContent?.trim()).toBe('Commits');
     expect(
       [...recent.querySelectorAll('[data-testid="commit"]')].map((commit) =>
         commit.getAttribute('data-subject'),
       ),
-    ).toEqual(['Add the logo', 'Retitle the guide', 'Add the old guide']);
+    ).toEqual(['Add the old guide']);
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent).not.toContain(
+      'commits only on this branch',
+    );
+
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')].map(
+        (commit) => commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Add the logo', 'Retitle the guide']);
   });
 
   it('shows the guide edit and the commits only on rewrite', async () => {
@@ -2310,6 +2368,81 @@ function leftEdge(element: HTMLElement): number {
     return rect.left;
   }
   return Number.parseFloat(getComputedStyle(element).left);
+}
+
+function sheetSection(element: HTMLElement): HTMLElement {
+  const columns = element.closest('.sheet-columns');
+  let current: HTMLElement | null = element;
+  while (current && current.parentElement !== columns) {
+    current = current.parentElement;
+  }
+  return current ?? element;
+}
+
+function blockTop(element: HTMLElement): number {
+  return placedBlock(element).top;
+}
+
+function blockBottom(element: HTMLElement): number {
+  return placedBlock(element).bottom;
+}
+
+function placedBlock(element: HTMLElement): { top: number; bottom: number } {
+  const rect = element.getBoundingClientRect();
+  if (rect.height !== 0 || rect.width !== 0) {
+    return { top: rect.top, bottom: rect.bottom };
+  }
+  const parent = element.parentElement;
+  if (!parent) {
+    return { top: 0, bottom: 0 };
+  }
+  const siblings = [...parent.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
+  const index = Math.max(0, siblings.indexOf(element));
+  if (stacksVertically(getComputedStyle(parent))) {
+    return { top: index, bottom: index + 1 };
+  }
+  return { top: 0, bottom: 1 };
+}
+
+function stacksVertically(style: CSSStyleDeclaration): boolean {
+  const display = style.display;
+  if (display === 'flex' || display === 'inline-flex') {
+    return style.flexDirection === 'column' || style.flexDirection === 'column-reverse';
+  }
+  if (display === 'grid' || display === 'inline-grid') {
+    return columnTrackCount(style.gridTemplateColumns) <= 1;
+  }
+  return display === 'block' || display === 'flow-root';
+}
+
+function columnTrackCount(columns: string): number {
+  const value = columns.trim();
+  if (value === '' || value === 'none') {
+    return 1;
+  }
+  let depth = 0;
+  let tracks = 0;
+  let token = '';
+  for (const char of value) {
+    if (char === '(') {
+      depth += 1;
+    }
+    if (char === ')') {
+      depth = Math.max(0, depth - 1);
+    }
+    if (/\s/.test(char) && depth === 0) {
+      if (token.trim() !== '') {
+        tracks += 1;
+      }
+      token = '';
+    } else {
+      token += char;
+    }
+  }
+  if (token.trim() !== '') {
+    tracks += 1;
+  }
+  return tracks;
 }
 
 function branchNames(fixture: { nativeElement: HTMLElement }): string[] {

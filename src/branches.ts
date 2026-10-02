@@ -258,6 +258,10 @@ function aheadBehindBase(repoPath: string): string {
   return defaultBranchName(repoPath) ?? 'HEAD';
 }
 
+export function readDefaultBranch(repoPath: string): string | undefined {
+  return defaultBranchName(repoPath);
+}
+
 function defaultBranchName(repoPath: string): string | undefined {
   const originHead = gitOptional(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (originHead?.startsWith('origin/')) {

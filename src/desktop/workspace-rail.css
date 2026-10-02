@@ -339,6 +339,28 @@ ul { margin: 0; padding: 0; list-style: none; }
   letter-spacing: -0.02em;
 }
 
+.branch-heading [data-testid='copy-branch-name'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.branch-heading [data-testid='copy-branch-icon'] {
+  flex: none;
+  opacity: 0;
+}
+
+.branch-heading [data-testid='copy-branch-name']:hover [data-testid='copy-branch-icon'],
+.branch-heading [data-testid='copy-branch-name']:focus-visible [data-testid='copy-branch-icon'] {
+  opacity: 1;
+}
+
 .branch-heading p {
   margin-top: 4px;
   font-family: "JetBrains Mono", ui-monospace, monospace;

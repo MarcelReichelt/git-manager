@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { execFileSync } from 'node:child_process';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { addRemote, removeRemote, repositoryRemotes, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
@@ -336,11 +336,32 @@ button, input { font: inherit; color: inherit; }
   border-color: var(--forest);
 }
 
-[data-testid='add-repository-path'] {
-  margin: 0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  word-break: break-all;
+.location-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-field [data-testid='add-repository-path'] {
+  flex: 1;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.location-field [data-testid='browse-repository-folder'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+}
+
+[data-testid='confirm-add-repository']:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 [data-testid='create-worktree-dialog'] {
@@ -765,7 +786,20 @@ button, input { font: inherit; color: inherit; }
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
             <header class="branch-heading">
-              <h2>{{ branch.name }}</h2>
+              <h2>
+                <button
+                  type="button"
+                  data-testid="copy-branch-name"
+                  title="Copy branch name"
+                  (click)="copyBranchName(branch.name)"
+                >
+                  {{ branch.name }}
+                  <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                    <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+                    <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+                  </svg>
+                </button>
+              </h2>
               <p>
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
@@ -1046,20 +1080,29 @@ button, input { font: inherit; color: inherit; }
           <h2>Add repository</h2>
           <label>
             Location
-            <button type="button" data-testid="browse-repository-folder" (click)="browseFolder()">Choose folder</button>
+            <span class="location-field">
+              <input
+                data-testid="add-repository-path"
+                [value]="addPath()"
+                placeholder="Choose folder"
+                (input)="setAddPath($event)"
+              />
+              <button type="button" data-testid="browse-repository-folder" aria-label="Choose folder" (click)="browseFolder()">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M1.75 1.5h3.13c.6 0 1.17.3 1.5.8l.72 1.08a.25.25 0 0 0 .21.12h7a1.75 1.75 0 0 1 1.75 1.75v7.5A1.75 1.75 0 0 1 14.25 14.5H1.75A1.75 1.75 0 0 1 0 12.75v-9.5A1.75 1.75 0 0 1 1.75 1.5z" />
+                </svg>
+              </button>
+            </span>
           </label>
-          @if (addPath()) {
-            <p data-testid="add-repository-path">{{ addPath() }}</p>
+          @if (cardError(); as message) {
+            <p data-testid="card-error">{{ message }}</p>
           }
           <label>
             Display name
             <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
           </label>
-          @if (cardError(); as message) {
-            <p data-testid="card-error">{{ message }}</p>
-          }
           <div class="dialog-actions">
-            <button type="button" data-testid="confirm-add-repository" (click)="addRegistered()">Add repository</button>
+            <button type="button" data-testid="confirm-add-repository" [disabled]="cardError() !== null" (click)="addRegistered()">Add repository</button>
             <button type="button" data-testid="cancel-add-repository" (click)="cancelAdd()">Cancel</button>
           </div>
         </section>
@@ -1277,7 +1320,15 @@ export class WorkspaceComponent implements OnInit {
 
   setAddName(event: Event): void {
     this.addNameTouched.set(true);
-    this.addName.set(inputValue(event));
+    const name = inputValue(event);
+    this.addName.set(name);
+    if (this.cardError() === 'Enter a display name' && name.trim() !== '') {
+      this.cardError.set(null);
+    }
+  }
+
+  setAddPath(event: Event): void {
+    this.applyRepositoryPath(inputValue(event));
   }
 
   async browseFolder(): Promise<void> {
@@ -1286,11 +1337,31 @@ export class WorkspaceComponent implements OnInit {
       if (!chosen) {
         return;
       }
-      this.addPath.set(chosen);
-      if (!this.addNameTouched()) {
-        this.addName.set(suggestedRepositoryName(chosen));
-      }
+      this.applyRepositoryPath(chosen);
     });
+  }
+
+  private applyRepositoryPath(path: string): void {
+    this.addPath.set(path);
+    const trimmed = path.trim();
+    if (trimmed === '') {
+      this.cardError.set(null);
+      if (!this.addNameTouched()) {
+        this.addName.set('');
+      }
+      return;
+    }
+    let name = '';
+    try {
+      name = readRepositoryName(trimmed);
+      this.cardError.set(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cardError.set(message);
+    }
+    if (!this.addNameTouched()) {
+      this.addName.set(name);
+    }
   }
 
   cancelAdd(): void {
@@ -1311,6 +1382,13 @@ export class WorkspaceComponent implements OnInit {
     this.cardError.set(null);
     if (this.addPath().trim() === '') {
       this.cardError.set('Choose a repository folder');
+      return;
+    }
+    try {
+      readRepositoryName(this.addPath());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cardError.set(message);
       return;
     }
     const displayName = this.addName().trim();
@@ -1642,6 +1720,10 @@ export class WorkspaceComponent implements OnInit {
 
   copyLocation(): void {
     copyText(this.repositoryLocation());
+  }
+
+  copyBranchName(name: string): void {
+    copyText(name);
   }
 
   openSwitch(): void {
@@ -1987,17 +2069,29 @@ function clampSplit(value: number, limit: number | undefined): number {
   return Math.min(floored, limit);
 }
 
-function suggestedRepositoryName(repoPath: string): string {
-  const folder = basename(repoPath);
+function readRepositoryName(repoPath: string): string {
+  const path = resolve(repoPath);
+  let insideWorkTree: string;
   try {
-    const branch = execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
+    insideWorkTree = execFileSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    return branch === '' ? folder : branch;
   } catch {
-    return folder;
+    throw new Error(`Not a git repository: ${path}`);
   }
+  if (insideWorkTree === 'true') {
+    const toplevel = execFileSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    return basename(toplevel);
+  }
+  const gitDir = execFileSync('git', ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  return basename(gitDir);
 }
 
 function hostPlatform(): string {

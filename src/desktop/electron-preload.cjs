@@ -8,6 +8,18 @@ window.gitManager = {
   browseForFolder() {
     return ipcRenderer.invoke('browse-for-folder');
   },
+  minimizeWindow() {
+    return ipcRenderer.invoke('window-minimize');
+  },
+  maximizeWindow() {
+    return ipcRenderer.invoke('window-maximize');
+  },
+  closeWindow() {
+    return ipcRenderer.invoke('window-close');
+  },
+  copyText(text) {
+    return ipcRenderer.invoke('copy-text', text);
+  },
 };
 
 const nativeDir = path.join(__dirname, '../../native/electron');

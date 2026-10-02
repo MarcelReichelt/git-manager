@@ -6,11 +6,61 @@
   --statusblue: #8ecae6;
 }
 
+.window-bar {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+}
+
+.window-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-testid='repository-settings-slot'] {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.window-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.window-controls button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+}
+
+.window-controls button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-testid='window-close']:hover {
+  background: var(--statusred);
+  color: white;
+}
+
 aside {
   position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: 52px;
+  bottom: 8px;
+  left: 8px;
   z-index: 1;
   box-sizing: border-box;
   display: flex;
@@ -18,17 +68,9 @@ aside {
   width: 320px;
   padding: 16px 12px 12px;
   overflow: auto;
+  border-radius: 8px;
   background: var(--forest);
   color: white;
-}
-
-.sidebar-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 20px;
-  padding: 0 4px;
 }
 
 h1 {
@@ -37,28 +79,29 @@ h1 {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
-}
-
-.repo-path {
-  margin-top: 4px;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.4;
-  word-break: break-all;
-}
-
-[data-testid='switch-repository'] {
-  border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 2px;
-  background: var(--paper);
-  color: var(--grid);
-  padding: 4px 8px;
   cursor: pointer;
 }
 
-[data-testid='create-worktree']:hover,
+[data-testid='switch-repository'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+}
+
 [data-testid='switch-repository']:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-testid='create-worktree']:hover {
   background: var(--surface);
 }
 
@@ -243,17 +286,17 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .content-sheet {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 320px;
+  top: 52px;
+  right: 8px;
+  bottom: 8px;
+  left: 336px;
   z-index: 2;
   display: flex;
   flex-direction: column;
   overflow: auto;
   background: var(--paper);
   color: var(--grid);
-  border-radius: 36px 0 0 36px;
+  border-radius: 8px;
 }
 
 .branch-heading {

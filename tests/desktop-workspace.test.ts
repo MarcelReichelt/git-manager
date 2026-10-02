@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { resetFolderBrowser, setFolderBrowser } from '../src/desktop/folder-browser';
+import { resetTextCopy, setTextCopy } from '../src/desktop/copy-text';
+import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
 
@@ -21,6 +23,8 @@ describe('desktop workspace', () => {
 
   afterEach(() => {
     resetFolderBrowser();
+    resetTextCopy();
+    resetWindowChrome();
     restoreSearch?.();
     restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
@@ -142,19 +146,140 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
   });
 
-  it('pins the content sheet to the top, right, and bottom after a repository is chosen', async () => {
+  it('opens the workspace window without an operating-system frame', () => {
+    const main = readFileSync('src/desktop/electron-main.mjs', 'utf8');
+    expect(main).toContain('frame: false');
+  });
+
+  it('minimizes, maximizes, and closes the window from the top bar', async () => {
+    const actions: string[] = [];
+    setWindowChrome((action) => {
+      actions.push(action);
+    });
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const aside = fixture.nativeElement.querySelector('aside');
+    const minimize = bar.querySelector('[data-testid="window-minimize"]');
+    const maximize = bar.querySelector('[data-testid="window-maximize"]');
+    const close = bar.querySelector('[data-testid="window-close"]');
+    expect(aside.contains(minimize)).toBe(false);
+    expect(aside.contains(maximize)).toBe(false);
+    expect(aside.contains(close)).toBe(false);
+
+    minimize.click();
+    maximize.click();
+    close.click();
+
+    expect(actions).toEqual(['minimize', 'maximize', 'close']);
+  });
+
+  it('puts the repository name and switcher in the top bar and leaves room for settings', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const aside = fixture.nativeElement.querySelector('aside');
+    const name = bar.querySelector('[data-testid="repository-name"]');
+    const switcher = bar.querySelector('[data-testid="switch-repository"]');
+    const slot = bar.querySelector('[data-testid="repository-settings-slot"]');
+    const minimize = bar.querySelector('[data-testid="window-minimize"]');
+
+    expect(name.textContent.trim()).toBe('harbor');
+    expect(aside.querySelector('[data-testid="repository-name"]')).toBeNull();
+    expect(aside.querySelector('[data-testid="switch-repository"]')).toBeNull();
+    expect(aside.querySelector('.repo-path')).toBeNull();
+    expect(aside.contains(minimize)).toBe(false);
+    expect(getComputedStyle(bar).justifyContent).toBe('space-between');
+    expect(name.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(switcher.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(slot.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(switcher.getAttribute('aria-label')).toBe('Switch repository');
+    expect(switcher.querySelector('svg')).not.toBeNull();
+    expect(slot.textContent.trim()).toBe('');
+    expect(slot.querySelector('button')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+
+    switcher.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+  });
+
+  it('shows the repository location on the name and copies that location when the name is clicked', async () => {
+    const copied: string[] = [];
+    setTextCopy((text) => {
+      copied.push(text);
+    });
+
+    const sample = await render();
+    sample.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    sample.detectChanges();
+    const harbor = sample.nativeElement.querySelector('[data-testid="repository-name"]');
+    expect(harbor.getAttribute('title')).toBe('');
+    harbor.click();
+    expect(copied).toEqual(['']);
+
+    const repoPath = createRewriteRepository(roots);
+    const opened = await renderRepository(repoPath);
+    const name = opened.nativeElement.querySelector('[data-testid="repository-name"]');
+    expect(name.getAttribute('title')).toBe(repoPath);
+    name.click();
+    expect(copied).toEqual(['', repoPath]);
+  });
+
+  it('insets the sidebar and the content sheet so the forest background shows around them', async () => {
     const fixture = await render();
     expect(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).toBeNull();
 
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+
+    const sidebar = getComputedStyle(fixture.nativeElement.querySelector('aside'));
+    expect(sidebar.position).toBe('fixed');
+    expect(sidebar.top).toBe('52px');
+    expect(sidebar.bottom).toBe('8px');
+    expect(sidebar.left).toBe('8px');
+    expect(sidebar.width).toBe('320px');
+
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
     const style = getComputedStyle(sheet);
     expect(style.position).toBe('fixed');
-    expect(style.top).toBe('0px');
-    expect(style.right).toBe('0px');
-    expect(style.bottom).toBe('0px');
+    expect(style.top).toBe('52px');
+    expect(style.right).toBe('8px');
+    expect(style.bottom).toBe('8px');
+    expect(style.left).toBe('336px');
+  });
+
+  it('rounds the window, sidebar, content sheet, and dialogs', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement).borderRadius).toBe('8px');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).borderRadius).toBe('8px');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).borderRadius).toBe('8px');
+    expect(
+      getComputedStyle(
+        fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] .dialog-panel'),
+      ).borderRadius,
+    ).toBe('8px');
+
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const live = await renderLive();
+    live.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    live.detectChanges();
+    expect(
+      getComputedStyle(live.nativeElement.querySelector('[data-testid="add-repository-dialog"] .dialog-panel')).borderRadius,
+    ).toBe('8px');
   });
 
   it('lists the sample default branch first and keeps the other sample branches in order', async () => {
@@ -544,7 +669,7 @@ describe('desktop workspace', () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
 
-    expect(fixture.nativeElement.querySelector('[data-testid="switch-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-card"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(

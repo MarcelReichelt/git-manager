@@ -4,7 +4,9 @@ import { basename } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
+import { copyText } from './copy-text';
 import { browseForFolder } from './folder-browser';
+import { requestWindowAction, type WindowAction } from './window-chrome';
 import { ShellPane } from './shell-pane';
 import { TerminalPane } from './terminal-pane';
 import {
@@ -145,7 +147,8 @@ const sampleCard: CardRepository[] = [
   --coral: #ff8c69;
   display: block;
   min-height: 100vh;
-  background: var(--forest);
+  background: #1a3c2b;
+  border-radius: 8px;
   color: var(--grid);
   font-family: "General Sans", "Segoe UI", sans-serif;
   font-size: 13px;
@@ -230,7 +233,7 @@ button, input { font: inherit; color: inherit; }
   padding: 16px;
   background: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 2px;
+  border-radius: 8px;
   color: var(--grid);
 }
 
@@ -308,7 +311,7 @@ button, input { font: inherit; color: inherit; }
   padding: 16px;
   background: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 2px;
+  border-radius: 8px;
   color: var(--grid);
 }
 
@@ -406,18 +409,23 @@ button, input { font: inherit; color: inherit; }
       </div>
     } @else {
       <main data-testid="workspace">
-        <aside>
-          <div class="sidebar-head">
-            <div>
-              <h1 data-testid="repository-name">{{ workspaceTitle() }}</h1>
-              @if (effectivePath(); as path) {
-                <p class="repo-path">{{ path }}</p>
-              }
-            </div>
-            @if (repositoryPath() === null) {
-              <button type="button" data-testid="switch-repository" (click)="openSwitch()">Change</button>
-            }
+        <header class="window-bar" data-testid="window-bar">
+          <div class="window-title">
+            <h1 data-testid="repository-name" [attr.title]="repositoryLocation()" (click)="copyLocation()">{{ workspaceTitle() }}</h1>
+            <button type="button" data-testid="switch-repository" aria-label="Switch repository" (click)="openSwitch()">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M1 3.5A1.5 1.5 0 0 1 2.5 2h4A1.5 1.5 0 0 1 8 3.5V5H6.5V3.5h-4v9h4V11H8v1.5A1.5 1.5 0 0 1 6.5 14h-4A1.5 1.5 0 0 1 1 12.5v-9zm7 0A1.5 1.5 0 0 1 9.5 2h4A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 8 12.5V11h1.5v1.5h4v-9h-4V5H8V3.5z" />
+              </svg>
+            </button>
+            <span data-testid="repository-settings-slot"></span>
           </div>
+          <div class="window-controls">
+            <button type="button" data-testid="window-minimize" aria-label="Minimize" (click)="controlWindow('minimize')">–</button>
+            <button type="button" data-testid="window-maximize" aria-label="Maximize" (click)="controlWindow('maximize')">□</button>
+            <button type="button" data-testid="window-close" aria-label="Close" (click)="controlWindow('close')">×</button>
+          </div>
+        </header>
+        <aside>
           <p class="branch-label"><span>Branches</span></p>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
@@ -725,6 +733,7 @@ export class WorkspaceComponent implements OnInit {
   });
   readonly registryMode = computed(() => this.liveRegistry() || liveQueryFlag());
   readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
+  readonly repositoryLocation = computed(() => this.effectivePath() ?? '');
   readonly cardRepositories = computed((): CardRepository[] => {
     if (!this.registryMode()) {
       return sampleCard;
@@ -1066,6 +1075,14 @@ export class WorkspaceComponent implements OnInit {
     if (this.focused() === session) {
       this.focused.set(remaining[0] ?? '');
     }
+  }
+
+  controlWindow(action: WindowAction): void {
+    requestWindowAction(action);
+  }
+
+  copyLocation(): void {
+    copyText(this.repositoryLocation());
   }
 
   openSwitch(): void {

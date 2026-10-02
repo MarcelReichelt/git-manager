@@ -2422,6 +2422,121 @@ describe('desktop workspace', () => {
     expect(commits.scrollTop).toBe(0);
   });
 
+  it('drags the divider between the changed-file list and the diff', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="changes-split"]');
+    expect(split.getAttribute('role')).toBe('separator');
+    expect(split.getAttribute('aria-orientation')).toBe('vertical');
+    expect(split.getAttribute('tabindex')).toBe('0');
+
+    const files = fixture.nativeElement.querySelector('[data-testid="changed-files"]');
+    const listed = [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) =>
+      file.getAttribute('data-path'),
+    );
+    const before = paneTrack(split.parentElement, 'gridTemplateColumns');
+
+    dragDivider(split, { x: 240, y: 120 }, { x: 360, y: 120 });
+    fixture.detectChanges();
+
+    const after = paneTrack(split.parentElement, 'gridTemplateColumns');
+    expect(after).toBeGreaterThan(before);
+
+    fixture.detectChanges();
+    expect(paneTrack(split.parentElement, 'gridTemplateColumns')).toBe(after);
+    expect(
+      [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) => file.getAttribute('data-path')),
+    ).toEqual(listed);
+  });
+
+  it('drags the divider between the changes and the commits', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="commits-split"]');
+    expect(split.getAttribute('role')).toBe('separator');
+    expect(split.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(split.getAttribute('tabindex')).toBe('0');
+
+    const files = fixture.nativeElement.querySelector('[data-testid="changed-files"]');
+    const commits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const listedFiles = [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) =>
+      file.getAttribute('data-path'),
+    );
+    const listedCommits = [...commits.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+      commit.getAttribute('data-subject'),
+    );
+    const before = paneTrack(split.parentElement, 'gridTemplateRows');
+
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 280 });
+    fixture.detectChanges();
+
+    const after = paneTrack(split.parentElement, 'gridTemplateRows');
+    expect(after).toBeGreaterThan(before);
+    expect(blockTop(sheetSection(commits))).toBeGreaterThanOrEqual(blockBottom(sheetSection(files)));
+
+    fixture.detectChanges();
+    expect(paneTrack(split.parentElement, 'gridTemplateRows')).toBe(after);
+    expect(
+      [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) => file.getAttribute('data-path')),
+    ).toEqual(listedFiles);
+    expect(
+      [...commits.querySelectorAll('[data-testid="commit"]')].map((commit) => commit.getAttribute('data-subject')),
+    ).toEqual(listedCommits);
+  });
+
+  it('drags the divider between the open commit files and the diff', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="commit-detail-split"]');
+    expect(split.getAttribute('role')).toBe('separator');
+    expect(split.getAttribute('aria-orientation')).toBe('vertical');
+    expect(split.getAttribute('tabindex')).toBe('0');
+
+    const files = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const diff = files.parentElement.querySelector('[data-testid="diff"]');
+    const commits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const listedFiles = [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) =>
+      file.getAttribute('data-path'),
+    );
+    const listedCommits = [...commits.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+      commit.getAttribute('data-subject'),
+    );
+    const before = Number.parseFloat(files.style.width);
+
+    dragDivider(split, { x: 240, y: 160 }, { x: 360, y: 160 });
+    fixture.detectChanges();
+
+    const after = Number.parseFloat(files.style.width);
+    expect(after).toBeGreaterThan(before);
+    expect(Number.parseFloat(diff.style.left)).toBeGreaterThan(after);
+    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(files));
+
+    fixture.detectChanges();
+    expect(Number.parseFloat(files.style.width)).toBe(after);
+    expect(
+      [...files.querySelectorAll('[data-testid="changed-file"]')].map((file) => file.getAttribute('data-path')),
+    ).toEqual(listedFiles);
+    expect(
+      [...commits.querySelectorAll('[data-testid="commit"]')].map((commit) => commit.getAttribute('data-subject')),
+    ).toEqual(listedCommits);
+  });
+
   it('leaves registered repositories unchanged when the add dialog is cancelled', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);
@@ -2471,6 +2586,16 @@ async function untilVisible(
     await new Promise((resolve) => setTimeout(resolve, 15));
   }
   fixture.detectChanges();
+}
+
+function paneTrack(element: HTMLElement, property: 'gridTemplateColumns' | 'gridTemplateRows'): number {
+  return Number.parseFloat(element.style[property]);
+}
+
+function dragDivider(split: HTMLElement, start: { x: number; y: number }, end: { x: number; y: number }): void {
+  split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: start.x, clientY: start.y }));
+  split.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: end.x, clientY: end.y }));
+  split.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: end.x, clientY: end.y }));
 }
 
 function leftEdge(element: HTMLElement): number {

@@ -728,9 +728,10 @@ button, input { font: inherit; color: inherit; }
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
-            <div class="sheet-columns">
+            <div class="sheet-columns" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
             <h3>Changes</h3>
+            <div class="split-row" [style.grid-template-columns]="changesFileWidth() + 'px 8px minmax(0, 1fr)'">
             <ul data-testid="changed-files">
               @for (file of visibleFiles(); track file.path) {
                 <li
@@ -749,12 +750,33 @@ button, input { font: inherit; color: inherit; }
                 </li>
               }
             </ul>
+            <div
+              class="splitter"
+              role="separator"
+              data-testid="changes-split"
+              aria-orientation="vertical"
+              tabindex="0"
+              (pointerdown)="beginChangesSplit($event)"
+              (pointermove)="moveSplit($event)"
+              (pointerup)="endSplit($event)"
+            ></div>
             @if (!showingCommit()) {
               @if (selectedDiff(); as diff) {
                 <pre data-testid="diff">{{ diff }}</pre>
               }
             }
             </div>
+            </div>
+            <div
+              class="splitter"
+              role="separator"
+              data-testid="commits-split"
+              aria-orientation="horizontal"
+              tabindex="0"
+              (pointerdown)="beginCommitsSplit($event)"
+              (pointermove)="moveSplit($event)"
+              (pointerup)="endSplit($event)"
+            ></div>
             <div data-testid="commits">
             @if (branchIsDefault()) {
               <h3>Commits</h3>
@@ -787,7 +809,7 @@ button, input { font: inherit; color: inherit; }
             }
             @if (showingCommit()) {
               <div class="commit-detail">
-                <ul class="commit-files" data-testid="commit-files">
+                <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
                   @for (file of visibleCommitFiles(); track file.path) {
                     <li
                       data-testid="changed-file"
@@ -805,7 +827,18 @@ button, input { font: inherit; color: inherit; }
                     </li>
                   }
                 </ul>
-                <pre class="commit-diff" data-testid="diff">{{ visibleCommitDiff() }}</pre>
+                <div
+                  class="splitter"
+                  role="separator"
+                  data-testid="commit-detail-split"
+                  aria-orientation="vertical"
+                  tabindex="0"
+                  [style.left.px]="commitFileWidth()"
+                  (pointerdown)="beginCommitDetailSplit($event)"
+                  (pointermove)="moveSplit($event)"
+                  (pointerup)="endSplit($event)"
+                ></div>
+                <pre class="commit-diff" data-testid="diff" [style.left.px]="commitFileWidth() + 8">{{ visibleCommitDiff() }}</pre>
               </div>
             }
             </div>
@@ -1023,6 +1056,16 @@ export class WorkspaceComponent implements OnInit {
   readonly focused = signal('');
   readonly splitView = signal(false);
   readonly shellRunning = signal(false);
+  readonly changesFileWidth = signal(240);
+  readonly changesPaneHeight = signal(280);
+  readonly commitFileWidth = signal(240);
+  private splitDrag: {
+    pointerId: number;
+    axis: 'x' | 'y';
+    start: number;
+    origin: number;
+    apply: (value: number) => void;
+  } | null = null;
   readonly visibleSessions = computed(() => {
     const focused = this.focused();
     const sessions = this.sessions();
@@ -1406,6 +1449,65 @@ export class WorkspaceComponent implements OnInit {
 
   controlWindow(action: WindowAction): void {
     requestWindowAction(action);
+  }
+
+  beginChangesSplit(event: PointerEvent): void {
+    this.beginSplit(event, 'x', this.changesFileWidth(), (value) => this.changesFileWidth.set(value));
+  }
+
+  beginCommitsSplit(event: PointerEvent): void {
+    this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => this.changesPaneHeight.set(value));
+  }
+
+  beginCommitDetailSplit(event: PointerEvent): void {
+    this.beginSplit(event, 'x', this.commitFileWidth(), (value) => this.commitFileWidth.set(value));
+  }
+
+  moveSplit(event: PointerEvent): void {
+    const drag = this.splitDrag;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const point = drag.axis === 'x' ? event.clientX : event.clientY;
+    drag.apply(Math.max(80, drag.origin + (point - drag.start)));
+  }
+
+  endSplit(event: PointerEvent): void {
+    if (this.splitDrag?.pointerId === event.pointerId) {
+      this.splitDrag = null;
+    }
+  }
+
+  private beginSplit(
+    event: PointerEvent,
+    axis: 'x' | 'y',
+    origin: number,
+    apply: (value: number) => void,
+  ): void {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    this.captureSplit(event);
+    this.splitDrag = {
+      pointerId: event.pointerId,
+      axis,
+      start: axis === 'x' ? event.clientX : event.clientY,
+      origin,
+      apply,
+    };
+  }
+
+  private captureSplit(event: PointerEvent): void {
+    const handle = event.currentTarget;
+    if (!(handle instanceof HTMLElement)) {
+      return;
+    }
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is unavailable in some test environments.
+    }
   }
 
   dragWindow(event: PointerEvent): void {

@@ -1,5 +1,4 @@
-import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { basename } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
@@ -14,16 +13,24 @@ import {
 } from './tmux-sessions';
 import {
   listBranches,
+  listBranchesWithoutWorktree,
   readChangedFiles,
   readCommitFileDiff,
   readCommitFiles,
   readCommitsOnlyOnBranch,
   readWorkingTreeDiff,
+  type AvailableBranch,
   type BranchCommit,
+  type BranchStatus,
   type ChangedFile,
 } from '../branches.js';
-
-type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
+import { AddRepositoryDialogComponent } from './add-repository-dialog.component';
+import { BranchLabelComponent } from './branch-label.component';
+import { CommitRowComponent } from './commit-row.component';
+import { CreateWorktreeDialogComponent } from './create-worktree-dialog.component';
+import { DialogChromeComponent, DialogStack } from './dialog-chrome.component';
+import { RemotesDialogComponent } from './remotes-dialog.component';
+import { RepositoryCardComponent, type CardRepository } from './repository-card.component';
 
 interface SampleFile {
   path: string;
@@ -97,11 +104,6 @@ const branchesByRepository: Record<string, SampleBranch[]> = {
   Harbor: harborBranches,
 };
 
-interface CardRepository {
-  name: string;
-  path: string | null;
-}
-
 const sampleCard: CardRepository[] = [
   { name: 'Harbor', path: null },
   { name: 'Atlas', path: null },
@@ -110,144 +112,28 @@ const sampleCard: CardRepository[] = [
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [NgTemplateOutlet, TerminalPane, ShellPane],
-  styleUrl: './workspace-rail.css',
-  styles: [
-    `
-:host {
-  --paper: #f7f7f5;
-  --surface: #ffffff;
-  --forest: #1a3c2b;
-  --grid: #3a3a38;
-  --coral: #ff8c69;
-  display: block;
-  min-height: 100vh;
-  background: var(--forest);
-  color: var(--grid);
-  font-family: "General Sans", "Segoe UI", sans-serif;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-h1, h2, h3, p { margin: 0; }
-
-button, input { font: inherit; color: inherit; }
-
-.start-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: var(--forest);
-}
-
-.switching-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 4;
-  background: rgba(26, 60, 43, 0.2);
-}
-
-[data-testid='repository-card'] {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 22rem;
-  padding: 16px;
-  background: var(--paper);
-  border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 2px;
-}
-
-[data-testid='repository-card'] h2 {
-  margin-bottom: 4px;
-  color: var(--forest);
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-[data-testid='repository'],
-[data-testid='add-repository'] {
-  padding: 8px 12px;
-  border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 2px;
-  background: var(--paper);
-  text-align: left;
-  cursor: pointer;
-}
-
-[data-testid='repository']:hover,
-[data-testid='add-repository']:hover {
-  background: var(--surface);
-}
-
-[data-testid='add-repository'] {
-  background: var(--forest);
-  color: white;
-  border-color: var(--forest);
-}
-
-[data-testid='repository-card'] label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-[data-testid='repository-card'] input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 0;
-  background: var(--surface);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-}
-
-[data-testid='card-error'] { color: var(--coral); }
-    `,
+  imports: [
+    TerminalPane,
+    ShellPane,
+    DialogChromeComponent,
+    BranchLabelComponent,
+    CommitRowComponent,
+    CreateWorktreeDialogComponent,
+    AddRepositoryDialogComponent,
+    RemotesDialogComponent,
+    RepositoryCardComponent,
   ],
+  styleUrl: './workspace-rail.css',
   template: `
-    <ng-template #repositoryCard>
-      <section data-testid="repository-card">
-        <h2>Repositories</h2>
-        @for (repository of cardRepositories(); track repository.name + (repository.path ?? '')) {
-          <button
-            type="button"
-            data-testid="repository"
-            [attr.data-name]="repository.name"
-            (click)="choose(repository.name)"
-          >
-            {{ repository.name }}
-          </button>
-        }
-        @if (registryMode()) {
-          <label>
-            Path
-            <input data-testid="add-repository-path" [value]="addPath()" (input)="setAddPath($event)" />
-          </label>
-          <label>
-            Name
-            <input data-testid="add-repository-name" [value]="addName()" (input)="setAddName($event)" />
-          </label>
-          <button type="button" data-testid="add-repository" (click)="addRegistered()">Add repository</button>
-          @if (cardError(); as message) {
-            <p data-testid="card-error">{{ message }}</p>
-          }
-        }
-      </section>
-    </ng-template>
-
     @if (repositoryPath() === null && selectedName() === null) {
       <div class="start-screen">
-        <ng-container [ngTemplateOutlet]="repositoryCard" />
+        <section
+          gmRepositoryCard
+          [repositories]="cardRepositories()"
+          [registryMode]="registryMode()"
+          (chosen)="choose($event)"
+          (add)="openAdd()"
+        ></section>
       </div>
     } @else {
       <main data-testid="workspace">
@@ -259,9 +145,12 @@ button, input { font: inherit; color: inherit; }
                 <p class="repo-path">{{ path }}</p>
               }
             </div>
-            @if (repositoryPath() === null) {
-              <button type="button" data-testid="switch-repository" (click)="openSwitch()">Change</button>
-            }
+            <div class="sidebar-actions">
+              <button type="button" data-testid="open-remotes" (click)="openRemotes()">Remotes</button>
+              @if (repositoryPath() === null) {
+                <button type="button" data-testid="switch-repository" (click)="openSwitch()">Change</button>
+              }
+            </div>
           </div>
           <p class="branch-label"><span>Branches</span></p>
           <ul data-testid="branch-list">
@@ -274,10 +163,11 @@ button, input { font: inherit; color: inherit; }
                 [attr.data-status]="branch.status"
                 (click)="selectBranch(branch.name)"
               >
-                <span class="status-color" data-testid="status-color" [attr.title]="statusLabel(branch.status)"></span>
-                <button type="button" class="branch-name" (click)="selectBranch(branch.name, $event)">
-                  {{ branch.name }}
-                </button>
+                <gm-branch-label
+                  [name]="branch.name"
+                  [status]="branch.status"
+                  [selected]="selectedBranchName() === branch.name"
+                />
                 @if (terminalCount(branch.name) > 0) {
                   <span
                     class="terminal-count"
@@ -304,7 +194,7 @@ button, input { font: inherit; color: inherit; }
                   type="button"
                   data-testid="branch-menu"
                   [attr.aria-label]="'Branch actions for ' + branch.name"
-                  (click)="openBranchMenu(branch.name, $event)"
+                  (click)="toggleBranchMenu(branch.name, $event)"
                 >
                   ···
                 </button>
@@ -345,16 +235,7 @@ button, input { font: inherit; color: inherit; }
               </li>
             }
           </ul>
-          <div class="create-row">
-            <input
-              data-testid="create-branch"
-              placeholder="Branch name"
-              [value]="createBranchName()"
-              (input)="setCreateBranchName($event)"
-            />
-            <button type="button" data-testid="create-worktree" (click)="createBranch()">Create worktree</button>
-          </div>
-          <p class="create-note">A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.</p>
+          <button type="button" data-testid="create-worktree" (click)="openCreate()">Create worktree</button>
           @if (workspaceError(); as message) {
             <p data-testid="workspace-error">{{ message }}</p>
           }
@@ -398,9 +279,7 @@ button, input { font: inherit; color: inherit; }
             <h3>Commits only on this branch</h3>
             <ul data-testid="branch-commits">
               @for (commit of visibleCommits(); track commit.subject) {
-                <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
-                  <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
-                </li>
+                <li gmCommitRow [subject]="commit.subject" (chosen)="selectCommit($event)"></li>
               }
             </ul>
             @if (showingCommit()) {
@@ -463,25 +342,59 @@ button, input { font: inherit; color: inherit; }
         </section>
       </main>
       @if (overlayOpen()) {
-        <div class="start-screen switching-overlay" data-testid="switching-overlay">
-          <ng-container [ngTemplateOutlet]="repositoryCard" />
-        </div>
+        <gm-dialog
+          title="Repositories"
+          backdropTestId="switching-overlay"
+          [showTitle]="false"
+          [bare]="true"
+          (closed)="closeSwitch()"
+        >
+          <section
+            gmRepositoryCard
+            [repositories]="cardRepositories()"
+            [registryMode]="registryMode()"
+            (chosen)="choose($event)"
+            (add)="openAdd()"
+          ></section>
+        </gm-dialog>
+      }
+    }
+    @if (createOpen()) {
+      <gm-create-worktree-dialog
+        [branches]="createChoices()"
+        (confirmed)="confirmCreate($event)"
+        (dismissed)="createOpen.set(false)"
+      />
+    }
+    @if (addOpen()) {
+      <gm-add-repository-dialog
+        [error]="cardError()"
+        (confirmed)="addRegistered($event)"
+        (dismissed)="cancelAdd()"
+      />
+    }
+    @if (remotesOpen()) {
+      @if (effectivePath(); as repoPath) {
+        <gm-remotes-dialog [repoPath]="repoPath" (dismissed)="remotesOpen.set(false)" />
       }
     }
   `,
 })
 export class WorkspaceComponent implements OnInit {
   private readonly zone = inject(NgZone);
+  private readonly dialogs = inject(DialogStack);
   readonly repositoryPath = input<string | null>(null);
   readonly liveRegistry = input(false);
   readonly platform = input(hostPlatform());
   readonly selectedName = signal<string | null>(null);
   readonly openedPath = signal<string | null>(null);
   readonly registered = signal<RegisteredRepository[]>([]);
-  readonly addPath = signal('');
-  readonly addName = signal('');
   readonly cardError = signal<string | null>(null);
+  readonly addOpen = signal(false);
   readonly overlayOpen = signal(false);
+  readonly createOpen = signal(false);
+  readonly createChoices = signal<AvailableBranch[]>([]);
+  readonly remotesOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
   readonly selectedFilePath = signal<string | null>(null);
@@ -491,7 +404,6 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
-  readonly createBranchName = signal('');
   readonly workspaceError = signal<string | null>(null);
   readonly worktreePath = signal('');
   readonly sessions = signal<string[]>([]);
@@ -581,19 +493,6 @@ export class WorkspaceComponent implements OnInit {
     return this.selectedCommit()?.diff ?? '';
   });
 
-  statusLabel(status: BranchStatus): string {
-    switch (status) {
-      case 'local-only':
-        return 'Local only';
-      case 'local-and-remote':
-        return 'Local and remote';
-      case 'remote-only':
-        return 'Remote only';
-      case 'remote-deleted':
-        return 'Remote deleted';
-    }
-  }
-
   ngOnInit(): void {
     if (this.registryMode()) {
       this.registered.set(listRepositories());
@@ -617,24 +516,25 @@ export class WorkspaceComponent implements OnInit {
     this.refreshBranches();
   }
 
-  setAddPath(event: Event): void {
-    this.addPath.set(inputValue(event));
+  openAdd(): void {
+    this.openBranch.set(null);
+    this.cardError.set(null);
+    this.addOpen.set(true);
   }
 
-  setAddName(event: Event): void {
-    this.addName.set(inputValue(event));
+  cancelAdd(): void {
+    this.cardError.set(null);
+    this.addOpen.set(false);
   }
 
-  addRegistered(): void {
+  addRegistered(entry: { path: string; name: string }): void {
     this.cardError.set(null);
     try {
-      addRepository(this.addPath(), this.addName());
-      this.addPath.set('');
-      this.addName.set('');
+      addRepository(entry.path, entry.name);
       this.registered.set(listRepositories());
+      this.addOpen.set(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.cardError.set(message);
+      this.cardError.set(messageOf(error));
     }
   }
 
@@ -682,9 +582,29 @@ export class WorkspaceComponent implements OnInit {
     this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
   }
 
-  openBranchMenu(name: string, event: Event): void {
+  toggleBranchMenu(name: string, event: Event): void {
     event.stopPropagation();
-    this.openBranch.set(name);
+    this.openBranch.update((current) => (current === name ? null : name));
+  }
+
+  @HostListener('document:click', ['$event'])
+  closeMenuFromOutside(event: Event): void {
+    if (this.openBranch() === null) {
+      return;
+    }
+    const target = event.target;
+    if (target instanceof Element && target.closest('[data-testid="hover-menu"], [data-testid="branch-menu"]')) {
+      return;
+    }
+    this.openBranch.set(null);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  closeMenuFromEscape(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || this.dialogs.anyOpen()) {
+      return;
+    }
+    this.openBranch.set(null);
   }
 
   selectBranch(name: string, event?: Event): void {
@@ -783,7 +703,20 @@ export class WorkspaceComponent implements OnInit {
   }
 
   openSwitch(): void {
+    this.openBranch.set(null);
     this.overlayOpen.set(true);
+  }
+
+  closeSwitch(): void {
+    this.overlayOpen.set(false);
+  }
+
+  openRemotes(): void {
+    if (this.effectivePath() === null) {
+      return;
+    }
+    this.openBranch.set(null);
+    this.remotesOpen.set(true);
   }
 
   updateBranch(name: string, event: Event): void {
@@ -806,26 +739,38 @@ export class WorkspaceComponent implements OnInit {
     });
   }
 
-  setCreateBranchName(event: Event): void {
-    const target = event.target as { value?: string } | null;
-    this.createBranchName.set(target?.value ?? '');
+  openCreate(): void {
+    this.openBranch.set(null);
+    this.workspaceError.set(null);
+    const path = this.effectivePath();
+    try {
+      this.createChoices.set(
+        path === null ? sampleCreateChoices(this.branches()) : listBranchesWithoutWorktree(path),
+      );
+    } catch (error) {
+      this.workspaceError.set(messageOf(error));
+      return;
+    }
+    this.createOpen.set(true);
   }
 
-  async createBranch(): Promise<void> {
+  async confirmCreate(branch: string): Promise<void> {
     const repo = this.effectivePath();
     if (!repo) {
       return;
     }
     this.workspaceError.set(null);
     try {
-      await createWorktree(repo, this.createBranchName());
+      await createWorktree(repo, branch);
       this.zone.run(() => {
+        this.createOpen.set(false);
         this.refreshBranches();
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = messageOf(error);
       this.zone.run(() => {
         this.workspaceError.set(message);
+        this.createOpen.set(false);
       });
     }
   }
@@ -918,9 +863,27 @@ function liveQueryFlag(): boolean {
   return new URLSearchParams(location.search).get('live') === '1';
 }
 
-function inputValue(event: Event): string {
-  const target = event.target as { value?: string } | null;
-  return target?.value ?? '';
+function sampleCreateChoices(branches: Array<{ name: string; status: BranchStatus }>): AvailableBranch[] {
+  const seen = new Set<string>();
+  const choices: AvailableBranch[] = [];
+  for (const branch of branches) {
+    const name = branch.status === 'remote-only' ? stripSampleRemote(branch.name) : branch.name;
+    if (seen.has(name)) {
+      continue;
+    }
+    seen.add(name);
+    choices.push({ name, status: branch.status });
+  }
+  return choices;
+}
+
+function stripSampleRemote(name: string): string {
+  const slash = name.indexOf('/');
+  return slash === -1 ? name : name.slice(slash + 1);
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function hostPlatform(): string {

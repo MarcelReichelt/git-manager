@@ -93,6 +93,52 @@ function worktreePath(repoPath: string, branch: string): string | undefined {
   return match ? resolve(match.path) : undefined;
 }
 
+function checkedOutBranches(repoPath: string): Set<string> {
+  const names = new Set<string>();
+  for (const entry of listWorktrees(repoPath)) {
+    if (entry.branch) {
+      names.add(entry.branch);
+    }
+  }
+  return names;
+}
+
+function remoteNames(repoPath: string): string[] {
+  return gitText(repoPath, ['remote'])
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name !== '');
+}
+
+function stripRemotePrefix(name: string, remotes: string[]): string {
+  const match = remotes
+    .filter((remote) => name.startsWith(`${remote}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (!match) {
+    return name;
+  }
+  return name.slice(match.length + 1);
+}
+
+function remoteShortNames(repoPath: string, remotes: string[]): string[] {
+  const refs = gitText(repoPath, ['for-each-ref', '--format=%(refname)', 'refs/remotes'])
+    .split('\n')
+    .map((ref) => ref.trim())
+    .filter((ref) => ref !== '');
+  const names: string[] = [];
+  for (const ref of refs) {
+    if (remotes.some((remote) => ref === `refs/remotes/${remote}/HEAD`)) {
+      continue;
+    }
+    const rest = ref.startsWith('refs/remotes/') ? ref.slice('refs/remotes/'.length) : ref;
+    const short = stripRemotePrefix(rest, remotes);
+    if (short !== '' && short !== rest) {
+      names.push(short);
+    }
+  }
+  return names;
+}
+
 function upstreamRef(repoPath: string, branch: string): string | undefined {
   const remote = gitOptional(repoPath, ['config', '--get', `branch.${branch}.remote`]);
   const merge = gitOptional(repoPath, ['config', '--get', `branch.${branch}.merge`]);
@@ -224,6 +270,35 @@ export function listBranches(repoPath: string): BranchRow[] {
   }
 
   return rows;
+}
+
+export interface AvailableBranch {
+  name: string;
+  status: BranchStatus;
+}
+
+export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[] {
+  const taken = checkedOutBranches(repoPath);
+  const remotes = remoteNames(repoPath);
+  const seen = new Set<string>();
+  const available: AvailableBranch[] = [];
+
+  const add = (name: string, status: BranchStatus): void => {
+    if (name === '' || taken.has(name) || seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    available.push({ name, status });
+  };
+
+  for (const row of listBranches(repoPath)) {
+    const name = row.status === 'remote-only' ? stripRemotePrefix(row.name, remotes) : row.name;
+    add(name, row.status);
+  }
+  for (const name of remoteShortNames(repoPath, remotes)) {
+    add(name, 'remote-only');
+  }
+  return available;
 }
 
 export function readChangedFiles(repoPath: string, branch: string): ChangedFile[] {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
-import { addRepository } from '../src/registry';
+import { addRepository, listRepositories } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
@@ -36,6 +36,7 @@ describe('desktop workspace', () => {
     for (const root of removing) {
       rmSync(root, { recursive: true, force: true });
     }
+    delete (globalThis as { gmChooseRepositoryFolder?: unknown }).gmChooseRepositoryFolder;
   });
 
   async function setupWorkspace(
@@ -223,6 +224,7 @@ describe('desktop workspace', () => {
     const create = sidebar.querySelector('[data-testid="create-worktree"]');
     expect(create).not.toBeNull();
     expect(branchList.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(sidebar.querySelector('[data-testid="create-branch"]')).toBeNull();
 
     const controls = [...sidebar.querySelectorAll('button, a, input, select, textarea')];
     expect(controls.at(-1)).toBe(create);
@@ -232,8 +234,10 @@ describe('desktop workspace', () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
+    openCreateDialog(fixture);
 
     const note = fixture.nativeElement.querySelector('.create-note');
+    expect(note.closest('[role="dialog"]')).not.toBeNull();
     expect(note.textContent.trim()).toBe(
       'A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
     );
@@ -504,11 +508,8 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
-    field.value = 'notes';
-    field.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fillCreateBranch(fixture, 'notes');
+    confirmCreate(fixture);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -530,11 +531,8 @@ describe('desktop workspace', () => {
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
-    field.value = 'feature/notes';
-    field.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fillCreateBranch(fixture, 'feature/notes');
+    confirmCreate(fixture);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -572,11 +570,8 @@ describe('desktop workspace', () => {
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
-    field.value = 'notes';
-    field.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fillCreateBranch(fixture, 'notes');
+    confirmCreate(fixture);
     await untilVisible(fixture, (root) =>
       (root.querySelector('[data-testid="workspace-error"]')?.textContent ?? '').includes(
         'abort-create aborted worktree create',
@@ -633,11 +628,8 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
-    field.value = 'notes';
-    field.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fillCreateBranch(fixture, 'notes');
+    confirmCreate(fixture);
     const checkout = join(repoPath, '.workspaces', 'notes');
     await untilVisible(fixture, () => existsSync(checkout) && existsSync(pluginMarker) && existsSync(shellMarker));
 
@@ -656,11 +648,8 @@ describe('desktop workspace', () => {
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
-    const field = fixture.nativeElement.querySelector('[data-testid="create-branch"]');
-    field.value = 'notes';
-    field.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fillCreateBranch(fixture, 'notes');
+    confirmCreate(fixture);
     const copied = join(repoPath, '.workspaces', 'notes', '.env');
     await untilVisible(fixture, () => existsSync(copied));
 
@@ -893,20 +882,475 @@ describe('desktop workspace', () => {
     const fixture = await renderLive();
     expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
 
-    const pathField = fixture.nativeElement.querySelector('[data-testid="add-repository-path"]');
-    const nameField = fixture.nativeElement.querySelector('[data-testid="add-repository-name"]');
-    pathField.value = pier;
-    pathField.dispatchEvent(new Event('input'));
-    nameField.value = 'Pier';
-    nameField.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    setField(fixture, 'add-repository-name', 'Pier');
     fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-path"]')).toBeNull();
+  });
+
+  it('lists free branches in the create dialog and omits branches that already have a worktree', async () => {
+    const repoPath = createPickerRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    openCreateDialog(fixture);
+
+    const names = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="create-branch-option"]'),
+    ].map((option) => option.getAttribute('data-branch'));
+    expect(names).toContain('plain');
+    expect(names).toContain('shipped');
+    expect(names).toContain('only-upstream');
+    expect(names.filter((name) => name === 'shipped')).toHaveLength(1);
+    expect(names).not.toContain('taken');
+    expect(names).not.toContain('master');
+    expect(names).not.toContain('origin/shipped');
+    expect(names).not.toContain('upstream/only-upstream');
+  });
+
+  it('fills the branch name from a listed create option', async () => {
+    const repoPath = createPickerRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    openCreateDialog(fixture);
+
+    fixture.nativeElement
+      .querySelector('[data-testid="create-branch-option"][data-branch="plain"]')
+      .click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]').value).toBe('plain');
+  });
+
+  it('leaves worktrees unchanged when create is cancelled', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'notes']);
+    const before = git(repoPath, ['worktree', 'list']);
+    const fixture = await renderRepository(repoPath);
+    openCreateDialog(fixture);
+    fillCreateBranch(fixture, 'notes');
+
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]')).toBeNull();
+    expect(git(repoPath, ['worktree', 'list'])).toBe(before);
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+  });
+
+  it('closes the create dialog from Escape or the backdrop without creating a worktree', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'notes']);
+    const before = git(repoPath, ['worktree', 'list']);
+    const fixture = await renderRepository(repoPath);
+    openCreateDialog(fixture);
+    fillCreateBranch(fixture, 'notes');
+
+    fixture.nativeElement.querySelector('[role="dialog"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]')).not.toBeNull();
+
+    pressEscape();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]')).toBeNull();
+    expect(git(repoPath, ['worktree', 'list'])).toBe(before);
+
+    openCreateDialog(fixture);
+    fillCreateBranch(fixture, 'notes');
+    fixture.nativeElement.querySelector('.gm-dialog-backdrop').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="create-branch"]')).toBeNull();
+    expect(git(repoPath, ['worktree', 'list'])).toBe(before);
+  });
+
+  it('shows that a repository needs to be added until one is listed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+
+    const sample = await render();
+    expect(sample.nativeElement.querySelector('[data-testid="repositories-empty"]')).toBeNull();
+
+    const fixture = await renderLive();
+    const empty = fixture.nativeElement.querySelector('[data-testid="repositories-empty"]');
+    expect(empty.textContent).toContain('A repository needs to be added.');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    setField(fixture, 'add-repository-name', 'Pier');
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repositories-empty"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
+  });
+
+  it('places the add repository plus after the Repositories label', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+    const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
+    const heading = card.querySelector('.card-heading');
+    const label = heading.querySelector('h2');
+    const plus = heading.querySelector('[data-testid="open-add-repository"]');
+
+    expect(label.textContent.trim()).toBe('Repositories');
+    expect(plus.getAttribute('aria-label')).toBe('Add repository');
+    expect(plus.textContent.trim()).toBe('+');
+    expect(plus.textContent).not.toContain('Add repository');
+    expect(label.compareDocumentPosition(plus) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(plus.parentElement).toBe(heading);
+  });
+
+  it('uses the current branch as the display name until the name is edited', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(pier, ['checkout', '-b', 'dock']);
+    const loose = join(root, 'loose-folder');
+    mkdirSync(loose);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    expect(fieldValue(fixture, 'add-repository-name')).toBe('dock');
+
+    setField(fixture, 'add-repository-path', loose);
+    expect(fieldValue(fixture, 'add-repository-name')).toBe('loose-folder');
+
+    setField(fixture, 'add-repository-name', 'Custom');
+    setField(fixture, 'add-repository-path', pier);
+    expect(fieldValue(fixture, 'add-repository-name')).toBe('Custom');
+
+    fixture.nativeElement.querySelector('[data-testid="cancel-add-repository"]').click();
+    fixture.detectChanges();
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    expect(fieldValue(fixture, 'add-repository-name')).toBe('dock');
+  });
+
+  it('fills the repository path from browse', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(pier, ['checkout', '-b', 'dock']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const globals = globalThis as { gmChooseRepositoryFolder?: () => string };
+    globals.gmChooseRepositoryFolder = () => pier;
+    const fixture = await renderLive();
+
+    openAddRepository(fixture);
+    fixture.nativeElement.querySelector('[data-testid="browse-repository"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fieldValue(fixture, 'add-repository-path')).toBe(pier);
+    expect(fieldValue(fixture, 'add-repository-name')).toBe('dock');
+  });
+
+  it('leaves the registry unchanged when add repository is cancelled', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    setField(fixture, 'add-repository-name', 'Pier');
+    fixture.nativeElement.querySelector('[data-testid="cancel-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-path"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(listRepositories()).toEqual([]);
+  });
+
+  it('shows a card error when the repository path is not a git repo', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', join(root, 'missing'));
+    setField(fixture, 'add-repository-name', 'Missing');
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toContain(
+      'Not a git repository',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(listRepositories()).toEqual([]);
+  });
+
+  it('closes the branch menu from outside, Escape, or the same button without changing git', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    const before = git(repoPath, ['worktree', 'list']);
+    const logBefore = git(repoPath, ['log', '--format=%s']);
+    const fixture = await renderRepository(repoPath);
+    const feature = () =>
+      fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]');
+    const plain = () =>
+      fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="master"]');
+
+    feature().querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(feature().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    feature().querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(feature().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+
+    feature().querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    plain().querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(feature().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(plain().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
+    fixture.detectChanges();
+    expect(plain().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+
+    feature().querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    pressEscape();
+    fixture.detectChanges();
+    expect(feature().querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(git(repoPath, ['worktree', 'list'])).toBe(before);
+    expect(git(repoPath, ['log', '--format=%s'])).toBe(logBefore);
+    expect(existsSync(checkout)).toBe(true);
+  });
+
+  it('closes the repository switcher from Escape or a click outside the card', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    const branches = () =>
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      );
+    const openBranches = branches();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    pressEscape();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branches()).toEqual(openBranches);
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="switching-overlay"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branches()).toEqual(openBranches);
+  });
+
+  it('lists an existing origin in the remotes dialog', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fetchUrl = join(repoPath, '..', 'origin.git');
+    const pushUrl = join(repoPath, '..', 'origin-push.git');
+    git(repoPath, ['remote', 'add', 'origin', fetchUrl]);
+    git(repoPath, ['remote', 'set-url', '--push', 'origin', pushUrl]);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="open-remotes"]').click();
+    fixture.detectChanges();
+
+    const origin = fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]');
+    expect(origin.querySelector('[data-testid="remote-fetch"]').textContent).toBe(fetchUrl);
+    expect(origin.querySelector('[data-testid="remote-push"]').textContent).toBe(pushUrl);
+    const plus = fixture.nativeElement.querySelector('[data-testid="open-add-remote"]');
+    expect(plus.getAttribute('aria-label')).toBe('Add remote');
+    expect(plus.textContent.trim()).toBe('+');
+  });
+
+  it('adds, changes, and removes a remote from the dialog', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', join(repoPath, '..', 'origin.git')]);
+    const fixture = await renderRepository(repoPath);
+    openRemotes(fixture);
+
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    setField(fixture, 'remote-name', 'upstream');
+    setField(fixture, 'remote-fetch-url', 'https://example.test/fetch.git');
+    setField(fixture, 'remote-push-url', 'https://example.test/push.git');
+    fixture.nativeElement.querySelector('[data-testid="confirm-add-remote"]').click();
+    fixture.detectChanges();
+
+    const added = fixture.nativeElement.querySelector('[data-testid="remote"][data-name="upstream"]');
+    expect(added.querySelector('[data-testid="remote-fetch"]').textContent).toBe(
+      'https://example.test/fetch.git',
+    );
+    expect(added.querySelector('[data-testid="remote-push"]').textContent).toBe(
+      'https://example.test/push.git',
+    );
+    expect(git(repoPath, ['remote', 'get-url', 'upstream'])).toBe('https://example.test/fetch.git');
+
+    added.querySelector('[data-testid="change-remote"]').click();
+    fixture.detectChanges();
+    expect(fieldValue(fixture, 'remote-name')).toBe('upstream');
+    expect(fieldValue(fixture, 'remote-fetch-url')).toBe('https://example.test/fetch.git');
+    expect(fieldValue(fixture, 'remote-push-url')).toBe('https://example.test/push.git');
+    setField(fixture, 'remote-name', 'backup');
+    setField(fixture, 'remote-fetch-url', 'https://example.test/backup.git');
+    setField(fixture, 'remote-push-url', '');
+    fixture.nativeElement.querySelector('[data-testid="confirm-change-remote"]').click();
+    fixture.detectChanges();
+
+    const changed = fixture.nativeElement.querySelector('[data-testid="remote"][data-name="backup"]');
+    expect(changed.querySelector('[data-testid="remote-fetch"]').textContent).toBe(
+      'https://example.test/backup.git',
+    );
+    expect(changed.querySelector('[data-testid="remote-push"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="upstream"]')).toBeNull();
+    expect(git(repoPath, ['remote', 'get-url', 'backup'])).toBe('https://example.test/backup.git');
+    expect(git(repoPath, ['remote', 'get-url', '--push', 'backup'])).toBe('https://example.test/backup.git');
+
+    changed.querySelector('[data-testid="remove-remote"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="backup"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]')).not.toBeNull();
+    expect(git(repoPath, ['remote'])).toBe('origin');
+  });
+
+  it('shows an error when adding a remote fails and leaves the others', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fetchUrl = join(repoPath, '..', 'origin.git');
+    git(repoPath, ['remote', 'add', 'origin', fetchUrl]);
+    const fixture = await renderRepository(repoPath);
+    openRemotes(fixture);
+
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    setField(fixture, 'remote-name', 'origin');
+    setField(fixture, 'remote-fetch-url', 'https://example.test/other.git');
+    fixture.nativeElement.querySelector('[data-testid="confirm-add-remote"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remote-error"]').textContent).toContain('origin');
+    expect(git(repoPath, ['remote', 'get-url', 'origin'])).toBe(fetchUrl);
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]')).not.toBeNull();
+  });
+
+  it('does not add a remote when the add dialog is cancelled', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', join(repoPath, '..', 'origin.git')]);
+    const fixture = await renderRepository(repoPath);
+    openRemotes(fixture);
+
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    setField(fixture, 'remote-name', 'upstream');
+    setField(fixture, 'remote-fetch-url', 'https://example.test/fetch.git');
+    fixture.nativeElement.querySelector('[data-testid="cancel-remote"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remote-name"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]')).not.toBeNull();
+    expect(git(repoPath, ['remote'])).toBe('origin');
+  });
+
+  it('closes only the add remote dialog from Escape or its backdrop', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['remote', 'add', 'origin', join(repoPath, '..', 'origin.git')]);
+    const fixture = await renderRepository(repoPath);
+    openRemotes(fixture);
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    setField(fixture, 'remote-name', 'upstream');
+    setField(fixture, 'remote-fetch-url', 'https://example.test/fetch.git');
+
+    pressEscape();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remote-name"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]')).not.toBeNull();
+    expect(git(repoPath, ['remote'])).toBe('origin');
+
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    const backdrops = fixture.nativeElement.querySelectorAll('.gm-dialog-backdrop');
+    backdrops[backdrops.length - 1].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remote-name"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="remote"][data-name="origin"]')).not.toBeNull();
+    expect(git(repoPath, ['remote'])).toBe('origin');
   });
 });
+
+function openCreateDialog(fixture: ComponentFixture<WorkspaceComponent>): void {
+  fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+  fixture.detectChanges();
+}
+
+function fillCreateBranch(fixture: ComponentFixture<WorkspaceComponent>, branch: string): void {
+  openCreateDialog(fixture);
+  setField(fixture, 'create-branch', branch);
+}
+
+function confirmCreate(fixture: ComponentFixture<WorkspaceComponent>): void {
+  fixture.nativeElement.querySelector('[data-testid="confirm-create-worktree"]').click();
+}
+
+function openAddRepository(fixture: ComponentFixture<WorkspaceComponent>): void {
+  fixture.nativeElement.querySelector('[data-testid="open-add-repository"]').click();
+  fixture.detectChanges();
+}
+
+function openRemotes(fixture: ComponentFixture<WorkspaceComponent>): void {
+  fixture.nativeElement.querySelector('[data-testid="open-remotes"]').click();
+  fixture.detectChanges();
+}
+
+function setField(fixture: ComponentFixture<WorkspaceComponent>, testId: string, value: string): void {
+  const field = fixture.nativeElement.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement;
+  field.value = value;
+  field.dispatchEvent(new Event('input'));
+  fixture.detectChanges();
+}
+
+function fieldValue(fixture: ComponentFixture<WorkspaceComponent>, testId: string): string {
+  return (fixture.nativeElement.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement).value;
+}
+
+function pressEscape(): void {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+}
 
 async function untilVisible(
   fixture: { detectChanges(): void; nativeElement: HTMLElement },
@@ -933,6 +1377,32 @@ function leftEdge(element: HTMLElement): number {
 
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
+}
+
+function createPickerRepository(roots: string[]): string {
+  const repoPath = createEmptyRepository(roots);
+  const root = join(repoPath, '..');
+  git(repoPath, ['branch', 'plain']);
+  git(repoPath, ['branch', 'taken']);
+  git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'taken'), 'taken']);
+  const origin = join(root, 'origin.git');
+  const upstream = join(root, 'upstream.git');
+  execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+  execFileSync('git', ['init', '--bare', '-b', 'master', upstream], { stdio: 'ignore' });
+  git(repoPath, ['remote', 'add', 'origin', origin]);
+  git(repoPath, ['remote', 'add', 'upstream', upstream]);
+  git(repoPath, ['checkout', '-b', 'shipped']);
+  git(repoPath, ['push', 'origin', 'shipped']);
+  git(repoPath, ['push', 'upstream', 'shipped']);
+  git(repoPath, ['checkout', '-b', 'only-upstream']);
+  writeFileSync(join(repoPath, 'only.txt'), 'only\n');
+  git(repoPath, ['add', 'only.txt']);
+  git(repoPath, ['commit', '-m', 'only upstream']);
+  git(repoPath, ['push', 'upstream', 'only-upstream']);
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['branch', '-D', 'shipped']);
+  git(repoPath, ['branch', '-D', 'only-upstream']);
+  return repoPath;
 }
 
 function createEmptyRepository(roots: string[]): string {

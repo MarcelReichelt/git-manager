@@ -1,9 +1,33 @@
 :host {
+  --paper: #f7f7f5;
+  --surface: #ffffff;
+  --forest: #1a3c2b;
+  --grid: #3a3a38;
+  --coral: #ff8c69;
   --mint: #9effbf;
   --gold: #f4d35e;
   --statusred: #ff5c5c;
   --statusgreen: #3ddc97;
   --statusblue: #8ecae6;
+  display: block;
+  min-height: 100vh;
+  background: var(--forest);
+  color: var(--grid);
+  font-family: "General Sans", "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+h1, h2, h3, p { margin: 0; }
+
+button, input { font: inherit; color: inherit; }
+
+.start-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--forest);
 }
 
 aside {
@@ -48,7 +72,15 @@ h1 {
   word-break: break-all;
 }
 
-[data-testid='switch-repository'] {
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+[data-testid='switch-repository'],
+[data-testid='open-remotes'] {
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
   background: var(--paper);
@@ -58,7 +90,8 @@ h1 {
 }
 
 [data-testid='create-worktree']:hover,
-[data-testid='switch-repository']:hover {
+[data-testid='switch-repository']:hover,
+[data-testid='open-remotes']:hover {
   background: var(--surface);
 }
 
@@ -98,36 +131,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   background: var(--surface);
   color: var(--forest);
 }
-
-.status-color {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 999px;
-}
-
-[data-status='local-only'] .status-color { background-color: var(--statusblue); }
-[data-status='local-and-remote'] .status-color { background-color: var(--statusgreen); }
-[data-status='remote-only'] .status-color { background-color: var(--gold); }
-[data-status='remote-deleted'] .status-color { background-color: var(--statusred); }
-
-.branch-name {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.branch-row.is-selected .branch-name { font-weight: 500; }
 
 .terminal-count {
   display: inline-flex;
@@ -179,7 +182,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-actions { display: none; }
 
-.branch-row:hover > .branch-actions,
 .branch-actions.is-open {
   display: block;
   position: absolute;
@@ -226,44 +228,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-actions [data-testid='remove-worktree'] { color: var(--coral); }
 
-.create-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.create-row input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-}
-
-.create-row input::placeholder { color: rgba(255, 255, 255, 0.55); }
-
 [data-testid='create-worktree'] {
+  margin-top: 12px;
   height: 40px;
   border: 0;
   border-radius: 8px;
   background: var(--paper);
   color: var(--forest);
   cursor: pointer;
-}
-
-.create-note {
-  margin-top: 8px;
-  padding: 0 4px;
-  color: rgba(255, 255, 255, 0.7);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  line-height: 1.4;
 }
 
 .content-sheet {
@@ -330,8 +302,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   text-transform: uppercase;
 }
 
-[data-testid='changed-file'],
-[data-testid='commit'] {
+[data-testid='changed-file'] {
   display: flex;
   gap: 8px;
   align-items: baseline;
@@ -341,11 +312,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   cursor: pointer;
 }
 
-[data-testid='changed-file']:hover,
-[data-testid='commit']:hover { background: var(--surface); }
+[data-testid='changed-file']:hover { background: var(--surface); }
 
-[data-testid='changed-file'] button,
-[data-testid='commit'] button {
+[data-testid='changed-file'] button {
   padding: 0;
   border: 0;
   background: transparent;

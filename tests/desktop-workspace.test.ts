@@ -777,6 +777,46 @@ describe('desktop workspace', () => {
     expect(offered).toEqual(['hold']);
   });
 
+  it('lists free branches from every remote and omits branches that already have a worktree', async () => {
+    const repoPath = createPickerRepository(roots);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const names = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="create-branch-option"]'),
+    ].map((option) => option.getAttribute('data-branch'));
+    expect(names).toContain('plain');
+    expect(names).toContain('shipped');
+    expect(names).toContain('only-upstream');
+    expect(names.filter((name) => name === 'shipped')).toHaveLength(1);
+    expect(names).not.toContain('taken');
+    expect(names).not.toContain('master');
+    expect(names).not.toContain('origin/shipped');
+    expect(names).not.toContain('upstream/only-upstream');
+  });
+
+  it('creates a worktree for a branch that exists only on a non-origin remote', async () => {
+    const repoPath = createPickerRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="create-branch-option"][data-branch="only-upstream"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="confirm-create-worktree"]').click();
+
+    const checkout = join(repoPath, '.workspaces', 'only-upstream');
+    await untilVisible(fixture, () => existsSync(checkout));
+    expect(git(checkout, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('only-upstream');
+    expect(git(checkout, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toBe('upstream/only-upstream');
+  });
+
   it('fills the branch name when a listed remote branch is chosen', async () => {
     const repoPath = createEmptyRepository(roots);
     const sha = git(repoPath, ['rev-parse', 'HEAD']);
@@ -2926,6 +2966,32 @@ function commitWithDate(repoPath: string, message: string, second: number): void
       GIT_COMMITTER_DATE: date,
     },
   });
+}
+
+function createPickerRepository(roots: string[]): string {
+  const repoPath = createEmptyRepository(roots);
+  const root = join(repoPath, '..');
+  git(repoPath, ['branch', 'plain']);
+  git(repoPath, ['branch', 'taken']);
+  git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'taken'), 'taken']);
+  const origin = join(root, 'origin.git');
+  const upstream = join(root, 'upstream.git');
+  execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+  execFileSync('git', ['init', '--bare', '-b', 'master', upstream], { stdio: 'ignore' });
+  git(repoPath, ['remote', 'add', 'origin', origin]);
+  git(repoPath, ['remote', 'add', 'upstream', upstream]);
+  git(repoPath, ['checkout', '-b', 'shipped']);
+  git(repoPath, ['push', 'origin', 'shipped']);
+  git(repoPath, ['push', 'upstream', 'shipped']);
+  git(repoPath, ['checkout', '-b', 'only-upstream']);
+  writeFileSync(join(repoPath, 'only.txt'), 'only\n');
+  git(repoPath, ['add', 'only.txt']);
+  git(repoPath, ['commit', '-m', 'only upstream']);
+  git(repoPath, ['push', 'upstream', 'only-upstream']);
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['branch', '-D', 'shipped']);
+  git(repoPath, ['branch', '-D', 'only-upstream']);
+  return repoPath;
 }
 
 function createEmptyRepository(roots: string[], branch = 'master'): string {

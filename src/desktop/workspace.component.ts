@@ -1,7 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal } from '@angular/core';
+import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
-import { addRemote, listRemotes, removeRemote, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
+import { addRemote, removeRemote, repositoryRemotes, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
@@ -214,6 +215,31 @@ button, input { font: inherit; color: inherit; }
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-heading h2 {
+  margin: 0;
+}
+
+.card-heading [data-testid='add-repository'] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+[data-testid='repositories-empty'] {
+  margin: 0;
+  color: var(--ink);
 }
 
 [data-testid='repository'],
@@ -587,7 +613,15 @@ button, input { font: inherit; color: inherit; }
   template: `
     <ng-template #repositoryCard>
       <section data-testid="repository-card">
-        <h2>Repositories</h2>
+        <div class="card-heading">
+          <h2>Repositories</h2>
+          @if (registryMode()) {
+            <button type="button" data-testid="add-repository" aria-label="Add repository" (click)="openAddDialog()">+</button>
+          }
+        </div>
+        @if (registryMode() && cardRepositories().length === 0) {
+          <p data-testid="repositories-empty">A repository needs to be added.</p>
+        }
         @for (repository of cardRepositories(); track repository.name + (repository.path ?? '')) {
           <button
             type="button"
@@ -597,9 +631,6 @@ button, input { font: inherit; color: inherit; }
           >
             {{ repository.name }}
           </button>
-        }
-        @if (registryMode()) {
-          <button type="button" data-testid="add-repository" (click)="openAddDialog()">Add repository</button>
         }
         @if (overlayOpen()) {
           <button type="button" data-testid="close-repository-switcher" (click)="closeSwitch()">Close</button>
@@ -887,8 +918,8 @@ button, input { font: inherit; color: inherit; }
       }
     }
     @if (createDialogOpen()) {
-      <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree">
-        <section class="dialog-panel">
+      <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree" (click)="dismissCreateFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Create worktree</h2>
           <label>
             Branch name
@@ -928,8 +959,8 @@ button, input { font: inherit; color: inherit; }
       </div>
     }
     @if (mergeDialogBranch()) {
-      <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master">
-        <section class="dialog-panel">
+      <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master" (click)="dismissMergeFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Merge into master</h2>
           <label>
             Squash
@@ -951,8 +982,8 @@ button, input { font: inherit; color: inherit; }
       </div>
     }
     @if (settingsOpen()) {
-      <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings">
-        <section class="dialog-panel">
+      <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings" (click)="dismissSettingsFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Repository settings</h2>
           <label>
             Location
@@ -992,8 +1023,8 @@ button, input { font: inherit; color: inherit; }
       </div>
     }
     @if (addDialogOpen()) {
-      <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository">
-        <section class="dialog-panel">
+      <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository" (click)="dismissAddFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Add repository</h2>
           <label>
             Location
@@ -1029,6 +1060,7 @@ export class WorkspaceComponent implements OnInit {
   readonly addDialogOpen = signal(false);
   readonly addPath = signal('');
   readonly addName = signal('');
+  readonly addNameTouched = signal(false);
   readonly cardError = signal<string | null>(null);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
@@ -1221,18 +1253,24 @@ export class WorkspaceComponent implements OnInit {
     this.cardError.set(null);
     this.addPath.set('');
     this.addName.set('');
+    this.addNameTouched.set(false);
     this.addDialogOpen.set(true);
   }
 
   setAddName(event: Event): void {
+    this.addNameTouched.set(true);
     this.addName.set(inputValue(event));
   }
 
   async browseFolder(): Promise<void> {
     const chosen = await browseForFolder();
     this.zone.run(() => {
-      if (chosen) {
-        this.addPath.set(chosen);
+      if (!chosen) {
+        return;
+      }
+      this.addPath.set(chosen);
+      if (!this.addNameTouched()) {
+        this.addName.set(suggestedRepositoryName(chosen));
       }
     });
   }
@@ -1241,7 +1279,14 @@ export class WorkspaceComponent implements OnInit {
     this.cardError.set(null);
     this.addPath.set('');
     this.addName.set('');
+    this.addNameTouched.set(false);
     this.addDialogOpen.set(false);
+  }
+
+  dismissAddFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelAdd();
+    }
   }
 
   addRegistered(): void {
@@ -1259,6 +1304,7 @@ export class WorkspaceComponent implements OnInit {
       addRepository(this.addPath(), displayName);
       this.addPath.set('');
       this.addName.set('');
+      this.addNameTouched.set(false);
       this.addDialogOpen.set(false);
       this.registered.set(listRepositories());
     } catch (error) {
@@ -1615,6 +1661,22 @@ export class WorkspaceComponent implements OnInit {
     if (event.key !== 'Escape') {
       return;
     }
+    if (this.addDialogOpen()) {
+      this.cancelAdd();
+      return;
+    }
+    if (this.settingsOpen()) {
+      this.closeSettings();
+      return;
+    }
+    if (this.mergeDialogBranch()) {
+      this.cancelMerge();
+      return;
+    }
+    if (this.createDialogOpen()) {
+      this.cancelCreate();
+      return;
+    }
     if (this.overlayOpen()) {
       this.closeSwitch();
       return;
@@ -1635,6 +1697,12 @@ export class WorkspaceComponent implements OnInit {
   closeSettings(): void {
     this.settingsError.set(null);
     this.settingsOpen.set(false);
+  }
+
+  dismissSettingsFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.closeSettings();
+    }
   }
 
   remoteDraft(name: string): string {
@@ -1695,7 +1763,7 @@ export class WorkspaceComponent implements OnInit {
       this.remoteDrafts.set({});
       return;
     }
-    const remotes = listRemotes(path);
+    const remotes = repositoryRemotes(path);
     this.remotes.set(remotes);
     this.remoteDrafts.set(Object.fromEntries(remotes.map((remote) => [remote.name, remote.url])));
   }
@@ -1721,6 +1789,12 @@ export class WorkspaceComponent implements OnInit {
     this.workspaceError.set(null);
     this.mergeSquash.set(false);
     this.mergeDialogBranch.set(null);
+  }
+
+  dismissMergeFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelMerge();
+    }
   }
 
   confirmMerge(): void {
@@ -1757,6 +1831,12 @@ export class WorkspaceComponent implements OnInit {
     this.workspaceError.set(null);
     this.createBranchName.set('');
     this.createDialogOpen.set(false);
+  }
+
+  dismissCreateFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelCreate();
+    }
   }
 
   setCreateBranchName(event: Event): void {
@@ -1887,6 +1967,19 @@ function clampSplit(value: number, limit: number | undefined): number {
     return floored;
   }
   return Math.min(floored, limit);
+}
+
+function suggestedRepositoryName(repoPath: string): string {
+  const folder = basename(repoPath);
+  try {
+    const branch = execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    return branch === '' ? folder : branch;
+  } catch {
+    return folder;
+  }
 }
 
 function hostPlatform(): string {

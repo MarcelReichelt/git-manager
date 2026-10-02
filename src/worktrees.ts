@@ -46,6 +46,23 @@ function layoutForCreate(config: RepoConfig): LayoutMode {
   return mode;
 }
 
+function remoteToFetch(repoPath: string, branch: string): string {
+  let names: string[] = [];
+  try {
+    names = execFileSync('git', ['remote'], { cwd: repoPath, encoding: 'utf8' })
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => name !== '');
+  } catch {
+    names = [];
+  }
+  const holders = names.filter((name) => hasRef(repoPath, `refs/remotes/${name}/${branch}`));
+  if (holders.includes('origin') || holders.length === 0) {
+    return 'origin';
+  }
+  return holders[0] ?? 'origin';
+}
+
 function hasRef(repoPath: string, ref: string): boolean {
   try {
     execFileSync('git', ['show-ref', '--verify', '--quiet', ref], {
@@ -178,12 +195,13 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   const localBranch = hasRef(repository.path, `refs/heads/${branch}`);
-  if (!localBranch) {
-    execFileSync('git', ['fetch', 'origin', branch], {
+  const remote = localBranch ? undefined : remoteToFetch(repository.path, branch);
+  if (remote) {
+    execFileSync('git', ['fetch', remote, branch], {
       cwd: repository.path,
       stdio: 'inherit',
     });
-    if (!hasRef(repository.path, `refs/remotes/origin/${branch}`)) {
+    if (!hasRef(repository.path, `refs/remotes/${remote}/${branch}`)) {
       throw new Error(`Branch not found: ${branch}`);
     }
   }
@@ -198,12 +216,14 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
       cwd: repository.path,
       stdio: 'inherit',
     });
-  } else {
+  } else if (remote) {
     execFileSync(
       'git',
-      ['worktree', 'add', '--track', '-b', branch, checkout, `origin/${branch}`],
+      ['worktree', 'add', '--track', '-b', branch, checkout, `${remote}/${branch}`],
       { cwd: repository.path, stdio: 'inherit' },
     );
+  } else {
+    throw new Error(`Branch not found: ${branch}`);
   }
 
   copyConfiguredFiles(repository.path, checkout, config.copy?.files);

@@ -93,6 +93,20 @@ function worktreePath(repoPath: string, branch: string): string | undefined {
   return match ? resolve(match.path) : undefined;
 }
 
+export function listRemoteBranchesWithoutWorktree(repoPath: string): string[] {
+  const checkedOut = new Set(
+    listWorktrees(repoPath)
+      .map((entry) => entry.branch)
+      .filter((branch): branch is string => branch !== null),
+  );
+  return gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'])
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name.startsWith('origin/') && name !== 'origin/HEAD')
+    .map((name) => name.slice('origin/'.length))
+    .filter((name) => name !== '' && !checkedOut.has(name));
+}
+
 function upstreamRef(repoPath: string, branch: string): string | undefined {
   const remote = gitOptional(repoPath, ['config', '--get', `branch.${branch}.remote`]);
   const merge = gitOptional(repoPath, ['config', '--get', `branch.${branch}.merge`]);

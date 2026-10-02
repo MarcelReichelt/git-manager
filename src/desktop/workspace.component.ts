@@ -18,6 +18,7 @@ import {
 } from './tmux-sessions';
 import {
   listBranches,
+  listRemoteBranchesWithoutWorktree,
   pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -373,6 +374,26 @@ button, input { font: inherit; color: inherit; }
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.4;
+}
+
+[data-testid='create-branch-options'] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 9rem;
+  overflow: auto;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  background: var(--surface);
+}
+
+[data-testid='create-branch-option'] {
+  padding: 6px 8px;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
 }
 
 [data-testid='create-worktree-dialog'] [data-testid='workspace-error'],
@@ -816,11 +837,26 @@ button, input { font: inherit; color: inherit; }
             Branch name
             <input
               data-testid="create-branch"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="create-branch-options"
               placeholder="Branch name"
               [value]="createBranchName()"
               (input)="setCreateBranchName($event)"
             />
           </label>
+          @if (createBranchOptions().length > 0) {
+            <ul id="create-branch-options" data-testid="create-branch-options" role="listbox">
+              @for (name of createBranchOptions(); track name) {
+                <li
+                  data-testid="create-branch-option"
+                  role="option"
+                  [attr.data-branch]="name"
+                  (click)="chooseCreateBranch(name)"
+                >{{ name }}</li>
+              }
+            </ul>
+          }
           <p data-testid="create-worktree-note">
             A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.
           </p>
@@ -957,6 +993,7 @@ export class WorkspaceComponent implements OnInit {
   readonly settingsError = signal<string | null>(null);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
+  readonly createBranchOptions = signal<string[]>([]);
   readonly mergeDialogBranch = signal<string | null>(null);
   readonly mergeSquash = signal(false);
   readonly workspaceError = signal<string | null>(null);
@@ -1514,6 +1551,8 @@ export class WorkspaceComponent implements OnInit {
   openCreateDialog(): void {
     this.workspaceError.set(null);
     this.createBranchName.set('');
+    const path = this.effectivePath();
+    this.createBranchOptions.set(path === null ? [] : listRemoteBranchesWithoutWorktree(path));
     this.createDialogOpen.set(true);
   }
 
@@ -1525,6 +1564,10 @@ export class WorkspaceComponent implements OnInit {
 
   setCreateBranchName(event: Event): void {
     this.createBranchName.set(inputValue(event));
+  }
+
+  chooseCreateBranch(name: string): void {
+    this.createBranchName.set(name);
   }
 
   async createBranch(): Promise<void> {

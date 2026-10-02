@@ -717,6 +717,148 @@ describe('desktop workspace', () => {
     );
   });
 
+  it('offers remote branches that do not already have a local worktree', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const sha = git(repoPath, ['rev-parse', 'HEAD']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/master', sha]);
+    git(repoPath, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/feature', sha]);
+    git(repoPath, ['branch', 'done']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/done', sha]);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'done'), 'done']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    expect(field.tagName).toBe('INPUT');
+    const offered = [...dialog.querySelectorAll('[data-testid="create-branch-option"]')].map((option) =>
+      option.getAttribute('data-branch'),
+    );
+    expect(offered).toEqual(['feature']);
+  });
+
+  it('offers a local branch with no worktree when the remote ref exists', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const sha = git(repoPath, ['rev-parse', 'HEAD']);
+    git(repoPath, ['branch', 'hold']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/master', sha]);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/hold', sha]);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const offered = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="create-worktree-dialog"] [data-testid="create-branch-option"]',
+      ),
+    ].map((option) => option.getAttribute('data-branch'));
+    expect(offered).toEqual(['hold']);
+  });
+
+  it('fills the branch name when a listed remote branch is chosen', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const sha = git(repoPath, ['rev-parse', 'HEAD']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/feature', sha]);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    expect(field.value).toBe('');
+    dialog.querySelector('[data-testid="create-branch-option"][data-branch="feature"]').click();
+    fixture.detectChanges();
+    expect(field.value).toBe('feature');
+  });
+
+  it('creates the worktree when a listed remote branch is confirmed', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const remotePath = join(repoPath, '..', 'origin.git');
+    const otherPath = join(repoPath, '..', 'other');
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    execFileSync('git', ['clone', remotePath, otherPath], { stdio: 'ignore' });
+    git(otherPath, ['config', 'user.name', 'git-manager test']);
+    git(otherPath, ['config', 'user.email', 'test@git-manager.local']);
+    git(otherPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(otherPath, 'feature.txt'), 'from remote\n');
+    git(otherPath, ['add', 'feature.txt']);
+    git(otherPath, ['commit', '-m', 'add feature']);
+    git(otherPath, ['push', '-u', 'origin', 'feature']);
+    git(repoPath, ['fetch', 'origin']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    dialog.querySelector('[data-testid="create-branch-option"][data-branch="feature"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-testid="create-worktree-dialog"]') === null,
+    );
+
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['master', 'feature']);
+  });
+
+  it('creates a worktree when the typed branch name is not listed', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const sha = git(repoPath, ['rev-parse', 'HEAD']);
+    git(repoPath, ['branch', 'notes']);
+    git(repoPath, ['update-ref', 'refs/remotes/origin/feature', sha]);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    expect(
+      [...dialog.querySelectorAll('[data-testid="create-branch-option"]')].map((option) =>
+        option.getAttribute('data-branch'),
+      ),
+    ).toEqual(['feature']);
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-testid="create-worktree-dialog"]') === null,
+    );
+
+    const checkout = join(repoPath, '.workspaces', 'notes');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('notes');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map((row) =>
+        row.getAttribute('data-branch'),
+      ),
+    ).toEqual(['master', 'notes', 'origin/feature']);
+  });
+
   it('opens a branch menu with merge actions and no squash control', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

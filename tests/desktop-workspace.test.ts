@@ -371,6 +371,44 @@ describe('desktop workspace', () => {
     expect(copied).toEqual(['', repoPath]);
   });
 
+  it('copies the branch name when that name in the content is clicked', async () => {
+    const copied: string[] = [];
+    setTextCopy((text) => {
+      copied.push(text);
+    });
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector('[data-testid="content-sheet"] .branch-heading');
+    const name = heading.querySelector('[data-testid="copy-branch-name"]');
+    const icon = name.querySelector('[data-testid="copy-branch-icon"]');
+    expect(name.textContent.trim()).toBe('feature/login');
+    expect(name.getAttribute('title')).toBe('Copy branch name');
+    expect(icon).not.toBeNull();
+    expect(getComputedStyle(name).cursor).toBe('pointer');
+    expect(getComputedStyle(icon).opacity).toBe('0');
+
+    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const hoverShowsIcon = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some((match) => {
+      const selector = match[1] ?? '';
+      const body = match[2] ?? '';
+      return (
+        selector.includes("[data-testid='copy-branch-name']") &&
+        selector.includes(':hover') &&
+        selector.includes("[data-testid='copy-branch-icon']") &&
+        /opacity\s*:\s*1/.test(body)
+      );
+    });
+    expect(hoverShowsIcon).toBe(true);
+
+    name.click();
+    expect(copied).toEqual(['feature/login']);
+  });
+
   it('opens repository settings from an icon button beside the repository name', async () => {
     const repoPath = createEmptyRepository(roots);
     const fixture = await renderRepository(repoPath);
@@ -2314,6 +2352,58 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).toBeNull();
+  });
+
+  it('suggests the repository name when a git directory is chosen', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const nested = join(pier, 'src');
+    initGitRepo(pier, 'dock');
+    mkdirSync(nested);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => nested);
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="add-repository-path"]').textContent).toBe(nested);
+    expect(dialog.querySelector('[data-testid="add-repository-name"]').value).toBe('pier');
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
+
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"][data-name="pier"]')).not.toBeNull();
+  });
+
+  it('shows an error when the chosen directory is not a git repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const plain = join(root, 'plain');
+    mkdirSync(plain);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => plain);
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="add-repository-path"]').textContent).toBe(plain);
+    expect(dialog.querySelector('[data-testid="add-repository-name"]').value).toBe('');
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toBe(
+      `Not a git repository: ${plain}`,
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
   });
 
   it('shows an error and does not add a repository when the folder is not a git repository', async () => {

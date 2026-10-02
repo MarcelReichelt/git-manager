@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { execFileSync } from 'node:child_process';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { addRemote, removeRemote, repositoryRemotes, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
@@ -755,7 +755,20 @@ button, input { font: inherit; color: inherit; }
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
             <header class="branch-heading">
-              <h2>{{ branch.name }}</h2>
+              <h2>
+                <button
+                  type="button"
+                  data-testid="copy-branch-name"
+                  title="Copy branch name"
+                  (click)="copyBranchName(branch.name)"
+                >
+                  {{ branch.name }}
+                  <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                    <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+                    <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+                  </svg>
+                </button>
+              </h2>
               <p>
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
@@ -1269,8 +1282,18 @@ export class WorkspaceComponent implements OnInit {
         return;
       }
       this.addPath.set(chosen);
-      if (!this.addNameTouched()) {
-        this.addName.set(suggestedRepositoryName(chosen));
+      try {
+        const name = suggestedRepositoryName(chosen);
+        this.cardError.set(null);
+        if (!this.addNameTouched()) {
+          this.addName.set(name);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.cardError.set(message);
+        if (!this.addNameTouched()) {
+          this.addName.set('');
+        }
       }
     });
   }
@@ -1626,6 +1649,10 @@ export class WorkspaceComponent implements OnInit {
     copyText(this.repositoryLocation());
   }
 
+  copyBranchName(name: string): void {
+    copyText(name);
+  }
+
   openSwitch(): void {
     this.overlayOpen.set(true);
   }
@@ -1970,16 +1997,19 @@ function clampSplit(value: number, limit: number | undefined): number {
 }
 
 function suggestedRepositoryName(repoPath: string): string {
-  const folder = basename(repoPath);
+  const path = resolve(repoPath);
   try {
-    const branch = execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
+    const toplevel = execFileSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    return branch === '' ? folder : branch;
+    if (toplevel !== '') {
+      return basename(toplevel);
+    }
   } catch {
-    return folder;
+    // The chosen directory is not inside a git work tree.
   }
+  throw new Error(`Not a git repository: ${path}`);
 }
 
 function hostPlatform(): string {

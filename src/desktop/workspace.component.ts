@@ -41,6 +41,7 @@ interface SampleFile {
 }
 
 interface SampleCommit {
+  sha?: string;
   subject: string;
   files?: SampleFile[];
   diff?: string;
@@ -659,17 +660,27 @@ button, input { font: inherit; color: inherit; }
             <div>
             <h3>Commits</h3>
             <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
-              @for (commit of visibleRecentCommits(); track commit.subject) {
-                <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
-                  <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
+              @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
+                <li
+                  data-testid="commit"
+                  [attr.data-sha]="commit.sha ?? null"
+                  [attr.data-subject]="commit.subject"
+                  (click)="selectCommit(commit.subject, commit.sha)"
+                >
+                  <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
                 </li>
               }
             </ul>
             <h3>Commits only on this branch</h3>
             <ul data-testid="branch-commits">
-              @for (commit of visibleCommits(); track commit.subject) {
-                <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
-                  <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
+              @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
+                <li
+                  data-testid="commit"
+                  [attr.data-sha]="commit.sha ?? null"
+                  [attr.data-subject]="commit.subject"
+                  (click)="selectCommit(commit.subject, commit.sha)"
+                >
+                  <button type="button" (click)="selectCommit(commit.subject, commit.sha)">{{ commit.subject }}</button>
                 </li>
               }
             </ul>
@@ -1063,14 +1074,14 @@ export class WorkspaceComponent implements OnInit {
     this.loadedDiff.set(readWorkingTreeDiff(repo, branch, path));
   }
 
-  selectCommit(subject: string): void {
-    this.selectedCommitSubject.set(subject);
+  selectCommit(subject: string, sha?: string): void {
+    this.selectedCommitSubject.set(sha ?? subject);
     this.selectedFilePath.set(null);
     const repo = this.effectivePath();
     if (!repo) {
       return;
     }
-    const commit = this.commitBySubject(subject);
+    const commit = this.commitByIdentity(subject, sha);
     if (!commit) {
       this.loadedCommitFiles.set([]);
       this.loadedDiff.set(null);
@@ -1085,22 +1096,24 @@ export class WorkspaceComponent implements OnInit {
   selectCommitFile(path: string, event: Event): void {
     event.stopPropagation();
     const repo = this.effectivePath();
-    const subject = this.selectedCommitSubject();
-    if (!repo || !subject) {
+    const identity = this.selectedCommitSubject();
+    if (!repo || !identity) {
       return;
     }
-    const commit = this.commitBySubject(subject);
+    const commit = this.commitByIdentity(identity, identity);
     if (!commit) {
       return;
     }
     this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
   }
 
-  private commitBySubject(subject: string): BranchCommit | undefined {
-    return (
-      this.loadedRecentCommits().find((item) => item.subject === subject) ??
-      this.loadedCommits().find((item) => item.subject === subject)
-    );
+  private commitByIdentity(subject: string, sha?: string): BranchCommit | undefined {
+    const recent = this.loadedRecentCommits();
+    const only = this.loadedCommits();
+    if (sha) {
+      return recent.find((item) => item.sha === sha) ?? only.find((item) => item.sha === sha);
+    }
+    return recent.find((item) => item.subject === subject) ?? only.find((item) => item.subject === subject);
   }
 
   openBranchMenu(name: string, event: Event): void {

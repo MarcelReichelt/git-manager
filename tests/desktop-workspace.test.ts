@@ -967,6 +967,56 @@ describe('desktop workspace', () => {
     expect(only).toEqual(['Add the feature note']);
   });
 
+  it('lists commits that are not on main when the checkout is the feature branch', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    writeFileSync(join(repoPath, 'docs.txt'), 'main line\n');
+    git(repoPath, ['add', 'docs.txt']);
+    git(repoPath, ['commit', '-m', 'Plant the main line']);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repoPath, 'docs.txt'), 'main line\nfeature note\n');
+    git(repoPath, ['add', 'docs.txt']);
+    git(repoPath, ['commit', '-m', 'Add the feature note']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const only = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="branch-commits"] [data-testid="commit"]',
+      ),
+    ].map((commit) => commit.getAttribute('data-subject'));
+    expect(only).toEqual(['Add the feature note']);
+  });
+
+  it('shows the files and diff of the commit that was chosen when two commits share a subject', async () => {
+    const repoPath = createEmptyRepository(roots);
+    writeFileSync(join(repoPath, 'one.txt'), 'alpha line\n');
+    git(repoPath, ['add', 'one.txt']);
+    git(repoPath, ['commit', '-m', 'Same title']);
+    writeFileSync(join(repoPath, 'two.txt'), 'beta line\n');
+    git(repoPath, ['add', 'two.txt']);
+    git(repoPath, ['commit', '-m', 'Same title']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const same = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="recent-commits"] [data-testid="commit"][data-subject="Same title"]',
+      ),
+    ];
+    expect(same).toHaveLength(2);
+
+    same[0].click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('beta line');
+
+    same[1].click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('alpha line');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('beta line');
+  });
+
   it('lists recent rewrite commits, including the guide commit that is also on master', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
@@ -1086,6 +1136,28 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     expect(branchNames(fixture)).toEqual(['main', 'feature/login', 'zeta']);
+  });
+
+  it('pins main when the checkout is a feature branch', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    git(repoPath, ['checkout', '-b', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)[0]).toBe('main');
+    expect(branchNames(fixture)).toContain('feature');
+  });
+
+  it('pins master when the checkout is a feature branch', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)[0]).toBe('master');
+    expect(branchNames(fixture)).toContain('feature');
   });
 
   it('creates the notes worktree from the button', async () => {

@@ -224,7 +224,7 @@ export function listBranches(repoPath: string): BranchRow[] {
     });
   }
 
-  return pinDefaultBranch(rows, checkedOutBranch(repoPath));
+  return pinDefaultBranch(rows, defaultBranchName(repoPath));
 }
 
 export function pinDefaultBranch<T extends { name: string }>(
@@ -241,11 +241,36 @@ export function pinDefaultBranch<T extends { name: string }>(
 }
 
 function aheadBehindBase(repoPath: string): string {
-  // Counts stay against master when that branch exists. A repository whose default is another name has no master ref, so count against the checked-out branch instead of failing the list.
-  if (hasRef(repoPath, 'refs/heads/master')) {
+  return defaultBranchName(repoPath) ?? 'HEAD';
+}
+
+function defaultBranchName(repoPath: string): string | undefined {
+  const originHead = gitOptional(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (originHead?.startsWith('origin/')) {
+    const name = originHead.slice('origin/'.length);
+    if (name !== '') {
+      return name;
+    }
+  }
+  const hasMaster = hasRef(repoPath, 'refs/heads/master');
+  const hasMain = hasRef(repoPath, 'refs/heads/main');
+  if (hasMaster && !hasMain) {
     return 'master';
   }
-  return checkedOutBranch(repoPath) ?? 'HEAD';
+  if (hasMain && !hasMaster) {
+    return 'main';
+  }
+  const checkedOut = checkedOutBranch(repoPath);
+  if (checkedOut === 'master' || checkedOut === 'main') {
+    return checkedOut;
+  }
+  if (hasMaster) {
+    return 'master';
+  }
+  if (hasMain) {
+    return 'main';
+  }
+  return checkedOut;
 }
 
 function checkedOutBranch(repoPath: string): string | undefined {
@@ -279,7 +304,7 @@ export function readRecentCommits(repoPath: string, branch: string, offset = 0):
 }
 
 export function readCommitsOnlyOnBranch(repoPath: string, branch: string): BranchCommit[] {
-  const base = checkedOutBranch(repoPath) ?? 'master';
+  const base = defaultBranchName(repoPath) ?? 'master';
   return parseCommitLog(gitText(repoPath, ['log', '--format=%H%x09%s', `${base}..${branch}`]));
 }
 

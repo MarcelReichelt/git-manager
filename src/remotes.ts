@@ -56,6 +56,10 @@ export function changeRemote(
   fetchUrl: string,
   pushUrl?: string,
 ): void {
+  const before = listRemotes(repoPath).find((remote) => remote.name === currentName);
+  if (!before) {
+    throw new Error(`Remote not found: ${currentName}`);
+  }
   const renamed = nextName !== currentName;
   if (renamed) {
     git(repoPath, ['remote', 'rename', currentName, nextName]);
@@ -65,12 +69,15 @@ export function changeRemote(
     const push = pushUrl && pushUrl !== '' ? pushUrl : fetchUrl;
     git(repoPath, ['remote', 'set-url', '--push', nextName, push]);
   } catch (error) {
-    if (renamed) {
-      try {
+    const activeName = renamed ? nextName : currentName;
+    try {
+      git(repoPath, ['remote', 'set-url', activeName, before.fetchUrl]);
+      git(repoPath, ['remote', 'set-url', '--push', activeName, before.pushUrl]);
+      if (renamed) {
         git(repoPath, ['remote', 'rename', nextName, currentName]);
-      } catch {
-        // Keep the original failure from set-url.
       }
+    } catch {
+      // Keep the original failure from set-url.
     }
     throw error;
   }

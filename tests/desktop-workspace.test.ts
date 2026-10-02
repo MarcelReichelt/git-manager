@@ -911,6 +911,25 @@ describe('desktop workspace', () => {
     expect(names).not.toContain('upstream/only-upstream');
   });
 
+  it('creates a worktree for a branch that exists only on a non-origin remote', async () => {
+    const repoPath = createPickerRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    openCreateDialog(fixture);
+
+    fixture.nativeElement
+      .querySelector('[data-testid="create-branch-option"][data-branch="only-upstream"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="confirm-create-worktree"]').click();
+
+    const checkout = join(repoPath, '.workspaces', 'only-upstream');
+    await untilVisible(fixture, () => existsSync(checkout));
+    expect(git(checkout, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('only-upstream');
+    expect(git(checkout, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toBe('upstream/only-upstream');
+  });
+
   it('fills the branch name from a listed create option', async () => {
     const repoPath = createPickerRepository(roots);
     const fixture = await renderRepository(repoPath);
@@ -1097,6 +1116,27 @@ describe('desktop workspace', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toContain(
       'Not a git repository',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(listRepositories()).toEqual([]);
+  });
+
+  it('shows a card error when the display name is blank', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const fixture = await renderLive();
+
+    openAddRepository(fixture);
+    setField(fixture, 'add-repository-path', pier);
+    setField(fixture, 'add-repository-name', '   ');
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toContain(
+      'A display name is required.',
     );
     expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
     expect(listRepositories()).toEqual([]);

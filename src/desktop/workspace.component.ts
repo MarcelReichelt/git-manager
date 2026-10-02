@@ -529,6 +529,10 @@ export class WorkspaceComponent implements OnInit {
 
   addRegistered(entry: { path: string; name: string }): void {
     this.cardError.set(null);
+    if (entry.name.trim() === '') {
+      this.cardError.set('A display name is required.');
+      return;
+    }
     try {
       addRepository(entry.path, entry.name);
       this.registered.set(listRepositories());

@@ -47,6 +47,29 @@ describe('git remotes', () => {
     expect(listRemotes(repoPath).map((remote) => remote.name)).toEqual(['origin']);
     expect(listRemotes(repoPath)[0]?.fetchUrl).toBe('https://example.test/fetch.git');
   });
+
+  it('restores the fetch URL when the push URL change fails', () => {
+    const repoPath = initRepo(roots);
+    addRemote(repoPath, 'origin', 'https://example.test/fetch.git', 'https://example.test/push.git');
+
+    expect(() =>
+      changeRemote(
+        repoPath,
+        'origin',
+        'origin',
+        'https://example.test/next.git',
+        '--not-a-url',
+      ),
+    ).toThrow();
+
+    expect(listRemotes(repoPath)).toEqual([
+      {
+        name: 'origin',
+        fetchUrl: 'https://example.test/fetch.git',
+        pushUrl: 'https://example.test/push.git',
+      },
+    ]);
+  });
 });
 
 function initRepo(roots: string[]): string {

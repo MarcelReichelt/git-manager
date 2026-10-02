@@ -305,6 +305,11 @@ ul { margin: 0; padding: 0; list-style: none; }
   text-transform: uppercase;
 }
 
+[data-testid='recent-commits'] {
+  max-height: 24rem;
+  overflow: auto;
+}
+
 [data-testid='changed-file'],
 [data-testid='commit'] {
   display: flex;

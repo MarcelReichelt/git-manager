@@ -20,6 +20,8 @@ import {
   readCommitFileDiff,
   readCommitFiles,
   readCommitsOnlyOnBranch,
+  readRecentCommits,
+  recentCommitPageSize,
   readWorkingTreeDiff,
   type BranchCommit,
   type ChangedFile,
@@ -39,6 +41,7 @@ interface SampleCommit {
   subject: string;
   files?: SampleFile[];
   diff?: string;
+  onDefaultBranch?: boolean;
 }
 
 interface SampleBranch {
@@ -77,6 +80,12 @@ const harborBranches: SampleBranch[] = [
         subject: 'Wire the session',
         files: [{ path: 'src/session.ts', added: 8, deleted: 2 }],
         diff: '+export function session',
+      },
+      {
+        subject: 'Open the harbor',
+        onDefaultBranch: true,
+        files: [{ path: 'README.md', added: 1, deleted: 0 }],
+        diff: '+# harbor',
       },
     ],
   },
@@ -505,7 +514,7 @@ button, input { font: inherit; color: inherit; }
             <header class="branch-heading">
               <h2>{{ branch.name }}</h2>
               <p>
-                {{ visibleCommits().length }} commits only on this branch · {{ visibleFiles().length }} changed files
+                {{ visibleRecentCommits().length }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
             <div class="sheet-columns">
@@ -536,6 +545,14 @@ button, input { font: inherit; color: inherit; }
             }
             </div>
             <div>
+            <h3>Commits</h3>
+            <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
+              @for (commit of visibleRecentCommits(); track commit.subject) {
+                <li data-testid="commit" [attr.data-subject]="commit.subject" (click)="selectCommit(commit.subject)">
+                  <button type="button" (click)="selectCommit(commit.subject)">{{ commit.subject }}</button>
+                </li>
+              }
+            </ul>
             <h3>Commits only on this branch</h3>
             <ul data-testid="branch-commits">
               @for (commit of visibleCommits(); track commit.subject) {
@@ -682,6 +699,8 @@ export class WorkspaceComponent implements OnInit {
   readonly realBranches = signal<SampleBranch[]>([]);
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
+  readonly loadedRecentCommits = signal<BranchCommit[]>([]);
+  readonly recentHistoryComplete = signal(false);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly createDialogOpen = signal(false);
@@ -751,11 +770,17 @@ export class WorkspaceComponent implements OnInit {
     }
     return this.selectedBranch()?.files ?? [];
   });
+  readonly visibleRecentCommits = computed(() => {
+    if (this.effectivePath() !== null) {
+      return this.loadedRecentCommits();
+    }
+    return this.selectedBranch()?.commits ?? [];
+  });
   readonly visibleCommits = computed(() => {
     if (this.effectivePath() !== null) {
       return this.loadedCommits();
     }
-    return this.selectedBranch()?.commits ?? [];
+    return (this.selectedBranch()?.commits ?? []).filter((commit) => !commit.onDefaultBranch);
   });
   readonly showingCommit = computed(() => {
     if (this.selectedCommitSubject() === null) {
@@ -810,6 +835,8 @@ export class WorkspaceComponent implements OnInit {
     this.selectedCommitSubject.set(null);
     this.loadedFiles.set([]);
     this.loadedCommits.set([]);
+    this.loadedRecentCommits.set([]);
+    this.recentHistoryComplete.set(true);
     this.loadedDiff.set(null);
     this.clearTerminals();
     this.refreshBranches();
@@ -883,7 +910,7 @@ export class WorkspaceComponent implements OnInit {
     if (!repo) {
       return;
     }
-    const commit = this.loadedCommits().find((item) => item.subject === subject);
+    const commit = this.commitBySubject(subject);
     if (!commit) {
       this.loadedCommitFiles.set([]);
       this.loadedDiff.set(null);
@@ -902,11 +929,18 @@ export class WorkspaceComponent implements OnInit {
     if (!repo || !subject) {
       return;
     }
-    const commit = this.loadedCommits().find((item) => item.subject === subject);
+    const commit = this.commitBySubject(subject);
     if (!commit) {
       return;
     }
     this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
+  }
+
+  private commitBySubject(subject: string): BranchCommit | undefined {
+    return (
+      this.loadedRecentCommits().find((item) => item.subject === subject) ??
+      this.loadedCommits().find((item) => item.subject === subject)
+    );
   }
 
   openBranchMenu(name: string, event: Event): void {
@@ -925,11 +959,36 @@ export class WorkspaceComponent implements OnInit {
     if (path === null) {
       this.loadedFiles.set([]);
       this.loadedCommits.set([]);
+      this.loadedRecentCommits.set([]);
+      this.recentHistoryComplete.set(true);
       return;
     }
     this.loadedFiles.set(readChangedFiles(path, name));
     this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+    const page = readRecentCommits(path, name);
+    this.loadedRecentCommits.set(page);
+    this.recentHistoryComplete.set(page.length < recentCommitPageSize);
     this.openTerminals(name);
+  }
+
+  onRecentCommitsScroll(event: Event): void {
+    const list = event.currentTarget as HTMLElement;
+    if (list.scrollTop + list.clientHeight < list.scrollHeight) {
+      return;
+    }
+    if (this.recentHistoryComplete()) {
+      return;
+    }
+    const path = this.effectivePath();
+    const branch = this.selectedBranchName();
+    if (!path || !branch) {
+      return;
+    }
+    const page = readRecentCommits(path, branch, this.loadedRecentCommits().length);
+    this.loadedRecentCommits.update((current) => [...current, ...page]);
+    if (page.length < recentCommitPageSize) {
+      this.recentHistoryComplete.set(true);
+    }
   }
 
   terminalCount(name: string): number {

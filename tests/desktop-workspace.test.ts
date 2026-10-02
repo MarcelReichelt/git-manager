@@ -361,7 +361,7 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(wipMenu).display).toBe('block');
   });
 
-  it('counts the commits that exist only on feature/login in the branch summary', async () => {
+  it('counts recent Harbor commits in the branch summary', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -370,7 +370,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const summary = fixture.nativeElement.querySelector('.branch-heading p');
-    expect(summary.textContent.trim()).toBe('2 commits only on this branch · 2 changed files');
+    expect(summary.textContent.trim()).toBe('3 commits · 2 changed files');
 
     const commits = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')];
     expect(commits.map((commit) => commit.getAttribute('data-subject'))).toEqual([
@@ -434,6 +434,61 @@ describe('desktop workspace', () => {
 
     const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(diff.textContent).toContain('+function login');
+    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+  });
+
+  it('lists commits only on feature/login under the recent Harbor history', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const only = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    expect(only.previousElementSibling?.textContent?.trim()).toBe('Commits only on this branch');
+    expect(
+      [...only.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Add the login form', 'Wire the session']);
+  });
+
+  it('shows recent Harbor commits under Commits, including one that is also on the default branch', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const recent = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    expect(recent.previousElementSibling?.textContent?.trim()).toBe('Commits');
+    expect(
+      [...recent.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Add the login form', 'Wire the session', 'Open the harbor']);
+  });
+
+  it('shows the files and diff for Open the harbor', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement
+      .querySelector('[data-testid="recent-commits"] [data-testid="commit"][data-subject="Open the harbor"]')
+      .click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const file = commitFiles.querySelector('[data-testid="changed-file"]');
+    expect(file.getAttribute('data-path')).toBe('README.md');
+    expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('1');
+    expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(diff.textContent).toContain('+# harbor');
     expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
   });
 
@@ -507,6 +562,111 @@ describe('desktop workspace', () => {
     expect(
       fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="master"]'),
     ).not.toBeNull();
+  });
+
+  it('shows the files and diff for the old guide commit that is also on master', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement
+      .querySelector('[data-testid="recent-commits"] [data-testid="commit"][data-subject="Add the old guide"]')
+      .click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const file = commitFiles.querySelector('[data-testid="changed-file"][data-path="docs/old-guide.md"]');
+    expect(file.getAttribute('data-path')).toBe('docs/old-guide.md');
+    file.click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(diff.textContent).toContain('old guide');
+    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+  });
+
+  it('loads the next page of recent commits when the list is scrolled to the end', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const list = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    scrollCommitList(list, { scrollTop: 0, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list)).not.toContain('init');
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    const subjects = commitSubjects(list);
+    expect(subjects[0]).toBe('Record 30');
+    expect(subjects.at(-1)).toBe('init');
+    expect(subjects.filter((subject) => subject === 'init')).toEqual(['init']);
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list).filter((subject) => subject === 'init')).toEqual(['init']);
+  });
+
+  it('shows the first page of recent commits before the list is scrolled', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const subjects = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="recent-commits"] [data-testid="commit"]',
+      ),
+    ].map((commit) => commit.getAttribute('data-subject'));
+    expect(subjects[0]).toBe('Record 30');
+    expect(subjects[29]).toBe('Record 01');
+    expect(subjects).not.toContain('init');
+  });
+
+  it('lists commits that are not on main when main is the default branch', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    writeFileSync(join(repoPath, 'docs.txt'), 'main line\n');
+    git(repoPath, ['add', 'docs.txt']);
+    git(repoPath, ['commit', '-m', 'Plant the main line']);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repoPath, 'docs.txt'), 'main line\nfeature note\n');
+    git(repoPath, ['add', 'docs.txt']);
+    git(repoPath, ['commit', '-m', 'Add the feature note']);
+    git(repoPath, ['checkout', 'main']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const recent = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="recent-commits"] [data-testid="commit"]',
+      ),
+    ].map((commit) => commit.getAttribute('data-subject'));
+    expect(recent).toEqual(['Add the feature note', 'Plant the main line', 'init']);
+
+    const only = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="branch-commits"] [data-testid="commit"]',
+      ),
+    ].map((commit) => commit.getAttribute('data-subject'));
+    expect(only).toEqual(['Add the feature note']);
+  });
+
+  it('lists recent rewrite commits, including the guide commit that is also on master', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+
+    const recent = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    expect(recent.previousElementSibling?.textContent?.trim()).toBe('Commits');
+    expect(
+      [...recent.querySelectorAll('[data-testid="commit"]')].map((commit) =>
+        commit.getAttribute('data-subject'),
+      ),
+    ).toEqual(['Add the logo', 'Retitle the guide', 'Add the old guide']);
   });
 
   it('shows the guide edit and the commits only on rewrite', async () => {
@@ -1250,6 +1410,53 @@ function branchNames(fixture: { nativeElement: HTMLElement }): string[] {
 
 function rowText(rows: Element[], testId: string): string[] {
   return rows.map((row) => row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? '');
+}
+
+function commitSubjects(list: Element): string[] {
+  return [...list.querySelectorAll('[data-testid="commit"]')].map(
+    (commit) => commit.getAttribute('data-subject') ?? '',
+  );
+}
+
+function scrollCommitList(
+  list: Element,
+  metrics: { scrollTop: number; clientHeight: number; scrollHeight: number },
+): void {
+  Object.defineProperty(list, 'clientHeight', { configurable: true, value: metrics.clientHeight });
+  Object.defineProperty(list, 'scrollHeight', { configurable: true, value: metrics.scrollHeight });
+  if (list instanceof HTMLElement) {
+    list.scrollTop = metrics.scrollTop;
+  }
+  list.dispatchEvent(new Event('scroll'));
+}
+
+function createLongHistoryRepository(roots: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  roots.push(root);
+  const repoPath = join(root, 'harbor');
+  initGitRepo(repoPath);
+  writeFileSync(join(repoPath, 'note.txt'), 'init\n');
+  git(repoPath, ['add', '.']);
+  commitWithDate(repoPath, 'init', 0);
+  for (let number = 1; number <= 30; number += 1) {
+    const label = String(number).padStart(2, '0');
+    writeFileSync(join(repoPath, 'note.txt'), `${label}\n`);
+    git(repoPath, ['add', 'note.txt']);
+    commitWithDate(repoPath, `Record ${label}`, number);
+  }
+  return repoPath;
+}
+
+function commitWithDate(repoPath: string, message: string, second: number): void {
+  const date = `2030-01-01T00:00:${String(second).padStart(2, '0')}+0000`;
+  execFileSync('git', ['commit', '-m', message], {
+    cwd: repoPath,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_DATE: date,
+    },
+  });
 }
 
 function createEmptyRepository(roots: string[], branch = 'master'): string {

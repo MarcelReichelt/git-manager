@@ -264,12 +264,31 @@ export function readChangedFiles(repoPath: string, branch: string): ChangedFile[
   return changedFilesInWorktree(checkout);
 }
 
+export const recentCommitPageSize = 30;
+
+export function readRecentCommits(repoPath: string, branch: string, offset = 0): BranchCommit[] {
+  return parseCommitLog(
+    gitText(repoPath, [
+      'log',
+      '--format=%H%x09%s',
+      `--max-count=${recentCommitPageSize}`,
+      `--skip=${offset}`,
+      branch,
+    ]),
+  );
+}
+
 export function readCommitsOnlyOnBranch(repoPath: string, branch: string): BranchCommit[] {
-  const output = gitText(repoPath, ['log', '--format=%H%x09%s', `master..${branch}`]).trim();
-  if (output === '') {
+  const base = checkedOutBranch(repoPath) ?? 'master';
+  return parseCommitLog(gitText(repoPath, ['log', '--format=%H%x09%s', `${base}..${branch}`]));
+}
+
+function parseCommitLog(output: string): BranchCommit[] {
+  const trimmed = output.trim();
+  if (trimmed === '') {
     return [];
   }
-  return output.split('\n').map((line) => {
+  return trimmed.split('\n').map((line) => {
     const tab = line.indexOf('\t');
     return { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
   });

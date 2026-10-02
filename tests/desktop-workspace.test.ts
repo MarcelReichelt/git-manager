@@ -232,6 +232,20 @@ describe('desktop workspace', () => {
     expect(main).toContain('frame: false');
   });
 
+  it('rounds the workspace window itself', async () => {
+    const fixture = await render();
+    const host = getComputedStyle(fixture.nativeElement);
+    expect(Number.parseFloat(host.borderRadius)).toBeGreaterThanOrEqual(8);
+    expect(host.overflow).toBe('hidden');
+    expect(host.backgroundColor).toBe('rgb(26, 60, 43)');
+
+    const main = readFileSync('src/desktop/electron-main.mjs', 'utf8');
+    expect(main).toContain('frame: false');
+    expect(main).toContain('transparent: true');
+    expect(main).toContain('backgroundColor: \'#00000000\'');
+    expect(main).toContain('roundedCorners: true');
+  });
+
   it('minimizes, maximizes, and closes the window from the top bar', async () => {
     const actions: string[] = [];
     setWindowChrome((action) => {
@@ -2320,6 +2334,36 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(sheet).overflowY).toBe('hidden');
   });
 
+  it('keeps a scrollbar inside the content sheet corners', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    let sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    expectContentSheetCorners(sheet);
+    expectScrollingRegionsInset(sheet);
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+    sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    expectScrollingRegionsInset(sheet);
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
+    fixture.detectChanges();
+    sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    expectScrollingRegionsInset(sheet);
+  });
+
   it('scrolls the branch list inside the sidebar', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -2695,6 +2739,47 @@ function commitSubjects(list: Element): string[] {
   return [...list.querySelectorAll('[data-testid="commit"]')].map(
     (commit) => commit.getAttribute('data-subject') ?? '',
   );
+}
+
+function expectContentSheetCorners(sheet: HTMLElement): void {
+  const style = getComputedStyle(sheet);
+  expect(Number.parseFloat(style.borderRadius)).toBeGreaterThanOrEqual(4);
+  expect(style.overflow).toBe('hidden');
+}
+
+function expectScrollingRegionsInset(sheet: HTMLElement): void {
+  const regions = scrollingRegions(sheet);
+  expect(regions.length).toBeGreaterThan(0);
+  for (const region of regions) {
+    expect(scrollingRegionRightInset(region, sheet)).toBeGreaterThan(0);
+  }
+}
+
+function scrollingRegions(sheet: HTMLElement): HTMLElement[] {
+  return [...sheet.querySelectorAll<HTMLElement>('*')].filter((element) => {
+    const overflowY = getComputedStyle(element).overflowY;
+    return overflowY === 'auto' || overflowY === 'scroll';
+  });
+}
+
+function scrollingRegionRightInset(region: HTMLElement, sheet: HTMLElement): number {
+  const regionStyle = getComputedStyle(region);
+  const sheetStyle = getComputedStyle(sheet);
+  const paddingRight = Math.max(
+    Number.parseFloat(regionStyle.paddingRight) || 0,
+    Number.parseFloat(sheetStyle.paddingRight) || 0,
+  );
+  const marginRight = Number.parseFloat(regionStyle.marginRight) || 0;
+  if (paddingRight > 0 || marginRight > 0) {
+    return Math.max(paddingRight, marginRight);
+  }
+
+  const regionBox = region.getBoundingClientRect();
+  const sheetBox = sheet.getBoundingClientRect();
+  if (sheetBox.width > 0 && regionBox.width < sheetBox.width) {
+    return sheetBox.width - regionBox.width;
+  }
+  return 0;
 }
 
 function scrollCommitList(

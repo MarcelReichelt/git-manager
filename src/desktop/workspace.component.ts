@@ -168,6 +168,7 @@ const sampleCard: CardRepository[] = [
   --coral: #ff8c69;
   display: block;
   min-height: 100vh;
+  overflow: hidden;
   background: #1a3c2b;
   border-radius: 8px;
   color: var(--grid);

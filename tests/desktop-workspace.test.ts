@@ -1182,6 +1182,30 @@ describe('desktop workspace', () => {
     ]);
   });
 
+  it('places changes above commits and the selected file diff to their right', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="commit-files"]')).toBeNull();
+    const changes = fixture.nativeElement.querySelector('[data-testid="changes"]');
+    const commits = fixture.nativeElement.querySelector('[data-testid="commits"]');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(blockTop(commits)).toBeGreaterThanOrEqual(blockBottom(changes));
+    expect(changes.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+
+    const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    expect(commitFiles.closest('[data-testid="commits"]')).toBeNull();
+    expect(commitFiles.closest('[data-testid="changes"]')).toBeNull();
+    expect(commits.compareDocumentPosition(commitFiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(commitFiles.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('shows the working tree diff when src/login.ts is chosen', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -1215,7 +1239,8 @@ describe('desktop workspace', () => {
 
     const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(diff.textContent).toContain('+function login');
-    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+    expect(commitFiles.closest('[data-testid="commits"]')).toBeNull();
+    expect(commitFiles.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('lists only the Harbor commits that are not on the default branch, below the changes', async () => {
@@ -1386,7 +1411,8 @@ describe('desktop workspace', () => {
 
     const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(diff.textContent).toContain('old guide');
-    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+    expect(commitFiles.closest('[data-testid="commits"]')).toBeNull();
+    expect(commitFiles.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('loads the next page of recent commits when the list is scrolled to the end', async () => {
@@ -1617,7 +1643,7 @@ describe('desktop workspace', () => {
 
     const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(diff.textContent).toContain('new guide');
-    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(commitFiles));
+    expect(commitFiles.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the logo"]').click();
     fixture.detectChanges();
@@ -2402,7 +2428,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
     fixture.detectChanges();
 
-    const diff = fixture.nativeElement.querySelector('[data-testid="changes"] [data-testid="diff"]');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     const style = getComputedStyle(diff);
     expect(['auto', 'scroll']).toContain(style.overflowY);
     expect(Number.parseFloat(style.minHeight)).toBe(0);
@@ -2452,7 +2478,7 @@ describe('desktop workspace', () => {
     const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
     const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]');
     const changedFiles = fixture.nativeElement.querySelector('[data-testid="changed-files"]');
-    const diff = fixture.nativeElement.querySelector('[data-testid="changes"] [data-testid="diff"]');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     const commits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
 
     expect(bar.offsetParent).not.toBe(sheet);
@@ -2585,8 +2611,7 @@ describe('desktop workspace', () => {
 
     const after = Number.parseFloat(files.style.width);
     expect(after).toBeGreaterThan(before);
-    expect(Number.parseFloat(diff.style.left)).toBeGreaterThan(after);
-    expect(leftEdge(diff)).toBeGreaterThan(leftEdge(files));
+    expect(files.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fixture.detectChanges();
     expect(Number.parseFloat(files.style.width)).toBe(after);
@@ -2659,18 +2684,10 @@ function dragDivider(split: HTMLElement, start: { x: number; y: number }, end: {
   split.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: end.x, clientY: end.y }));
 }
 
-function leftEdge(element: HTMLElement): number {
-  const rect = element.getBoundingClientRect();
-  if (rect.left !== 0 || rect.width !== 0) {
-    return rect.left;
-  }
-  return Number.parseFloat(getComputedStyle(element).left);
-}
-
 function sheetSection(element: HTMLElement): HTMLElement {
-  const columns = element.closest('.sheet-columns');
+  const boundary = element.closest('.sheet-stack') ?? element.closest('.sheet-columns');
   let current: HTMLElement | null = element;
-  while (current && current.parentElement !== columns) {
+  while (current && current.parentElement !== boundary) {
     current = current.parentElement;
   }
   return current ?? element;

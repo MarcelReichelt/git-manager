@@ -225,7 +225,23 @@ function changedFilesInWorktree(worktree: string): ChangedFile[] {
   return [...tracked, ...untrackedFiles(worktree)];
 }
 
+function pruneDeletedRemoteBranches(repoPath: string): void {
+  for (const remote of configuredRemotes(repoPath)) {
+    try {
+      execFileSync('git', ['remote', 'prune', remote], {
+        cwd: repoPath,
+        stdio: 'ignore',
+        timeout: 15000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      });
+    } catch {
+      // An unreachable remote keeps the tracking refs already stored locally.
+    }
+  }
+}
+
 export function listBranches(repoPath: string): BranchRow[] {
+  pruneDeletedRemoteBranches(repoPath);
   const fallbackBase = aheadBehindBase(repoPath);
   const localNames = gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
     .split('\n')
@@ -301,6 +317,9 @@ export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[]
   };
 
   for (const row of listBranches(repoPath)) {
+    if (row.status === 'remote-deleted') {
+      continue;
+    }
     const name = row.status === 'remote-only' ? shortRemoteBranch(row.name, remotes) : row.name;
     add(name, row.status);
   }

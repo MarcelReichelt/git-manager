@@ -374,14 +374,24 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
-[data-testid='create-worktree-dialog'] label {
+[data-testid='create-worktree-dialog'] label,
+[data-testid='existing-branches-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin: 0;
+  color: var(--grid);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
+  font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.existing-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 [data-testid='create-worktree-dialog'] input,
@@ -922,28 +932,36 @@ button, input { font: inherit; color: inherit; }
         <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Create worktree</h2>
           <label>
-            Branch name
+            New branch
             <input
               data-testid="create-branch"
               role="combobox"
               aria-autocomplete="list"
               aria-controls="create-branch-options"
-              placeholder="Branch name"
+              placeholder="New branch name"
               [value]="createBranchName()"
               (input)="setCreateBranchName($event)"
             />
           </label>
           @if (createBranchOptions().length > 0) {
-            <ul id="create-branch-options" data-testid="create-branch-options" role="listbox">
-              @for (name of createBranchOptions(); track name) {
-                <li
-                  data-testid="create-branch-option"
-                  role="option"
-                  [attr.data-branch]="name"
-                  (click)="chooseCreateBranch(name)"
-                >{{ name }}</li>
-              }
-            </ul>
+            <div class="existing-branches">
+              <h3 id="existing-branches-heading" data-testid="existing-branches-heading">Existing branches</h3>
+              <ul
+                id="create-branch-options"
+                data-testid="create-branch-options"
+                role="listbox"
+                aria-labelledby="existing-branches-heading"
+              >
+                @for (name of createBranchOptions(); track name) {
+                  <li
+                    data-testid="create-branch-option"
+                    role="option"
+                    [attr.data-branch]="name"
+                    (click)="chooseCreateBranch(name)"
+                  >{{ name }}</li>
+                }
+              </ul>
+            </div>
           }
           <p data-testid="create-worktree-note">
             A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.

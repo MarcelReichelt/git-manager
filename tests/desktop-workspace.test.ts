@@ -1190,16 +1190,16 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="commit-files"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]')).toBeNull();
     const changes = fixture.nativeElement.querySelector('[data-testid="changes"]');
     const commits = fixture.nativeElement.querySelector('[data-testid="commits"]');
-    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(blockTop(commits)).toBeGreaterThanOrEqual(blockBottom(changes));
-    expect(changes.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
     fixture.detectChanges();
 
     const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
     expect(commitFiles.closest('[data-testid="commits"]')).toBeNull();
     expect(commitFiles.closest('[data-testid="changes"]')).toBeNull();
     expect(commits.compareDocumentPosition(commitFiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1213,9 +1213,11 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    const loginFile = fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]');
+    loginFile.click();
     fixture.detectChanges();
 
+    expect(loginFile.classList.contains('is-selected')).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain(
       '+export function login',
     );
@@ -1228,11 +1230,16 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    const loginCommit = fixture.nativeElement.querySelector(
+      '[data-testid="commit"][data-subject="Add the login form"]',
+    );
+    loginCommit.click();
     fixture.detectChanges();
 
+    expect(loginCommit.classList.contains('is-selected')).toBe(true);
     const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
     const file = commitFiles.querySelector('[data-testid="changed-file"]');
+    expect(file.classList.contains('is-selected')).toBe(true);
     expect(file.getAttribute('data-path')).toBe('src/login.ts');
     expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('10');
     expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
@@ -2490,6 +2497,70 @@ describe('desktop workspace', () => {
     expect(branchList.scrollTop).toBe(0);
     expect(diff.scrollTop).toBe(0);
     expect(commits.scrollTop).toBe(0);
+  });
+
+  it('shows the first-parent diff for a merge commit and highlights the selection', async () => {
+    const repoPath = createEmptyRepository(roots);
+    writeFileSync(join(repoPath, 'base.txt'), 'base\n');
+    git(repoPath, ['add', 'base.txt']);
+    git(repoPath, ['commit', '-m', 'Add the base']);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repoPath, 'feature.txt'), 'from feature\n');
+    git(repoPath, ['add', 'feature.txt']);
+    git(repoPath, ['commit', '-m', 'Add the feature file']);
+    git(repoPath, ['checkout', 'master']);
+    writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
+    git(repoPath, ['add', 'master.txt']);
+    git(repoPath, ['commit', '-m', 'Add the master file']);
+    git(repoPath, ['merge', '--no-ff', 'feature', '-m', 'Merge feature into master']);
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const merge = fixture.nativeElement.querySelector(
+      '[data-testid="commit"][data-subject="Merge feature into master"]',
+    );
+    merge.click();
+    fixture.detectChanges();
+
+    expect(merge.classList.contains('is-selected')).toBe(true);
+    expect(getComputedStyle(merge).backgroundColor).toBe('rgba(26, 60, 43, 0.12)');
+    const featureFile = fixture.nativeElement.querySelector(
+      '[data-testid="commit-files"] [data-testid="changed-file"][data-path="feature.txt"]',
+    );
+    expect(featureFile.classList.contains('is-selected')).toBe(true);
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    expect(diff.textContent).toContain('from feature');
+
+    const plain = fixture.nativeElement.querySelector(
+      '[data-testid="commit"][data-subject="Add the master file"]',
+    );
+    plain.click();
+    fixture.detectChanges();
+    expect(merge.classList.contains('is-selected')).toBe(false);
+    expect(plain.classList.contains('is-selected')).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('from master');
+  });
+
+  it('keeps the file list and explains a commit that has no diff', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['commit', '--allow-empty', '-m', 'Empty note']);
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="changed-files"]')).not.toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Empty note"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="changed-files"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="commit-files"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]').textContent.trim()).toBe(
+      'No diff for this file',
+    );
   });
 
   it('drags the divider between the changed-file list and the diff', async () => {

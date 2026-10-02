@@ -441,6 +441,12 @@ ul { margin: 0; padding: 0; list-style: none; }
 [data-testid='changed-file']:hover,
 [data-testid='commit']:hover { background: var(--surface); }
 
+[data-testid='changed-file'].is-selected,
+[data-testid='commit'].is-selected {
+  background: rgba(26, 60, 43, 0.12);
+  box-shadow: inset 3px 0 0 var(--forest);
+}
+
 [data-testid='changed-file'] button,
 [data-testid='commit'] button {
   padding: 0;
@@ -464,6 +470,12 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--coral);
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
+}
+
+[data-testid='empty-diff'] {
+  margin: 0;
+  padding: 16px;
+  color: rgba(58, 58, 56, 0.7);
 }
 
 [data-testid='diff'] {

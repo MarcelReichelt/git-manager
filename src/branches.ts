@@ -353,9 +353,9 @@ export function readWorkingTreeDiff(repoPath: string, branch: string, filePath: 
 }
 
 export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
-  return parseNumstat(gitText(repoPath, ['show', '-M', '--numstat', '-z', '--format=', sha]));
+  return parseNumstat(gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--numstat', '-z', '--format=', sha]));
 }
 
 export function readCommitFileDiff(repoPath: string, sha: string, filePath: string): string {
-  return gitText(repoPath, ['show', '-M', '--format=', sha, '--', filePath], true);
+  return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--format=', sha, '--', filePath], true);
 }

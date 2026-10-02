@@ -737,6 +737,7 @@ button, input { font: inherit; color: inherit; }
               @for (file of visibleFiles(); track file.path) {
                 <li
                   data-testid="changed-file"
+                  [class.is-selected]="isSelectedFile(file.path)"
                   [attr.data-path]="file.path"
                   [attr.data-previous-path]="file.previousPath ?? null"
                   (click)="selectFile(file.path)"
@@ -769,6 +770,7 @@ button, input { font: inherit; color: inherit; }
                 @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
+                    [class.is-selected]="isSelectedCommit(commit)"
                     [attr.data-sha]="commit.sha ?? null"
                     [attr.data-subject]="commit.subject"
                     (click)="selectCommit(commit.subject, commit.sha)"
@@ -783,6 +785,7 @@ button, input { font: inherit; color: inherit; }
                 @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
+                    [class.is-selected]="isSelectedCommit(commit)"
                     [attr.data-sha]="commit.sha ?? null"
                     [attr.data-subject]="commit.subject"
                     (click)="selectCommit(commit.subject, commit.sha)"
@@ -794,6 +797,7 @@ button, input { font: inherit; color: inherit; }
             }
             </div>
             </div>
+            @if (showDetail()) {
             <div
               class="splitter"
               role="separator"
@@ -804,11 +808,12 @@ button, input { font: inherit; color: inherit; }
               (pointermove)="moveSplit($event)"
               (pointerup)="endSplit($event)"
             ></div>
-            @if (showingCommit()) {
+            @if (showingCommit() && visibleCommitFiles().length > 0) {
               <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
                 @for (file of visibleCommitFiles(); track file.path) {
                   <li
                     data-testid="changed-file"
+                    [class.is-selected]="isSelectedFile(file.path)"
                     [attr.data-path]="file.path"
                     [attr.data-previous-path]="file.previousPath ?? null"
                     (click)="selectCommitFile(file.path, $event)"
@@ -834,7 +839,12 @@ button, input { font: inherit; color: inherit; }
                 (pointerup)="endSplit($event)"
               ></div>
             }
-            <pre data-testid="diff">{{ paneDiff() }}</pre>
+            @if (diffText()) {
+              <pre data-testid="diff">{{ diffText() }}</pre>
+            } @else {
+              <p data-testid="empty-diff">No diff for this file</p>
+            }
+            }
             </div>
             @if (platform() === 'win32' && shellRunning() && worktreePath()) {
               <div
@@ -1270,13 +1280,14 @@ export class WorkspaceComponent implements OnInit {
 
   selectCommit(subject: string, sha?: string): void {
     this.selectedCommitSubject.set(sha ?? subject);
-    this.selectedFilePath.set(null);
     const repo = this.effectivePath();
     if (!repo) {
+      this.selectedFilePath.set(this.selectedCommit()?.files?.[0]?.path ?? null);
       return;
     }
     const commit = this.commitByIdentity(subject, sha);
     if (!commit) {
+      this.selectedFilePath.set(null);
       this.loadedCommitFiles.set([]);
       this.loadedDiff.set(null);
       return;
@@ -1284,11 +1295,13 @@ export class WorkspaceComponent implements OnInit {
     const files = readCommitFiles(repo, commit.sha);
     this.loadedCommitFiles.set(files);
     const first = files[0];
+    this.selectedFilePath.set(first?.path ?? null);
     this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path) : '');
   }
 
   selectCommitFile(path: string, event: Event): void {
     event.stopPropagation();
+    this.selectedFilePath.set(path);
     const repo = this.effectivePath();
     const identity = this.selectedCommitSubject();
     if (!repo || !identity) {
@@ -1299,6 +1312,15 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
+  }
+
+  isSelectedCommit(commit: { sha?: string; subject: string }): boolean {
+    const selected = this.selectedCommitSubject();
+    return selected !== null && (selected === commit.sha || selected === commit.subject);
+  }
+
+  isSelectedFile(path: string): boolean {
+    return this.selectedFilePath() === path;
   }
 
   private commitByIdentity(subject: string, sha?: string): BranchCommit | undefined {
@@ -1464,11 +1486,18 @@ export class WorkspaceComponent implements OnInit {
   }
 
   sheetColumns(): string {
-    const history = `${this.changesFileWidth()}px 8px`;
-    if (!this.showingCommit()) {
-      return `${history} minmax(0, 1fr)`;
+    if (!this.showDetail()) {
+      return 'minmax(0, 1fr)';
     }
-    return `${history} ${this.commitFileWidth()}px 8px minmax(0, 1fr)`;
+    const history = `${this.changesFileWidth()}px 8px`;
+    if (this.showingCommit() && this.visibleCommitFiles().length > 0) {
+      return `${history} ${this.commitFileWidth()}px 8px minmax(0, 1fr)`;
+    }
+    return `${history} minmax(0, 1fr)`;
+  }
+
+  showDetail(): boolean {
+    return this.showingCommit() || this.selectedFilePath() !== null;
   }
 
   paneDiff(): string {
@@ -1476,6 +1505,10 @@ export class WorkspaceComponent implements OnInit {
       return this.visibleCommitDiff();
     }
     return this.selectedDiff() ?? '';
+  }
+
+  diffText(): string {
+    return this.paneDiff().trim();
   }
 
   moveSplit(event: PointerEvent): void {

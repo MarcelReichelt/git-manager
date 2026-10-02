@@ -2311,6 +2311,117 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).not.toBeNull();
   });
 
+  it('does not scroll the content sheet as one page', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    expect(getComputedStyle(sheet).overflowY).toBe('hidden');
+  });
+
+  it('scrolls the branch list inside the sidebar', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const sidebar = fixture.nativeElement.querySelector('[data-testid="workspace"] aside');
+    const branchList = sidebar.querySelector('[data-testid="branch-list"]');
+    const style = getComputedStyle(branchList);
+    expect(['auto', 'scroll']).toContain(style.overflowY);
+    expect(Number.parseFloat(style.minHeight)).toBe(0);
+    expect(Number.parseFloat(style.flexGrow)).toBeGreaterThan(0);
+    expect(branchList.parentElement).toBe(sidebar);
+  });
+
+  it('scrolls the changes inside their own region', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const changedFiles = fixture.nativeElement.querySelector('[data-testid="changed-files"]');
+    const style = getComputedStyle(changedFiles);
+    expect(['auto', 'scroll']).toContain(style.overflowY);
+    expect(Number.parseFloat(style.minHeight)).toBe(0);
+    expect(Number.parseFloat(style.flexGrow)).toBeGreaterThan(0);
+    expect(changedFiles.closest('[data-testid="changes"]')).not.toBeNull();
+  });
+
+  it('scrolls the diff inside its own region', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="changes"] [data-testid="diff"]');
+    const style = getComputedStyle(diff);
+    expect(['auto', 'scroll']).toContain(style.overflowY);
+    expect(Number.parseFloat(style.minHeight)).toBe(0);
+    expect(Number.parseFloat(style.flexGrow)).toBeGreaterThan(0);
+  });
+
+  it('scrolls the commits inside their own region', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const branchCommits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const branchStyle = getComputedStyle(branchCommits);
+    expect(['auto', 'scroll']).toContain(branchStyle.overflowY);
+    expect(Number.parseFloat(branchStyle.minHeight)).toBe(0);
+    expect(Number.parseFloat(branchStyle.flexGrow)).toBeGreaterThan(0);
+    expect(branchCommits.closest('[data-testid="commits"]')).not.toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
+    fixture.detectChanges();
+
+    const recentCommits = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    const recentStyle = getComputedStyle(recentCommits);
+    expect(['auto', 'scroll']).toContain(recentStyle.overflowY);
+    expect(Number.parseFloat(recentStyle.minHeight)).toBe(0);
+    expect(Number.parseFloat(recentStyle.flexGrow)).toBeGreaterThan(0);
+  });
+
+  it('leaves the top bar and the other regions in place when one region scrolls', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]');
+    const changedFiles = fixture.nativeElement.querySelector('[data-testid="changed-files"]');
+    const diff = fixture.nativeElement.querySelector('[data-testid="changes"] [data-testid="diff"]');
+    const commits = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+
+    expect(bar.offsetParent).not.toBe(sheet);
+
+    changedFiles.scrollTop = 48;
+
+    expect(changedFiles.scrollTop).toBe(48);
+    expect(sheet.scrollTop).toBe(0);
+    expect(branchList.scrollTop).toBe(0);
+    expect(diff.scrollTop).toBe(0);
+    expect(commits.scrollTop).toBe(0);
+  });
+
   it('leaves registered repositories unchanged when the add dialog is cancelled', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);

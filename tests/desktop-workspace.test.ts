@@ -877,7 +877,7 @@ describe('desktop workspace', () => {
     ).toEqual(['master', 'feature']);
   });
 
-  it('creates a worktree when the typed branch name is not listed', async () => {
+  it('creates a worktree when a local branch name is typed', async () => {
     const repoPath = createEmptyRepository(roots);
     const sha = git(repoPath, ['rev-parse', 'HEAD']);
     git(repoPath, ['branch', 'notes']);
@@ -893,7 +893,7 @@ describe('desktop workspace', () => {
       [...dialog.querySelectorAll('[data-testid="create-branch-option"]')].map((option) =>
         option.getAttribute('data-branch'),
       ),
-    ).toEqual(['feature']);
+    ).toEqual(['notes', 'feature']);
     const field = dialog.querySelector('[data-testid="create-branch"]');
     field.value = 'notes';
     field.dispatchEvent(new Event('input'));

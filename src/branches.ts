@@ -372,35 +372,6 @@ function checkedOutBranch(repoPath: string): string | undefined {
   return name;
 }
 
-export interface AvailableBranch {
-  name: string;
-  status: BranchStatus;
-}
-
-export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[] {
-  const taken = checkedOutBranches(repoPath);
-  const remotes = remoteNames(repoPath);
-  const seen = new Set<string>();
-  const available: AvailableBranch[] = [];
-
-  const add = (name: string, status: BranchStatus): void => {
-    if (name === '' || taken.has(name) || seen.has(name)) {
-      return;
-    }
-    seen.add(name);
-    available.push({ name, status });
-  };
-
-  for (const row of listBranches(repoPath)) {
-    const name = row.status === 'remote-only' ? stripRemotePrefix(row.name, remotes) : row.name;
-    add(name, row.status);
-  }
-  for (const name of remoteShortNames(repoPath, remotes)) {
-    add(name, 'remote-only');
-  }
-  return available;
-}
-
 export function readChangedFiles(repoPath: string, branch: string): ChangedFile[] {
   const checkout = worktreePath(repoPath, branch);
   if (!checkout) {

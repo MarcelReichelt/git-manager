@@ -376,8 +376,66 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='create-worktree-dialog'] [data-testid='workspace-error'],
+[data-testid='merge-into-master-dialog'] [data-testid='workspace-error'],
 [data-testid='repository-settings-dialog'] [data-testid='settings-error'] {
   color: var(--coral);
+}
+
+[data-testid='merge-into-master-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='merge-into-master-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='merge-into-master-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='merge-into-master-dialog'] label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+[data-testid='confirm-merge-into-master'],
+[data-testid='cancel-merge-into-master'] {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='confirm-merge-into-master'] {
+  background: var(--forest);
+  color: white;
+  border-color: var(--forest);
 }
 
 [data-testid='repository-settings-dialog'] {
@@ -602,10 +660,6 @@ button, input { font: inherit; color: inherit; }
                       >
                         Merge into master
                       </button>
-                      <label>
-                        Squash
-                        <input data-testid="squash" type="checkbox" />
-                      </label>
                     </fieldset>
                     <button
                       type="button"
@@ -622,7 +676,7 @@ button, input { font: inherit; color: inherit; }
             <button type="button" data-testid="create-worktree" (click)="openCreateDialog()">Create worktree</button>
           </div>
           @if (workspaceError(); as message) {
-            @if (!createDialogOpen()) {
+            @if (!createDialogOpen() && !mergeDialogBranch()) {
               <p data-testid="workspace-error">{{ message }}</p>
             }
           }
@@ -780,6 +834,29 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (mergeDialogBranch()) {
+      <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master">
+        <section class="dialog-panel">
+          <h2>Merge into master</h2>
+          <label>
+            Squash
+            <input
+              data-testid="squash"
+              type="checkbox"
+              [checked]="mergeSquash()"
+              (change)="setMergeSquash($event)"
+            />
+          </label>
+          @if (workspaceError(); as message) {
+            <p data-testid="workspace-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-merge-into-master" (click)="confirmMerge()">Merge into master</button>
+            <button type="button" data-testid="cancel-merge-into-master" (click)="cancelMerge()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
     @if (settingsOpen()) {
       <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings">
         <section class="dialog-panel">
@@ -880,6 +957,8 @@ export class WorkspaceComponent implements OnInit {
   readonly settingsError = signal<string | null>(null);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
+  readonly mergeDialogBranch = signal<string | null>(null);
+  readonly mergeSquash = signal(false);
   readonly workspaceError = signal<string | null>(null);
   readonly worktreePath = signal('');
   readonly sessions = signal<string[]>([]);
@@ -1376,12 +1455,37 @@ export class WorkspaceComponent implements OnInit {
 
   updateBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => updateFromMaster(this.effectivePath() ?? '', name, squashChecked(event)));
+    this.runBranchAction(name, () => updateFromMaster(this.effectivePath() ?? '', name, false));
   }
 
   mergeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => mergeIntoMaster(this.effectivePath() ?? '', name, squashChecked(event)));
+    this.workspaceError.set(null);
+    this.mergeSquash.set(false);
+    this.mergeDialogBranch.set(name);
+  }
+
+  setMergeSquash(event: Event): void {
+    const target = event.target as { checked?: boolean } | null;
+    this.mergeSquash.set(target?.checked === true);
+  }
+
+  cancelMerge(): void {
+    this.workspaceError.set(null);
+    this.mergeSquash.set(false);
+    this.mergeDialogBranch.set(null);
+  }
+
+  confirmMerge(): void {
+    const name = this.mergeDialogBranch();
+    if (!name) {
+      return;
+    }
+    this.runBranchAction(name, () => mergeIntoMaster(this.effectivePath() ?? '', name, this.mergeSquash()));
+    if (this.workspaceError() === null) {
+      this.mergeSquash.set(false);
+      this.mergeDialogBranch.set(null);
+    }
   }
 
   removeBranch(name: string, event: Event): void {
@@ -1529,12 +1633,4 @@ function hostPlatform(): string {
     return process.platform;
   }
   return 'linux';
-}
-
-function squashChecked(event: Event): boolean {
-  const current = event.currentTarget as {
-    closest?: (selector: string) => { querySelector?: (selector: string) => { checked?: boolean } | null } | null;
-  } | null;
-  const box = current?.closest?.('[data-testid="hover-menu"]')?.querySelector?.('[data-testid="squash"]');
-  return box?.checked === true;
 }

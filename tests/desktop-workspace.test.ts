@@ -670,7 +670,7 @@ describe('desktop workspace', () => {
     );
   });
 
-  it('opens a branch menu where squash is inside Merge and remove is outside it', async () => {
+  it('opens a branch menu with merge actions and no squash control', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -678,22 +678,23 @@ describe('desktop workspace', () => {
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
     const closedMenu = row.querySelector('[data-testid="hover-menu"]');
     expect(closedMenu.classList.contains('is-open')).toBe(false);
-    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
-    expect(css).toContain(':hover');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
+    expect(menu.querySelector('[data-testid="squash"]')).toBeNull();
     const group = menu.querySelector('fieldset');
     expect(group.querySelector('legend').textContent.trim()).toBe('Merge');
-    expect(group.querySelector('[data-testid="update-from-master"]')).not.toBeNull();
-    expect(group.querySelector('[data-testid="merge-into-master"]')).not.toBeNull();
-    const squash = group.querySelector('[data-testid="squash"]');
-    expect(squash.getAttribute('type')).toBe('checkbox');
+    expect(group.querySelector('[data-testid="update-from-master"]').textContent.trim()).toBe(
+      'Update from master',
+    );
+    expect(group.querySelector('[data-testid="merge-into-master"]').textContent.trim()).toBe(
+      'Merge into master',
+    );
     const remove = menu.querySelector('[data-testid="remove-worktree"]');
+    expect(remove.textContent.trim()).toBe('Remove worktree');
     expect(group.contains(remove)).toBe(false);
-    expect(squash.parentElement).not.toBe(remove.parentElement);
-    expect(squash.parentElement).not.toBe(group.parentElement);
+    expect(remove.parentElement).toBe(group.parentElement);
   });
 
   it('keeps branch actions closed while the pointer is only hovering the row', async () => {
@@ -721,6 +722,25 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(menu).display).toBe('none');
   });
 
+  it('keeps the branch menu within its own bounds when a row is hovered', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    const update = menu.querySelector('[data-testid="update-from-master"]');
+    update.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(menu.querySelector('[data-testid="squash"]')).toBeNull();
+    expect(update.textContent.trim()).toBe('Update from master');
+    expect(getComputedStyle(menu).overflow).toBe('hidden');
+  });
+
   it('opens one branch action menu and closes the other', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -740,7 +760,6 @@ describe('desktop workspace', () => {
     expect(loginMenu.querySelector('[data-testid="merge-into-master"]').textContent.trim()).toBe(
       'Merge into master',
     );
-    expect(loginMenu.querySelector('[data-testid="squash"]').parentElement.textContent.trim()).toBe('Squash');
     expect(loginMenu.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe(
       'Remove worktree',
     );
@@ -790,10 +809,9 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
 
-    row.querySelector('[data-testid="squash"]').click();
+    row.querySelector('[data-testid="hover-menu"] legend').click();
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
-    expect(row.querySelector('[data-testid="squash"]').checked).toBe(true);
 
     fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
     fixture.detectChanges();
@@ -1696,8 +1714,11 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]');
+    dialog.querySelector('[data-testid="confirm-merge-into-master"]').click();
+    fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+    expect(dialog.querySelector('[data-testid="workspace-error"]').textContent).toContain(
       'Primary checkout is on other, not master',
     );
     expect(git(repoPath, ['branch', '--show-current'])).toBe('other');
@@ -1722,11 +1743,39 @@ describe('desktop workspace', () => {
     row.querySelector('[data-testid="update-from-master"]').click();
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]')).toBeNull();
     expect(readFileSync(join(checkout, 'master.txt'), 'utf8')).toBe('from master\n');
     expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('master change');
     expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+  });
+
+  it('opens a merge dialog that offers squash', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]')).toBeNull();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-label')).toBe('Merge into master');
+    expect(dialog.querySelector('h2').textContent.trim()).toBe('Merge into master');
+    const squash = dialog.querySelector('[data-testid="squash"]');
+    expect(squash.tagName).toBe('INPUT');
+    expect(squash.getAttribute('type')).toBe('checkbox');
+    expect(squash.checked).toBe(false);
+    expect(squash.parentElement.textContent.trim()).toBe('Squash');
+    const panel = getComputedStyle(dialog.querySelector('.dialog-panel'));
+    expect(panel.backgroundColor).toBe('rgb(247, 247, 245)');
+    expect(panel.borderRadius).toBe('8px');
   });
 
   it('merges the branch into master', async () => {
@@ -1747,7 +1796,12 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]');
+    expect(dialog.querySelector('[data-testid="squash"]').checked).toBe(false);
+    dialog.querySelector('[data-testid="confirm-merge-into-master"]').click();
+    fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]')).toBeNull();
     expect(readFileSync(join(repoPath, 'feature.txt'), 'utf8')).toBe('from feature\n');
     expect(git(repoPath, ['log', '-1', '--format=%s'])).toBe('feature change');
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
@@ -1770,15 +1824,50 @@ describe('desktop workspace', () => {
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
-    row.querySelector('[data-testid="squash"]').click();
-    fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]');
+    dialog.querySelector('[data-testid="squash"]').click();
+    fixture.detectChanges();
+    expect(dialog.querySelector('[data-testid="squash"]').checked).toBe(true);
+    dialog.querySelector('[data-testid="confirm-merge-into-master"]').click();
     fixture.detectChanges();
 
     expect(readFileSync(join(repoPath, 'feature.txt'), 'utf8')).toBe('from feature\n');
     expect(git(repoPath, ['log', '--format=%s'])).toBe('Squash feature into master\ninit');
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
     expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('feature change');
+  });
+
+  it('does not merge into master when the merge dialog is cancelled', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
+    git(checkout, ['add', 'feature.txt']);
+    git(checkout, ['commit', '-m', 'feature change']);
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]');
+    dialog.querySelector('[data-testid="squash"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="cancel-merge-into-master"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]')).toBeNull();
+    expect(existsSync(join(repoPath, 'feature.txt'))).toBe(false);
+    expect(git(repoPath, ['log', '--format=%s'])).toBe('init');
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(git(checkout, ['log', '-1', '--format=%s'])).toBe('feature change');
+    expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
   });
 
   it('removes the worktree and keeps the branch in the sidebar', async () => {

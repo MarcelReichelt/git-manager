@@ -243,6 +243,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   z-index: 3;
   width: 176px;
   padding: 4px 0;
+  overflow: hidden;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 8px;
   background: var(--paper);

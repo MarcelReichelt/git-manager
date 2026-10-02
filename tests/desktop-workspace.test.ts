@@ -2404,6 +2404,35 @@ describe('desktop workspace', () => {
       `Not a git repository: ${plain}`,
     );
     expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]').textContent).toBe(
+      `Not a git repository: ${plain}`,
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).not.toBeNull();
+  });
+
+  it('suggests the directory name of a bare git repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const bare = join(root, 'pier.git');
+    execFileSync('git', ['init', '--bare', bare], { stdio: 'ignore' });
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    setFolderBrowser(async () => bare);
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="add-repository-name"]').value).toBe('pier.git');
+    expect(fixture.nativeElement.querySelector('[data-testid="card-error"]')).toBeNull();
   });
 
   it('shows an error and does not add a repository when the folder is not a git repository', async () => {

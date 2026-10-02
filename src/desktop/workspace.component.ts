@@ -1282,18 +1282,16 @@ export class WorkspaceComponent implements OnInit {
         return;
       }
       this.addPath.set(chosen);
+      let name = '';
       try {
-        const name = suggestedRepositoryName(chosen);
+        name = readRepositoryName(chosen);
         this.cardError.set(null);
-        if (!this.addNameTouched()) {
-          this.addName.set(name);
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.cardError.set(message);
-        if (!this.addNameTouched()) {
-          this.addName.set('');
-        }
+      }
+      if (!this.addNameTouched()) {
+        this.addName.set(name);
       }
     });
   }
@@ -1316,6 +1314,13 @@ export class WorkspaceComponent implements OnInit {
     this.cardError.set(null);
     if (this.addPath().trim() === '') {
       this.cardError.set('Choose a repository folder');
+      return;
+    }
+    try {
+      readRepositoryName(this.addPath());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.cardError.set(message);
       return;
     }
     const displayName = this.addName().trim();
@@ -1996,20 +2001,29 @@ function clampSplit(value: number, limit: number | undefined): number {
   return Math.min(floored, limit);
 }
 
-function suggestedRepositoryName(repoPath: string): string {
+function readRepositoryName(repoPath: string): string {
   const path = resolve(repoPath);
+  let insideWorkTree: string;
   try {
+    insideWorkTree = execFileSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    throw new Error(`Not a git repository: ${path}`);
+  }
+  if (insideWorkTree === 'true') {
     const toplevel = execFileSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    if (toplevel !== '') {
-      return basename(toplevel);
-    }
-  } catch {
-    // The chosen directory is not inside a git work tree.
+    return basename(toplevel);
   }
-  throw new Error(`Not a git repository: ${path}`);
+  const gitDir = execFileSync('git', ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  return basename(gitDir);
 }
 
 function hostPlatform(): string {

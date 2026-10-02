@@ -723,6 +723,9 @@ describe('desktop workspace', () => {
     expect(dialog.getAttribute('aria-label')).toBe('Create worktree');
     const field = dialog.querySelector('[data-testid="create-branch"]');
     expect(field.tagName).toBe('INPUT');
+    expect(field.getAttribute('placeholder')).toBe('New branch name');
+    expect(dialog.querySelector('label').textContent).toContain('New branch');
+    expect(dialog.querySelector('[data-testid="existing-branches-heading"]')).toBeNull();
     expect(dialog.querySelector('h2').textContent.trim()).toBe('Create worktree');
   });
 
@@ -755,6 +758,14 @@ describe('desktop workspace', () => {
       ...fixture.nativeElement.querySelectorAll('[data-testid="create-branch-option"]'),
     ].map((option) => option.getAttribute('data-branch'));
     expect(offered).toEqual(['kept', 'still-remote']);
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const heading = dialog.querySelector('[data-testid="existing-branches-heading"]');
+    const options = dialog.querySelector('[data-testid="create-branch-options"]');
+    expect(heading.tagName).toBe('H3');
+    expect(heading.textContent.trim()).toBe('Existing branches');
+    expect(options.getAttribute('aria-labelledby')).toBe('existing-branches-heading');
+    expect(dialog.querySelector('label').compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(heading.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
   it('offers remote branches that do not already have a local worktree', async () => {

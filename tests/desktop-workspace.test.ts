@@ -646,6 +646,19 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-branch="HEAD"]')).toBeNull();
   });
 
+  it('drops branches deleted on the remote and keeps branches that still exist locally', async () => {
+    const repoPath = createRepositoryWithDeletedRemoteBranches(roots);
+    const fixture = await renderRepository(repoPath);
+
+    const rows = [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')];
+    expect(rows.map((row) => [row.getAttribute('data-branch'), row.getAttribute('data-status')])).toEqual([
+      ['master', 'local-and-remote'],
+      ['kept', 'local-only'],
+      ['tracked', 'remote-deleted'],
+      ['origin/still-remote', 'remote-only'],
+    ]);
+  });
+
   it('colors a branch row by status and shows no text badge', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -2966,6 +2979,39 @@ function commitWithDate(repoPath: string, message: string, second: number): void
       GIT_COMMITTER_DATE: date,
     },
   });
+}
+
+function createRepositoryWithDeletedRemoteBranches(roots: string[]): string {
+  const repoPath = createEmptyRepository(roots);
+  const origin = join(repoPath, '..', 'origin.git');
+  execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+  git(repoPath, ['remote', 'add', 'origin', origin]);
+  git(repoPath, ['push', '-u', 'origin', 'master']);
+
+  git(repoPath, ['checkout', '-b', 'kept']);
+  git(repoPath, ['checkout', '-b', 'tracked']);
+  writeFileSync(join(repoPath, 'tracked.txt'), 'tracked\n');
+  git(repoPath, ['add', 'tracked.txt']);
+  git(repoPath, ['commit', '-m', 'track']);
+  git(repoPath, ['push', '-u', 'origin', 'tracked']);
+
+  git(repoPath, ['checkout', '-b', 'gone']);
+  writeFileSync(join(repoPath, 'gone.txt'), 'gone\n');
+  git(repoPath, ['add', 'gone.txt']);
+  git(repoPath, ['commit', '-m', 'gone']);
+  git(repoPath, ['push', '-u', 'origin', 'gone']);
+
+  git(repoPath, ['checkout', '-b', 'still-remote']);
+  writeFileSync(join(repoPath, 'still.txt'), 'still\n');
+  git(repoPath, ['add', 'still.txt']);
+  git(repoPath, ['commit', '-m', 'still']);
+  git(repoPath, ['push', '-u', 'origin', 'still-remote']);
+
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['branch', '-D', 'gone']);
+  git(repoPath, ['branch', '-D', 'still-remote']);
+  execFileSync('git', ['--git-dir', origin, 'branch', '-D', 'tracked', 'gone'], { stdio: 'ignore' });
+  return repoPath;
 }
 
 function createPickerRepository(roots: string[]): string {

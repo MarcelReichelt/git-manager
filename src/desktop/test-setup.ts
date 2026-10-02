@@ -18,18 +18,73 @@ const customPropertyUse = /^var\(\s*(--[\w-]+)\s*\)$/;
 
 window.getComputedStyle = (element: Element, pseudoElt?: string | null): CSSStyleDeclaration => {
   const style = nativeGetComputedStyle(element, pseudoElt);
-  const background = style.backgroundColor;
-  const token = customPropertyUse.exec(background);
+  resolveCustomColor(style, element, 'backgroundColor');
+  resolveCustomColor(style, element, 'color');
+  resolveAppRegion(style, element);
+  return style;
+};
+
+function resolveCustomColor(
+  style: CSSStyleDeclaration,
+  element: Element,
+  property: 'backgroundColor' | 'color',
+): void {
+  const token = customPropertyUse.exec(style[property]);
   if (!token) {
-    return style;
+    return;
   }
   const specified = specifiedCustomProperty(element, token[1]);
   const used = specified ? hexToRgb(specified) : null;
   if (used) {
-    style.backgroundColor = used;
+    style[property] = used;
   }
-  return style;
-};
+}
+
+function resolveAppRegion(style: CSSStyleDeclaration, element: Element): void {
+  const region = specifiedAppRegion(element);
+  if (!region) {
+    return;
+  }
+  const read = style.getPropertyValue.bind(style);
+  style.getPropertyValue = (property: string) => {
+    if (property === '-webkit-app-region') {
+      return region;
+    }
+    return read(property);
+  };
+}
+
+function specifiedAppRegion(element: Element): string {
+  let region = '';
+  for (const sheet of document.styleSheets) {
+    let rules: CSSRuleList | undefined;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      rules = undefined;
+    }
+    if (!rules) {
+      continue;
+    }
+    for (const rule of rules) {
+      if (!(rule instanceof CSSStyleRule)) {
+        continue;
+      }
+      const value = rule.style.getPropertyValue('-webkit-app-region').trim();
+      if (!value) {
+        continue;
+      }
+      try {
+        if (element.matches(rule.selectorText)) {
+          region = value;
+        }
+      } catch {
+        // Skip selectors jsdom cannot match.
+      }
+    }
+  }
+  return region;
+}
 
 function specifiedCustomProperty(element: Element, name: string): string {
   let node: Element | null = element;
@@ -50,6 +105,12 @@ function hexToRgb(color: string): string | null {
   }
   const value = Number.parseInt(hex[1], 16);
   return `rgb(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255})`;
+}
+
+if (typeof PointerEvent === 'undefined') {
+  const pointerEvent = class PointerEvent extends MouseEvent {};
+  Object.defineProperty(window, 'PointerEvent', { configurable: true, writable: true, value: pointerEvent });
+  Object.defineProperty(globalThis, 'PointerEvent', { configurable: true, writable: true, value: pointerEvent });
 }
 
 Object.defineProperty(window, 'matchMedia', {

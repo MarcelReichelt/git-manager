@@ -93,6 +93,60 @@ function worktreePath(repoPath: string, branch: string): string | undefined {
   return match ? resolve(match.path) : undefined;
 }
 
+function checkedOutBranches(repoPath: string): Set<string> {
+  const names = new Set<string>();
+  for (const entry of listWorktrees(repoPath)) {
+    if (entry.branch) {
+      names.add(entry.branch);
+    }
+  }
+  return names;
+}
+
+function configuredRemotes(repoPath: string): string[] {
+  return gitText(repoPath, ['remote'])
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name !== '');
+}
+
+function branchPrefixes(remotes: string[]): string[] {
+  return remotes.includes('origin') ? remotes : ['origin', ...remotes];
+}
+
+function stripRemotePrefix(name: string, remotes: string[]): string {
+  const match = remotes
+    .filter((remote) => name.startsWith(`${remote}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (!match) {
+    return name;
+  }
+  return name.slice(match.length + 1);
+}
+
+function shortRemoteBranch(name: string, remotes: string[]): string {
+  return stripRemotePrefix(name, branchPrefixes(remotes));
+}
+
+function remoteShortNames(repoPath: string, remotes: string[]): string[] {
+  const refs = gitText(repoPath, ['for-each-ref', '--format=%(refname)', 'refs/remotes'])
+    .split('\n')
+    .map((ref) => ref.trim())
+    .filter((ref) => ref !== '');
+  const names: string[] = [];
+  for (const ref of refs) {
+    if (remotes.some((remote) => ref === `refs/remotes/${remote}/HEAD`)) {
+      continue;
+    }
+    const rest = ref.startsWith('refs/remotes/') ? ref.slice('refs/remotes/'.length) : ref;
+    const short = stripRemotePrefix(rest, remotes);
+    if (short !== '' && short !== rest) {
+      names.push(short);
+    }
+  }
+  return names;
+}
+
 function upstreamRef(repoPath: string, branch: string): string | undefined {
   const remote = gitOptional(repoPath, ['config', '--get', `branch.${branch}.remote`]);
   const merge = gitOptional(repoPath, ['config', '--get', `branch.${branch}.merge`]);
@@ -172,6 +226,7 @@ function changedFilesInWorktree(worktree: string): ChangedFile[] {
 }
 
 export function listBranches(repoPath: string): BranchRow[] {
+  const fallbackBase = aheadBehindBase(repoPath);
   const localNames = gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
     .split('\n')
     .map((name) => name.trim())
@@ -181,7 +236,7 @@ export function listBranches(repoPath: string): BranchRow[] {
     const configuredUpstream = upstreamRef(repoPath, name);
     const upstreamExists = configuredUpstream ? hasRef(repoPath, configuredUpstream) : false;
     let status: BranchStatus = 'local-only';
-    let base = 'master';
+    let base = fallbackBase;
     if (configuredUpstream && upstreamExists) {
       status = 'local-and-remote';
       base = configuredUpstream;
@@ -213,7 +268,7 @@ export function listBranches(repoPath: string): BranchRow[] {
     if (local.has(localName)) {
       continue;
     }
-    const counts = aheadBehind(repoPath, name, 'master');
+    const counts = aheadBehind(repoPath, name, fallbackBase);
     rows.push({
       name,
       status: 'remote-only',
@@ -223,7 +278,98 @@ export function listBranches(repoPath: string): BranchRow[] {
     });
   }
 
-  return rows;
+  return pinDefaultBranch(rows, defaultBranchName(repoPath));
+}
+
+export interface AvailableBranch {
+  name: string;
+  status: BranchStatus;
+}
+
+export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[] {
+  const taken = checkedOutBranches(repoPath);
+  const remotes = configuredRemotes(repoPath);
+  const seen = new Set<string>();
+  const available: AvailableBranch[] = [];
+
+  const add = (name: string, status: BranchStatus): void => {
+    if (name === '' || taken.has(name) || seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    available.push({ name, status });
+  };
+
+  for (const row of listBranches(repoPath)) {
+    const name = row.status === 'remote-only' ? shortRemoteBranch(row.name, remotes) : row.name;
+    add(name, row.status);
+  }
+  for (const name of remoteShortNames(repoPath, branchPrefixes(remotes))) {
+    add(name, 'remote-only');
+  }
+  return available;
+}
+
+export function listRemoteBranchesWithoutWorktree(repoPath: string): string[] {
+  return listBranchesWithoutWorktree(repoPath).map((branch) => branch.name);
+}
+
+export function pinDefaultBranch<T extends { name: string }>(
+  branches: readonly T[],
+  defaultBranch: string | undefined,
+): T[] {
+  const index =
+    defaultBranch === undefined ? -1 : branches.findIndex((branch) => branch.name === defaultBranch);
+  if (index <= 0) {
+    return branches.slice();
+  }
+  const pinned = branches[index];
+  return [pinned, ...branches.slice(0, index), ...branches.slice(index + 1)];
+}
+
+function aheadBehindBase(repoPath: string): string {
+  return defaultBranchName(repoPath) ?? 'HEAD';
+}
+
+export function readDefaultBranch(repoPath: string): string | undefined {
+  return defaultBranchName(repoPath);
+}
+
+function defaultBranchName(repoPath: string): string | undefined {
+  const originHead = gitOptional(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (originHead?.startsWith('origin/')) {
+    const name = originHead.slice('origin/'.length);
+    if (name !== '') {
+      return name;
+    }
+  }
+  const hasMaster = hasRef(repoPath, 'refs/heads/master');
+  const hasMain = hasRef(repoPath, 'refs/heads/main');
+  if (hasMaster && !hasMain) {
+    return 'master';
+  }
+  if (hasMain && !hasMaster) {
+    return 'main';
+  }
+  const checkedOut = checkedOutBranch(repoPath);
+  if (checkedOut === 'master' || checkedOut === 'main') {
+    return checkedOut;
+  }
+  if (hasMaster) {
+    return 'master';
+  }
+  if (hasMain) {
+    return 'main';
+  }
+  return checkedOut;
+}
+
+function checkedOutBranch(repoPath: string): string | undefined {
+  const name = gitOptional(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (name === undefined || name === 'HEAD') {
+    return undefined;
+  }
+  return name;
 }
 
 export function readChangedFiles(repoPath: string, branch: string): ChangedFile[] {
@@ -234,12 +380,31 @@ export function readChangedFiles(repoPath: string, branch: string): ChangedFile[
   return changedFilesInWorktree(checkout);
 }
 
+export const recentCommitPageSize = 30;
+
+export function readRecentCommits(repoPath: string, branch: string, offset = 0): BranchCommit[] {
+  return parseCommitLog(
+    gitText(repoPath, [
+      'log',
+      '--format=%H%x09%s',
+      `--max-count=${recentCommitPageSize}`,
+      `--skip=${offset}`,
+      branch,
+    ]),
+  );
+}
+
 export function readCommitsOnlyOnBranch(repoPath: string, branch: string): BranchCommit[] {
-  const output = gitText(repoPath, ['log', '--format=%H%x09%s', `master..${branch}`]).trim();
-  if (output === '') {
+  const base = defaultBranchName(repoPath) ?? 'master';
+  return parseCommitLog(gitText(repoPath, ['log', '--format=%H%x09%s', `${base}..${branch}`]));
+}
+
+function parseCommitLog(output: string): BranchCommit[] {
+  const trimmed = output.trim();
+  if (trimmed === '') {
     return [];
   }
-  return output.split('\n').map((line) => {
+  return trimmed.split('\n').map((line) => {
     const tab = line.indexOf('\t');
     return { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
   });
@@ -261,9 +426,9 @@ export function readWorkingTreeDiff(repoPath: string, branch: string, filePath: 
 }
 
 export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
-  return parseNumstat(gitText(repoPath, ['show', '-M', '--numstat', '-z', '--format=', sha]));
+  return parseNumstat(gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--numstat', '-z', '--format=', sha]));
 }
 
 export function readCommitFileDiff(repoPath: string, sha: string, filePath: string): string {
-  return gitText(repoPath, ['show', '-M', '--format=', sha, '--', filePath], true);
+  return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--format=', sha, '--', filePath], true);
 }

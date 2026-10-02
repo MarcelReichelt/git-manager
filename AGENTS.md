@@ -11,3 +11,7 @@ Five default triage roles, each label string equal to its name. See `docs/agents
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Newer branch
+
+When a newer branch than the checkout is detected, ask whether to work on that branch before editing.

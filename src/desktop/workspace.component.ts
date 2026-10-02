@@ -1123,7 +1123,7 @@ export class WorkspaceComponent implements OnInit {
 
   openBranchMenu(name: string, event: Event): void {
     event.stopPropagation();
-    this.openBranch.set(name);
+    this.openBranch.set(this.openBranch() === name ? null : name);
   }
 
   selectBranch(name: string, event?: Event): void {
@@ -1268,10 +1268,33 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
+  @HostListener('document:click', ['$event'])
+  closeBranchMenuOutside(event: Event): void {
+    const name = this.openBranch();
+    if (name === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    const menu = element?.closest('[data-testid="hover-menu"]');
+    const branch = menu?.closest('[data-branch]')?.getAttribute('data-branch');
+    if (branch === name) {
+      return;
+    }
+    this.openBranch.set(null);
+  }
+
   @HostListener('document:keydown', ['$event'])
   closeSwitchOnEscape(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && this.overlayOpen()) {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (this.overlayOpen()) {
       this.closeSwitch();
+      return;
+    }
+    if (this.openBranch() !== null) {
+      this.openBranch.set(null);
     }
   }
 

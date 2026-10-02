@@ -755,6 +755,172 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(wipMenu).display).toBe('block');
   });
 
+  it('closes the branch menu when that branch menu button is pressed again', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    const button = row.querySelector('[data-testid="branch-menu"]');
+    button.click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    button.click();
+    fixture.detectChanges();
+
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the branch menu when the workspace outside the menu is clicked', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    row.querySelector('[data-testid="squash"]').click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+    expect(row.querySelector('[data-testid="squash"]').checked).toBe(true);
+
+    fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
+    fixture.detectChanges();
+
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the branch menu when Escape is pressed', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the repository switcher on Escape and leaves the open branch menu open', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('block');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
+      'Harbor',
+    );
+    expect(branchNames(fixture)).toEqual([
+      'feature/login',
+      'wip',
+      'origin/release',
+      'abandoned',
+      'rename-docs',
+    ]);
+  });
+
+  it('closes the branch menu without updating, merging, or removing the worktree', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    writeFileSync(join(checkout, 'feature.txt'), 'from feature\n');
+    git(checkout, ['add', 'feature.txt']);
+    git(checkout, ['commit', '-m', 'feature change']);
+    writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
+    git(repoPath, ['add', 'master.txt']);
+    git(repoPath, ['commit', '-m', 'master change']);
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
+    expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
+
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+
+    expect(readFileSync(join(checkout, 'feature.txt'), 'utf8')).toBe('from feature\n');
+    expect(readFileSync(join(repoPath, 'master.txt'), 'utf8')).toBe('from master\n');
+    expect(existsSync(join(checkout, 'master.txt'))).toBe(false);
+    expect(existsSync(join(repoPath, 'feature.txt'))).toBe(false);
+    expect(git(repoPath, ['log', '--format=%s'])).toBe('master change\ninit');
+    expect(git(checkout, ['log', '--format=%s'])).toBe('feature change\ninit');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature');
+    expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
+    expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
+    expect(branchNames(fixture)).toEqual(['master', 'feature']);
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
   it('counts recent Harbor commits in the branch summary', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

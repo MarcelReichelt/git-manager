@@ -317,6 +317,9 @@ export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[]
   };
 
   for (const row of listBranches(repoPath)) {
+    if (row.status === 'remote-deleted') {
+      continue;
+    }
     const name = row.status === 'remote-only' ? shortRemoteBranch(row.name, remotes) : row.name;
     add(name, row.status);
   }

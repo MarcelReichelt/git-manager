@@ -744,6 +744,19 @@ describe('desktop workspace', () => {
     );
   });
 
+  it('omits branches deleted on the remote from create worktree and still offers a local branch', async () => {
+    const repoPath = createRepositoryWithDeletedRemoteBranches(roots);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const offered = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="create-branch-option"]'),
+    ].map((option) => option.getAttribute('data-branch'));
+    expect(offered).toEqual(['kept', 'still-remote']);
+  });
+
   it('offers remote branches that do not already have a local worktree', async () => {
     const repoPath = createEmptyRepository(roots);
     const sha = git(repoPath, ['rev-parse', 'HEAD']);

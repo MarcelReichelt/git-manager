@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { runtimeEnv } from './runtime-env.js';
 
 const createRepositoriesTable = `
   CREATE TABLE repositories (
@@ -16,11 +17,11 @@ export interface RegisteredRepository {
   displayName: string;
 }
 
-export function resolveRegistryPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.GIT_MANAGER_REGISTRY_PATH ?? join(homedir(), '.config', 'git-manager', 'registry.db');
+export function resolveRegistryPath(env?: NodeJS.ProcessEnv): string {
+  return runtimeEnv(env).GIT_MANAGER_REGISTRY_PATH ?? join(homedir(), '.config', 'git-manager', 'registry.db');
 }
 
-function openDatabase(env: NodeJS.ProcessEnv = process.env): Database.Database {
+function openDatabase(env?: NodeJS.ProcessEnv): Database.Database {
   const dbPath = resolveRegistryPath(env);
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import TOML from '@iarna/toml';
+import { runtimeEnv } from './runtime-env.js';
 
 export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
@@ -112,16 +113,6 @@ export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   current.sidebarColor = originalSidebarColor;
   current.contentColor = originalContentColor;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
-}
-
-function runtimeEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  if (env) {
-    return env;
-  }
-  // The desktop bundle inlines any direct `process.env` reference. Building the
-  // name keeps the running environment, including GIT_MANAGER_APP_SETTINGS_PATH.
-  const processRef = (globalThis as { process?: { env?: NodeJS.ProcessEnv } })['pro' + 'cess'];
-  return processRef?.env ?? {};
 }
 
 function readSettingsObject(settingsPath: string): Record<string, unknown> {

@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { createJiti } from 'jiti';
+import { createLayoutForRepository } from './app-settings.js';
 import { findRepository } from './registry.js';
 
 type LayoutMode = 'workspaces' | 'sibling';
@@ -35,15 +36,12 @@ function readRepoConfig(repoPath: string): RepoConfig {
   return TOML.parse(readFileSync(configPath, 'utf8')) as RepoConfig;
 }
 
-function layoutForCreate(config: RepoConfig): LayoutMode {
-  const mode = config.layout?.mode;
-  if (mode === undefined) {
-    return 'workspaces';
+function layoutForCreate(repoPath: string): LayoutMode {
+  const layout = createLayoutForRepository(repoPath);
+  if (!layout.supported) {
+    throw new Error(`Unsupported layout: ${layout.label}`);
   }
-  if (mode !== 'workspaces' && mode !== 'sibling') {
-    throw new Error(`Unsupported layout: ${mode}`);
-  }
-  return mode;
+  return layout.label === 'Sibling' ? 'sibling' : 'workspaces';
 }
 
 function remoteToFetch(repoPath: string, branch: string): string {
@@ -189,7 +187,7 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   const config = readRepoConfig(repository.path);
-  const checkout = checkoutPath(repository.path, layoutForCreate(config), folderName(branch));
+  const checkout = checkoutPath(repository.path, layoutForCreate(repository.path), folderName(branch));
   if (existsSync(checkout)) {
     throw new Error(`Worktree folder already exists: ${checkout}`);
   }

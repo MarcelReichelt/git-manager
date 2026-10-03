@@ -22,6 +22,7 @@
 [data-testid='repository-name'],
 [data-testid='switch-repository'],
 [data-testid='repository-settings'],
+[data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
 }
@@ -55,6 +56,10 @@
 .window-controls {
   display: flex;
   gap: 4px;
+}
+
+[data-testid='app-settings'] {
+  margin-right: 8px;
 }
 
 .window-controls button {
@@ -91,7 +96,7 @@ aside {
   overflow: hidden;
   overflow-y: hidden;
   border-radius: 8px;
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
 }
 
@@ -162,7 +167,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-row:hover,
 .branch-row.is-selected {
-  background: var(--surface);
+  background-color: var(--surface);
   color: var(--forest);
 }
 
@@ -232,7 +237,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: 0;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 8px;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--grid);
   cursor: pointer;
   opacity: 0;
@@ -257,7 +262,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   overflow: hidden;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 8px;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--grid);
 }
 
@@ -304,7 +309,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   height: 40px;
   border: 0;
   border-radius: 8px;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--forest);
   cursor: pointer;
 }
@@ -320,7 +325,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   flex-direction: column;
   overflow: hidden;
   overflow-y: hidden;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--grid);
   border-radius: 8px;
   padding-right: 8px;
@@ -329,6 +334,40 @@ ul { margin: 0; padding: 0; list-style: none; }
 .branch-heading {
   padding: 16px 16px 12px;
   border-bottom: 1px solid rgba(58, 58, 56, 0.2);
+}
+
+.branch-heading .branch-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.branch-heading [data-testid='open-ide'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  background-color: var(--paper);
+  color: var(--forest);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.branch-heading [data-testid='open-ide']:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.branch-heading [data-testid='open-ide'] svg {
+  flex: none;
 }
 
 .branch-heading h2 {

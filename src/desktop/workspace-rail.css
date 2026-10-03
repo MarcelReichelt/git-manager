@@ -22,6 +22,7 @@
 [data-testid='repository-name'],
 [data-testid='switch-repository'],
 [data-testid='repository-settings'],
+[data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
 }
@@ -55,6 +56,10 @@
 .window-controls {
   display: flex;
   gap: 4px;
+}
+
+[data-testid='app-settings'] {
+  margin-right: 8px;
 }
 
 .window-controls button {

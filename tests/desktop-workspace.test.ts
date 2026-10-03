@@ -8,6 +8,7 @@ import { resetFolderBrowser, setFolderBrowser } from '../src/desktop/folder-brow
 import { resetTextCopy, setTextCopy } from '../src/desktop/copy-text';
 import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
+import { readAppSettings } from '../src/app-settings';
 import { addRepository } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
@@ -19,6 +20,7 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 describe('desktop workspace', () => {
   const roots: string[] = [];
   const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  const previousAppSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
   let restoreSearch: (() => void) | undefined;
 
   afterEach(() => {
@@ -31,6 +33,11 @@ describe('desktop workspace', () => {
       delete process.env.GIT_MANAGER_REGISTRY_PATH;
     } else {
       process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+    }
+    if (previousAppSettingsPath === undefined) {
+      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    } else {
+      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
     }
     const removing = roots.splice(0);
     for (const name of listTmuxSessions()) {
@@ -303,6 +310,7 @@ describe('desktop workspace', () => {
       bar.querySelector('[data-testid="repository-name"]'),
       bar.querySelector('[data-testid="switch-repository"]'),
       bar.querySelector('[data-testid="repository-settings"]'),
+      bar.querySelector('[data-testid="app-settings"]'),
       bar.querySelector('[data-testid="window-minimize"]'),
       bar.querySelector('[data-testid="window-maximize"]'),
       bar.querySelector('[data-testid="window-close"]'),
@@ -316,6 +324,254 @@ describe('desktop workspace', () => {
     }
 
     expect(actions).toEqual([]);
+  });
+
+  it('places an App settings gear in the window controls, left of Minimize', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const controls = bar.querySelector('.window-controls');
+    const gear = bar.querySelector('[data-testid="app-settings"]');
+    const minimize = bar.querySelector('[data-testid="window-minimize"]');
+    const maximize = bar.querySelector('[data-testid="window-maximize"]');
+
+    expect(gear).not.toBeNull();
+    expect(gear.tagName).toBe('BUTTON');
+    expect(gear.getAttribute('aria-label')).toBe('App settings');
+    expect(gear.querySelector('svg')).not.toBeNull();
+    expect(controls.contains(gear)).toBe(true);
+    expect(gear.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(getComputedStyle(gear).width).toBe(getComputedStyle(minimize).width);
+    expect(getComputedStyle(gear).height).toBe(getComputedStyle(minimize).height);
+    expect(getComputedStyle(gear).width).toBe('28px');
+    expect(getComputedStyle(gear).height).toBe('28px');
+    expect(horizontalGap(gear, minimize)).toBeGreaterThan(horizontalGap(minimize, maximize));
+  });
+
+  it('keeps the App settings gear off the repository card and the start screen', async () => {
+    const start = await render();
+    const card = start.nativeElement.querySelector('[data-testid="repository-card"]');
+    expect(start.nativeElement.querySelector('[data-testid="app-settings"]')).toBeNull();
+    expect(card.querySelector('[data-testid="app-settings"]')).toBeNull();
+
+    start.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    start.detectChanges();
+    start.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    start.detectChanges();
+
+    const overlayCard = start.nativeElement.querySelector(
+      '[data-testid="switching-overlay"] [data-testid="repository-card"]',
+    );
+    expect(overlayCard.querySelector('[data-testid="app-settings"]')).toBeNull();
+    expect(start.nativeElement.querySelector('[data-testid="window-bar"] [data-testid="app-settings"]')).not.toBeNull();
+  });
+
+  it('closes App settings from the backdrop and Escape, and keeps it open when the panel is clicked', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-label')).toBe('App settings');
+    expect(getComputedStyle(dialog).backgroundColor).toBe('rgba(26, 60, 43, 0.45)');
+    const panel = dialog.querySelector('.dialog-panel');
+    const panelStyle = getComputedStyle(panel);
+    expect(panelStyle.backgroundColor).toBe('rgb(247, 247, 245)');
+    expect(panelStyle.borderRadius).toBe('8px');
+    expect(getComputedStyle(dialog.querySelector('h2')).color).toBe('rgb(26, 60, 43)');
+
+    panel.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).toBeNull();
+  });
+
+  it('saves Sibling as soon as it is chosen and shows that choice when App settings reopens', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
+    expect(labels).toEqual(['Workspaces', 'Sibling']);
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
+    expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
+
+    layoutChoice(dialog, 'Sibling').click();
+    fixture.detectChanges();
+    expect(readAppSettings().defaultLayout).toBe('sibling');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const reopened = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    expect(layoutChoice(reopened, 'Sibling').checked).toBe(true);
+    expect(layoutChoice(reopened, 'Workspaces').checked).toBe(false);
+  });
+
+  it('names the app default layout on the create dialog for sample Harbor', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const line = dialog.querySelector('[data-testid="create-layout"]');
+    expect(line.tagName).toBe('P');
+    expect(line.querySelector('input, textarea, select')).toBeNull();
+    expect(line.textContent.trim()).toBe('Workspaces, the app default');
+
+    dialog.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    layoutChoice(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]'), 'Sibling').click();
+    fixture.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] [data-testid="create-layout"]').textContent.trim(),
+    ).toBe('Sibling, the app default');
+  });
+
+  it('uses the app default for a repository with no layout mode', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(repoPath, 'Harbor');
+    git(repoPath, ['branch', 'notes']);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
+
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    layoutChoice(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]'), 'Sibling').click();
+    fixture.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    expect(dialog.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe('Sibling, the app default');
+
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    const checkout = join(root, 'notes');
+    await untilVisible(fixture, () => existsSync(checkout));
+
+    expect(git(checkout, ['branch', '--show-current'])).toBe('notes');
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+  });
+
+  it('names the repository layout even when the app default differs', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
+      'Workspaces, set by this repository',
+    );
+
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+    writeFileSync(settingsPath, '{"defaultLayout":"workspaces"}\n');
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+  });
+
+  it('shows an unsupported repository layout and still refuses to create it', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+    git(repoPath, ['branch', 'notes']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    addRepository(repoPath, 'Harbor');
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    expect(dialog.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
+      'custom, set by this repository',
+    );
+
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(fixture, (rootElement) =>
+      (rootElement.querySelector('[data-testid="create-worktree-dialog"] [data-testid="workspace-error"]')?.textContent ?? '').includes(
+        'Unsupported layout: custom',
+      ),
+    );
+
+    expect(dialog.querySelector('[data-testid="workspace-error"]').textContent).toContain('Unsupported layout: custom');
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+    expect(existsSync(join(root, 'notes'))).toBe(false);
   });
 
   it('puts the repository name and switcher in the top bar and leaves room for settings', async () => {
@@ -3299,6 +3555,36 @@ function columnTrackCount(columns: string): number {
     tracks += 1;
   }
   return tracks;
+}
+
+function layoutChoice(dialog: ParentNode, name: string): HTMLInputElement {
+  const label = [...dialog.querySelectorAll('label')].find((item) => item.textContent.trim() === name);
+  const input = label?.querySelector('input');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`missing layout choice ${name}`);
+  }
+  return input;
+}
+
+function boxEdge(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function horizontalGap(left: HTMLElement, right: HTMLElement): number {
+  const leftBox = left.getBoundingClientRect();
+  const rightBox = right.getBoundingClientRect();
+  if (leftBox.width > 0 && rightBox.width > 0) {
+    return rightBox.left - leftBox.right;
+  }
+  const parent = left.parentElement;
+  if (!parent || parent !== right.parentElement) {
+    return 0;
+  }
+  const parentStyle = getComputedStyle(parent);
+  const gap = Number.parseFloat(parentStyle.columnGap);
+  const between = Number.isFinite(gap) ? gap : 0;
+  return between + boxEdge(getComputedStyle(left).marginRight) + boxEdge(getComputedStyle(right).marginLeft);
 }
 
 function branchNames(fixture: { nativeElement: HTMLElement }): string[] {

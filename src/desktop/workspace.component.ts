@@ -5,6 +5,7 @@ import { basename, resolve } from 'node:path';
 import { addRemote, changeRemote, listRemotes, removeRemote, repositoryRemotes, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
+import { createLayoutForRepository, readAppSettings, saveDefaultLayout, type AppSettings } from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import { copyText } from './copy-text';
 import { browseForFolder } from './folder-browser';
@@ -444,6 +445,7 @@ button, input { font: inherit; color: inherit; }
   border-color: var(--forest);
 }
 
+[data-testid='create-layout'],
 [data-testid='create-worktree-note'] {
   margin: 0;
   color: var(--grid);
@@ -533,6 +535,49 @@ button, input { font: inherit; color: inherit; }
   background: var(--forest);
   color: white;
   border-color: var(--forest);
+}
+
+[data-testid='app-settings-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='app-settings-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='app-settings-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='app-settings-dialog'] label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 [data-testid='repository-settings-dialog'] {
@@ -837,6 +882,11 @@ button, input { font: inherit; color: inherit; }
             </button>
           </div>
           <div class="window-controls">
+            <button type="button" data-testid="app-settings" aria-label="App settings" (click)="openAppSettings()">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M8 1.2a.8.8 0 0 1 .78.6l.22.9a4.8 4.8 0 0 1 1.22.7l.82-.4a.8.8 0 0 1 1.06.3l.5.86a.8.8 0 0 1-.18 1.02l-.7.54a4.9 4.9 0 0 1 0 1.56l.7.54a.8.8 0 0 1 .18 1.02l-.5.86a.8.8 0 0 1-1.06.3l-.82-.4a4.8 4.8 0 0 1-1.22.7l-.22.9a.8.8 0 0 1-.78.6.8.8 0 0 1-.78-.6l-.22-.9a4.8 4.8 0 0 1-1.22-.7l-.82.4a.8.8 0 0 1-1.06-.3l-.5-.86a.8.8 0 0 1 .18-1.02l.7-.54a4.9 4.9 0 0 1 0-1.56l-.7-.54a.8.8 0 0 1-.18-1.02l.5-.86a.8.8 0 0 1 1.06-.3l.82.4a4.8 4.8 0 0 1 1.22-.7l.22-.9A.8.8 0 0 1 8 1.2zm0 4.3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+              </svg>
+            </button>
             <button type="button" data-testid="window-minimize" aria-label="Minimize" (click)="controlWindow('minimize')">–</button>
             <button type="button" data-testid="window-maximize" aria-label="Maximize" (click)="controlWindow('maximize')">□</button>
             <button type="button" data-testid="window-close" aria-label="Close" (click)="controlWindow('close')">×</button>
@@ -1144,6 +1194,7 @@ button, input { font: inherit; color: inherit; }
               </ul>
             </div>
           }
+          <p data-testid="create-layout">{{ createLayoutLine() }}</p>
           <p data-testid="create-worktree-note">
             A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.
           </p>
@@ -1268,6 +1319,33 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (appSettingsOpen()) {
+      <div data-testid="app-settings-dialog" role="dialog" aria-label="App settings" (click)="dismissAppSettingsFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
+          <h2>App settings</h2>
+          <label>
+            <input
+              type="radio"
+              name="default-layout"
+              value="workspaces"
+              [checked]="defaultLayout() === 'workspaces'"
+              (change)="chooseDefaultLayout('workspaces')"
+            />
+            Workspaces
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="default-layout"
+              value="sibling"
+              [checked]="defaultLayout() === 'sibling'"
+              (change)="chooseDefaultLayout('sibling')"
+            />
+            Sibling
+          </label>
+        </section>
+      </div>
+    }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository" (click)="dismissAddFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
@@ -1330,6 +1408,8 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly settingsOpen = signal(false);
+  readonly appSettingsOpen = signal(false);
+  readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
   readonly remotes = signal<RepositoryRemote[]>([]);
   readonly addRemoteOpen = signal(false);
   readonly editingRemote = signal<string | null>(null);
@@ -1906,7 +1986,7 @@ export class WorkspaceComponent implements OnInit {
     const element = target instanceof Element ? target : null;
     if (
       element?.closest(
-        '[data-testid="repository-name"], [data-testid="switch-repository"], [data-testid="repository-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+        '[data-testid="repository-name"], [data-testid="switch-repository"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
       )
     ) {
       return;
@@ -1957,6 +2037,10 @@ export class WorkspaceComponent implements OnInit {
     if (event.key !== 'Escape') {
       return;
     }
+    if (this.appSettingsOpen()) {
+      this.closeAppSettings();
+      return;
+    }
     if (this.addDialogOpen()) {
       this.cancelAdd();
       return;
@@ -1987,6 +2071,39 @@ export class WorkspaceComponent implements OnInit {
     }
     if (this.openBranch() !== null) {
       this.openBranch.set(null);
+    }
+  }
+
+  openAppSettings(): void {
+    this.defaultLayout.set(readAppSettings().defaultLayout);
+    this.appSettingsOpen.set(true);
+  }
+
+  chooseDefaultLayout(layout: AppSettings['defaultLayout']): void {
+    saveDefaultLayout(layout);
+    this.defaultLayout.set(layout);
+  }
+
+  createLayoutLine(): string {
+    const path = this.effectivePath();
+    const layout =
+      path === null
+        ? {
+            label: readAppSettings().defaultLayout === 'sibling' ? 'Sibling' : 'Workspaces',
+            source: 'app' as const,
+          }
+        : createLayoutForRepository(path);
+    const origin = layout.source === 'repository' ? 'set by this repository' : 'the app default';
+    return `${layout.label}, ${origin}`;
+  }
+
+  closeAppSettings(): void {
+    this.appSettingsOpen.set(false);
+  }
+
+  dismissAppSettingsFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.closeAppSettings();
     }
   }
 

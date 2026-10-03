@@ -1,10 +1,12 @@
 import Database from 'better-sqlite3';
+import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addRepository, listRepositories } from '../src/registry.js';
+import { addRepository, listRepositories, resolveRegistryPath } from '../src/registry.js';
 
 describe('registry schema', () => {
   const roots: string[] = [];
@@ -98,5 +100,57 @@ describe('registry schema', () => {
       displayName: 'Atlas',
     });
     expect(listRepositories()).toEqual([{ path: resolve(repoPath), displayName: 'Atlas' }]);
+  });
+
+  it('reads GIT_MANAGER_REGISTRY_PATH from the running process when no env is passed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-registry-path-'));
+    roots.push(root);
+    const registryPath = join(root, 'registry.db');
+    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+
+    expect(resolveRegistryPath()).toBe(registryPath);
+  });
+});
+
+describe('registry path in the desktop bundle', () => {
+  const roots: string[] = [];
+  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+
+  afterEach(() => {
+    if (previousRegistryPath === undefined) {
+      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+    } else {
+      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+    }
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps GIT_MANAGER_REGISTRY_PATH when process.env is inlined', async () => {
+    const root = mkdtempSync(join(process.cwd(), '.tmp-registry-bundle-'));
+    roots.push(root);
+    const outfile = join(root, 'registry.mjs');
+    await build({
+      absWorkingDir: join(import.meta.dirname, '..'),
+      entryPoints: ['src/registry.ts'],
+      bundle: true,
+      outfile,
+      format: 'esm',
+      platform: 'node',
+      packages: 'external',
+      define: {
+        'process.env': '{}',
+        'global.process.env': '{}',
+        'globalThis.process.env': '{}',
+      },
+    });
+    const registryPath = join(root, 'registry.db');
+    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    const bundled = (await import(pathToFileURL(outfile).href)) as {
+      resolveRegistryPath: () => string;
+    };
+
+    expect(bundled.resolveRegistryPath()).toBe(registryPath);
   });
 });

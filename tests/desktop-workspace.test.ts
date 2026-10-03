@@ -689,17 +689,78 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="default-layout-heading"]').textContent.trim()).toBe('Default layout');
+    expect(dialog.querySelector('[data-testid="colors-heading"]').textContent.trim()).toBe('Colors');
     const sidebar = dialog.querySelector('[data-testid="sidebar-color"]');
     const content = dialog.querySelector('[data-testid="content-color"]');
     const reset = dialog.querySelector('[data-testid="reset-colors"]');
+    const close = dialog.querySelector('[data-testid="close-app-settings"]');
     expect(sidebar).toBeInstanceOf(HTMLInputElement);
     expect(sidebar.type).toBe('color');
+    expect(sidebar.getAttribute('aria-label')).toBe('Custom sidebar color');
     expect(sidebar.value).toBe('#1a3c2b');
     expect(content).toBeInstanceOf(HTMLInputElement);
     expect(content.type).toBe('color');
+    expect(content.getAttribute('aria-label')).toBe('Custom content color');
     expect(content.value).toBe('#f7f7f5');
+    const sidebarSwatches = [...dialog.querySelectorAll('[data-testid="sidebar-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    const contentSwatches = [...dialog.querySelectorAll('[data-testid="content-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    expect(sidebarSwatches).toContain('#1a3c2b');
+    expect(sidebarSwatches).toContain('#065f46');
+    expect(contentSwatches).toContain('#f7f7f5');
+    expect(contentSwatches).toContain('#ecfdf5');
+    expect(dialog.querySelector('[data-testid="sidebar-swatch"][data-color="#1a3c2b"]').classList.contains('is-selected')).toBe(
+      true,
+    );
     expect(reset.tagName).toBe('BUTTON');
     expect(reset.textContent.trim()).toBe('Reset');
+    expect(close.tagName).toBe('BUTTON');
+    expect(close.textContent.trim()).toBe('Close');
+  });
+
+  it('applies a curated sidebar color from the swatch and still accepts a custom color', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]')
+        .classList.contains('is-selected'),
+    ).toBe(true);
+
+    pickColor(fixture.nativeElement.querySelector('[data-testid="sidebar-color"]'), '#123456');
+    fixture.detectChanges();
+    expect(readAppSettings().sidebarColor).toBe('#123456');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+  });
+
+  it('closes App settings from the Close button', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).toBeNull();
   });
 
   it('paints the open window with the chosen sidebar color and keeps the selected row white', async () => {

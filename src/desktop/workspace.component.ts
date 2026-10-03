@@ -16,6 +16,7 @@ import {
   type AppSettings,
 } from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
+import { contentSwatches, sidebarSwatches } from './color-swatches';
 import { copyText } from './copy-text';
 import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
@@ -565,7 +566,7 @@ button, input { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 22rem;
+  width: 28rem;
   padding: 16px;
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -582,6 +583,16 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
+[data-testid='app-settings-dialog'] h3 {
+  margin: 8px 0 0;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 [data-testid='app-settings-dialog'] label,
 [data-testid='app-settings-dialog'] .color-choice {
   display: flex;
@@ -596,12 +607,42 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='app-settings-dialog'] .color-choice {
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-swatches button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.color-swatches button.is-selected {
+  outline: 2px solid var(--grid);
+  outline-offset: 2px;
+}
+
+.custom-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
 }
 
 [data-testid='app-settings-dialog'] input[type='color'] {
-  width: 36px;
-  height: 28px;
+  width: 28px;
+  height: 22px;
   padding: 0;
   border: 1px solid rgba(58, 58, 56, 0.2);
   background-color: var(--paper);
@@ -626,7 +667,8 @@ button, input { font: inherit; color: inherit; }
   text-transform: none;
 }
 
-[data-testid='reset-colors'] {
+[data-testid='reset-colors'],
+[data-testid='close-app-settings'] {
   box-sizing: border-box;
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -1387,6 +1429,7 @@ button, input { font: inherit; color: inherit; }
       <div data-testid="app-settings-dialog" role="dialog" aria-label="App settings" (click)="dismissAppSettingsFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>App settings</h2>
+          <h3 data-testid="default-layout-heading">Default layout</h3>
           <label>
             <input
               type="radio"
@@ -1416,29 +1459,65 @@ button, input { font: inherit; color: inherit; }
               (input)="chooseIdeCommand($event)"
             />
           </label>
+          <h3 data-testid="colors-heading">Colors</h3>
           <div class="color-choice">
             <span>Sidebar</span>
-            <input
-              type="color"
-              data-testid="sidebar-color"
-              aria-label="Sidebar color"
-              [value]="sidebarColor()"
-              (input)="chooseSidebarColor($event)"
-              (change)="chooseSidebarColor($event)"
-            />
+            <div class="color-swatches">
+              @for (swatch of sidebarColorSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="sidebar-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(sidebarColor(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseSidebarSwatch(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="sidebar-color"
+                  aria-label="Custom sidebar color"
+                  [value]="sidebarColor()"
+                  (input)="chooseSidebarColor($event)"
+                  (change)="chooseSidebarColor($event)"
+                />
+              </span>
+            </div>
           </div>
           <div class="color-choice">
             <span>Content</span>
-            <input
-              type="color"
-              data-testid="content-color"
-              aria-label="Content color"
-              [value]="contentColor()"
-              (input)="chooseContentColor($event)"
-              (change)="chooseContentColor($event)"
-            />
+            <div class="color-swatches">
+              @for (swatch of contentColorSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="content-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(contentColor(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseContentSwatch(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="content-color"
+                  aria-label="Custom content color"
+                  [value]="contentColor()"
+                  (input)="chooseContentColor($event)"
+                  (change)="chooseContentColor($event)"
+                />
+              </span>
+            </div>
           </div>
-          <button type="button" data-testid="reset-colors" (click)="resetColors()">Reset</button>
+          <div class="dialog-actions">
+            <button type="button" data-testid="reset-colors" (click)="resetColors()">Reset</button>
+            <button type="button" data-testid="close-app-settings" (click)="closeAppSettings()">Close</button>
+          </div>
         </section>
       </div>
     }
@@ -1506,6 +1585,8 @@ export class WorkspaceComponent implements OnInit {
   readonly settingsOpen = signal(false);
   readonly appSettingsOpen = signal(false);
   readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
+  readonly sidebarColorSwatches = sidebarSwatches;
+  readonly contentColorSwatches = contentSwatches;
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
   readonly contentColor = signal(readAppSettings().contentColor);
   readonly ideCommand = signal(readAppSettings().ideCommand);
@@ -2220,13 +2301,31 @@ export class WorkspaceComponent implements OnInit {
   }
 
   chooseSidebarColor(event: Event): void {
-    const color = inputValue(event);
+    this.applySidebarColor(inputValue(event));
+  }
+
+  chooseSidebarSwatch(color: string): void {
+    this.applySidebarColor(color);
+  }
+
+  chooseContentColor(event: Event): void {
+    this.applyContentColor(inputValue(event));
+  }
+
+  chooseContentSwatch(color: string): void {
+    this.applyContentColor(color);
+  }
+
+  isSelectedColor(current: string, swatch: string): boolean {
+    return current.toLowerCase() === swatch.toLowerCase();
+  }
+
+  private applySidebarColor(color: string): void {
     saveSidebarColor(color);
     this.sidebarColor.set(color);
   }
 
-  chooseContentColor(event: Event): void {
-    const color = inputValue(event);
+  private applyContentColor(color: string): void {
     saveContentColor(color);
     this.contentColor.set(color);
   }

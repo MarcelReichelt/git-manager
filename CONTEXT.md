@@ -17,8 +17,12 @@ A checkout of a single branch, in either the sibling layout or the workspaces la
 _Avoid_: workspace
 
 **Terminal**:
-The shell shown in a branch's content. On Windows it is a single shell, with no sessions.
+A running shell for a worktree, shown at the bottom of that worktree's content.
 _Avoid_: multiplexer
+
+**Terminal mode**:
+The app setting that chooses none, an in-app terminal, or tmux. The default is an in-app terminal.
+_Avoid_: shell mode
 
 **Sibling**:
 The worktree layout where the branch checkout is a folder next to the main repo folder, named from the branch.

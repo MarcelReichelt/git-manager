@@ -13,10 +13,18 @@ import {
   saveDefaultLayout,
   saveIdeCommand,
   saveSidebarColor,
+  saveTerminalBackground,
+  saveTerminalFont,
+  saveTerminalForeground,
   type AppSettings,
 } from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
-import { contentSwatches, sidebarSwatches } from './color-swatches';
+import {
+  contentSwatches,
+  sidebarSwatches,
+  terminalBackgroundSwatches as terminalBackgroundSwatchList,
+  terminalForegroundSwatches as terminalForegroundSwatchList,
+} from './color-swatches';
 import { copyText } from './copy-text';
 import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
@@ -650,12 +658,14 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='app-settings-dialog'] label.ide-command-field {
+[data-testid='app-settings-dialog'] label.ide-command-field,
+[data-testid='app-settings-dialog'] label.terminal-font-field {
   align-items: stretch;
   flex-direction: column;
 }
 
-[data-testid='ide-command'] {
+[data-testid='ide-command'],
+[data-testid='terminal-font'] {
   box-sizing: border-box;
   width: 100%;
   height: 36px;
@@ -1026,9 +1036,12 @@ button, input { font: inherit; color: inherit; }
                       class="terminal-pane"
                       data-testid="terminal-pane"
                       [gmShell]="worktreePath()"
+                      [background]="terminalBackground()"
+                      [foreground]="terminalForeground()"
+                      [fontFamily]="terminalFontFamily()"
                       (shellEnded)="onShellEnded()"
+                      [style.background-color]="terminalBackground()"
                       [style.height.px]="terminalPaneHeight()"
-                      style="background-color: #1e1e1e"
                     ></div>
                   } @else {
                     @for (session of visibleSessions(); track session) {
@@ -1036,9 +1049,12 @@ button, input { font: inherit; color: inherit; }
                         class="terminal-pane"
                         data-testid="terminal-pane"
                         [gmTerminal]="session"
+                        [background]="terminalBackground()"
+                        [foreground]="terminalForeground()"
+                        [fontFamily]="terminalFontFamily()"
                         (sessionEnded)="onSessionEnded(session)"
+                        [style.background-color]="terminalBackground()"
                         [style.height.px]="terminalPaneHeight()"
-                        style="background-color: #1e1e1e"
                       ></div>
                     }
                   }
@@ -1164,6 +1180,15 @@ button, input { font: inherit; color: inherit; }
               (input)="chooseIdeCommand($event)"
             />
           </label>
+          <label class="terminal-font-field">
+            Font family
+            <input
+              type="text"
+              data-testid="terminal-font"
+              [value]="terminalFont()"
+              (input)="chooseTerminalFont($event)"
+            />
+          </label>
           <h3 data-testid="colors-heading">Colors</h3>
           <div class="color-choice">
             <span>Sidebar</span>
@@ -1215,6 +1240,60 @@ button, input { font: inherit; color: inherit; }
                   [value]="contentColor()"
                   (input)="chooseContentColor($event)"
                   (change)="chooseContentColor($event)"
+                />
+              </span>
+            </div>
+          </div>
+          <div class="color-choice">
+            <span>Terminal background</span>
+            <div class="color-swatches">
+              @for (swatch of terminalBackgroundSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="terminal-background-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(terminalBackground(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseTerminalBackgroundSwatch(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="terminal-background-color"
+                  aria-label="Custom terminal background"
+                  [value]="terminalBackground()"
+                  (input)="chooseTerminalBackground($event)"
+                  (change)="chooseTerminalBackground($event)"
+                />
+              </span>
+            </div>
+          </div>
+          <div class="color-choice">
+            <span>Terminal foreground</span>
+            <div class="color-swatches">
+              @for (swatch of terminalForegroundSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="terminal-foreground-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(terminalForeground(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseTerminalForegroundSwatch(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="terminal-foreground-color"
+                  aria-label="Custom terminal foreground"
+                  [value]="terminalForeground()"
+                  (input)="chooseTerminalForeground($event)"
+                  (change)="chooseTerminalForeground($event)"
                 />
               </span>
             </div>
@@ -1293,9 +1372,15 @@ export class WorkspaceComponent implements OnInit {
   readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
   readonly sidebarColorSwatches = sidebarSwatches;
   readonly contentColorSwatches = contentSwatches;
+  readonly terminalBackgroundSwatches = terminalBackgroundSwatchList;
+  readonly terminalForegroundSwatches = terminalForegroundSwatchList;
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
   readonly contentColor = signal(readAppSettings().contentColor);
   readonly ideCommand = signal(readAppSettings().ideCommand);
+  readonly terminalFont = signal(readAppSettings().terminalFont);
+  readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
+  readonly terminalBackground = signal(readAppSettings().terminalBackground);
+  readonly terminalForeground = signal(readAppSettings().terminalForeground);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
   readonly createBranchOptions = signal<string[]>([]);
@@ -2006,6 +2091,9 @@ export class WorkspaceComponent implements OnInit {
     const settings = readAppSettings();
     this.defaultLayout.set(settings.defaultLayout);
     this.ideCommand.set(settings.ideCommand);
+    this.terminalFont.set(settings.terminalFont);
+    this.terminalBackground.set(settings.terminalBackground);
+    this.terminalForeground.set(settings.terminalForeground);
     this.appSettingsOpen.set(true);
   }
 
@@ -2018,6 +2106,12 @@ export class WorkspaceComponent implements OnInit {
     const command = inputValue(event);
     saveIdeCommand(command);
     this.ideCommand.set(command);
+  }
+
+  chooseTerminalFont(event: Event): void {
+    const font = inputValue(event);
+    saveTerminalFont(font);
+    this.terminalFont.set(font);
   }
 
   openIde(): void {
@@ -2064,6 +2158,22 @@ export class WorkspaceComponent implements OnInit {
     this.applyContentColor(color);
   }
 
+  chooseTerminalBackground(event: Event): void {
+    this.applyTerminalBackground(inputValue(event));
+  }
+
+  chooseTerminalBackgroundSwatch(color: string): void {
+    this.applyTerminalBackground(color);
+  }
+
+  chooseTerminalForeground(event: Event): void {
+    this.applyTerminalForeground(inputValue(event));
+  }
+
+  chooseTerminalForegroundSwatch(color: string): void {
+    this.applyTerminalForeground(color);
+  }
+
   isSelectedColor(current: string, swatch: string): boolean {
     return current.toLowerCase() === swatch.toLowerCase();
   }
@@ -2078,11 +2188,23 @@ export class WorkspaceComponent implements OnInit {
     this.contentColor.set(color);
   }
 
+  private applyTerminalBackground(color: string): void {
+    saveTerminalBackground(color);
+    this.terminalBackground.set(color);
+  }
+
+  private applyTerminalForeground(color: string): void {
+    saveTerminalForeground(color);
+    this.terminalForeground.set(color);
+  }
+
   resetColors(): void {
     resetAppColors();
     const settings = readAppSettings();
     this.sidebarColor.set(settings.sidebarColor);
     this.contentColor.set(settings.contentColor);
+    this.terminalBackground.set(settings.terminalBackground);
+    this.terminalForeground.set(settings.terminalForeground);
   }
 
   createLayoutLine(): string {

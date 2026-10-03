@@ -16,6 +16,7 @@ export default defineConfig({
           exclude: [
             'tests/desktop-workspace.test.ts',
             'tests/desktop-terminal.test.ts',
+            'tests/desktop-terminal-colors.test.ts',
             'tests/e2e/**',
             '**/node_modules/**',
             '**/dist/**',
@@ -43,7 +44,11 @@ export default defineConfig({
           pool: 'forks',
           maxWorkers: 1,
           fileParallelism: false,
-          include: ['tests/desktop-workspace.test.ts', 'tests/desktop-terminal.test.ts'],
+          include: [
+            'tests/desktop-workspace.test.ts',
+            'tests/desktop-terminal.test.ts',
+            'tests/desktop-terminal-colors.test.ts',
+          ],
           setupFiles: ['src/desktop/test-setup.ts'],
           server: {
             deps: {

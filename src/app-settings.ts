@@ -8,11 +8,17 @@ export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
   sidebarColor: string;
   contentColor: string;
+  terminalBackground: string;
+  terminalForeground: string;
+  terminalFont: string;
   ideCommand: string;
 }
 
 const originalSidebarColor = '#1a3c2b';
 const originalContentColor = '#f7f7f5';
+const originalTerminalBackground = '#1e1e1e';
+const originalTerminalForeground = '#d4d4d4';
+const originalTerminalFont = 'UbuntuMono Nerd Font Mono';
 
 export interface CreateLayout {
   label: string;
@@ -66,6 +72,11 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
     defaultLayout: stored.defaultLayout === 'sibling' ? 'sibling' : 'workspaces',
     sidebarColor: typeof stored.sidebarColor === 'string' ? stored.sidebarColor : originalSidebarColor,
     contentColor: typeof stored.contentColor === 'string' ? stored.contentColor : originalContentColor,
+    terminalBackground:
+      typeof stored.terminalBackground === 'string' ? stored.terminalBackground : originalTerminalBackground,
+    terminalForeground:
+      typeof stored.terminalForeground === 'string' ? stored.terminalForeground : originalTerminalForeground,
+    terminalFont: typeof stored.terminalFont === 'string' ? stored.terminalFont : originalTerminalFont,
     ideCommand: typeof stored.ideCommand === 'string' ? stored.ideCommand : '',
   };
 }
@@ -118,12 +129,38 @@ export function saveContentColor(color: string, env?: NodeJS.ProcessEnv): void {
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export function saveTerminalBackground(color: string, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.terminalBackground = color;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveTerminalForeground(color: string, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.terminalForeground = color;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveTerminalFont(font: string, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.terminalFont = font;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
 export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
   current.sidebarColor = originalSidebarColor;
   current.contentColor = originalContentColor;
+  current.terminalBackground = originalTerminalBackground;
+  current.terminalForeground = originalTerminalForeground;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 

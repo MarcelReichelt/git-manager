@@ -15,6 +15,9 @@ import {
   saveIdeCommand,
   saveRepositoryLayoutMode,
   saveSidebarColor,
+  saveTerminalBackground,
+  saveTerminalFont,
+  saveTerminalForeground,
 } from '../src/app-settings.js';
 import { addRepository, listRepositories } from '../src/registry.js';
 
@@ -42,8 +45,36 @@ describe('app settings', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
+  });
+
+  it('uses the original terminal colors and UbuntuMono Nerd Font Mono when those settings are not text', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"terminalBackground":1,"terminalForeground":false,"terminalFont":["UbuntuMono Nerd Font Mono"]}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).terminalBackground).toBe('#1e1e1e');
+    expect(readAppSettings(env).terminalForeground).toBe('#d4d4d4');
+    expect(readAppSettings(env).terminalFont).toBe('UbuntuMono Nerd Font Mono');
+  });
+
+  it('uses the original terminal colors and UbuntuMono Nerd Font Mono when app settings are missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+
+    expect(readAppSettings(env).terminalBackground).toBe('#1e1e1e');
+    expect(readAppSettings(env).terminalForeground).toBe('#d4d4d4');
+    expect(readAppSettings(env).terminalFont).toBe('UbuntuMono Nerd Font Mono');
   });
 
   it('starts the IDE command empty when that key is missing', () => {
@@ -67,6 +98,9 @@ describe('app settings', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
   });
@@ -93,6 +127,9 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#112233',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
   });
@@ -126,6 +163,9 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
   });
@@ -147,6 +187,9 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
   });
@@ -195,6 +238,84 @@ describe('app settings', () => {
     expect(readAppSettings(env).ideCommand).toBe('code -n {folder}');
   });
 
+  it('saves the terminal background without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalForeground":"#ffffff","terminalFont":"JetBrains Mono"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveTerminalBackground('#065f46', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      ideCommand: 'cursor',
+      sidebarColor: '#112233',
+      contentColor: '#abcdef',
+      terminalForeground: '#ffffff',
+      terminalFont: 'JetBrains Mono',
+      terminalBackground: '#065f46',
+    });
+    expect(readAppSettings(env).terminalBackground).toBe('#065f46');
+    expect(readAppSettings(env).terminalFont).toBe('JetBrains Mono');
+    expect(readAppSettings(env).terminalForeground).toBe('#ffffff');
+  });
+
+  it('saves the terminal foreground without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"workspaces","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalFont":"JetBrains Mono"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveTerminalForeground('#ffffff', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'workspaces',
+      ideCommand: 'cursor',
+      sidebarColor: '#112233',
+      contentColor: '#abcdef',
+      terminalBackground: '#065f46',
+      terminalFont: 'JetBrains Mono',
+      terminalForeground: '#ffffff',
+    });
+    expect(readAppSettings(env).terminalForeground).toBe('#ffffff');
+    expect(readAppSettings(env).terminalBackground).toBe('#065f46');
+  });
+
+  it('saves the terminal font family without dropping the layout, colors, or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalForeground":"#ffffff"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveTerminalFont('JetBrains Mono', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      ideCommand: 'cursor',
+      sidebarColor: '#112233',
+      contentColor: '#abcdef',
+      terminalBackground: '#065f46',
+      terminalForeground: '#ffffff',
+      terminalFont: 'JetBrains Mono',
+    });
+    expect(readAppSettings(env).terminalFont).toBe('JetBrains Mono');
+  });
+
   it('saves the content color without dropping the layout or other settings', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
     roots.push(root);
@@ -234,11 +355,49 @@ describe('app settings', () => {
       ideCommand: 'cursor',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
     });
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
+      ideCommand: 'cursor',
+    });
+  });
+
+  it('restores the terminal background and foreground and leaves the font and layout in place', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalForeground":"#ffffff","terminalFont":"JetBrains Mono"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    resetAppColors(env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      ideCommand: 'cursor',
+      sidebarColor: '#1a3c2b',
+      contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'JetBrains Mono',
+    });
+    expect(readAppSettings(env)).toEqual({
+      defaultLayout: 'sibling',
+      sidebarColor: '#1a3c2b',
+      contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'JetBrains Mono',
       ideCommand: 'cursor',
     });
   });

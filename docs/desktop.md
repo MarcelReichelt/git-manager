@@ -62,6 +62,8 @@ On Linux and macOS, when `tmux` is installed, the terminal is a `tmux` session. 
 
 On Windows, and when `tmux` is not installed, the row is one shell in the worktree directory.
 
+App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
+
 ## Remotes
 
 Repository settings lists each remote under Remotes. The name is a label. The URL is the fetch URL, and it is read-only. Hovering or focusing a row shows the edit icon.

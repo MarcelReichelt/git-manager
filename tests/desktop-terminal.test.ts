@@ -35,7 +35,11 @@ function createRepo(): { root: string; repo: string } {
   return { root, repo };
 }
 
-async function renderWorkspace(repo: string, platform?: string): Promise<ComponentFixture<WorkspaceComponent>> {
+async function renderWorkspace(
+  repo: string,
+  platform?: string,
+  tmuxInstalled?: boolean,
+): Promise<ComponentFixture<WorkspaceComponent>> {
   TestBed.resetTestingModule();
   await TestBed.configureTestingModule({
     imports: [WorkspaceComponent],
@@ -44,6 +48,9 @@ async function renderWorkspace(repo: string, platform?: string): Promise<Compone
   fixture.componentRef.setInput('repositoryPath', repo);
   if (platform) {
     fixture.componentRef.setInput('platform', platform);
+  }
+  if (tmuxInstalled !== undefined) {
+    fixture.componentRef.setInput('tmuxInstalled', tmuxInstalled);
   }
   fixture.detectChanges();
   await fixture.whenStable();
@@ -204,7 +211,7 @@ describe('branch terminal', () => {
     await waitFor(() => capturePane(started[0]!).includes('marker-from-pane'));
 
     const pane = fixture.nativeElement.querySelector('.terminal-pane') as HTMLElement;
-    expect(pane.getAttribute('style')).toContain('background-color: #1e1e1e');
+    expect(pane.getAttribute('style') ?? '').toMatch(/background-color:\s*(#1e1e1e|rgb\(30,\s*30,\s*30\))/);
   });
 
   it('switches tabs, splits the view, and kill drops the outside tmux session', async () => {
@@ -362,4 +369,328 @@ describe('branch terminal', () => {
     expect(binary.startsWith('/exec-daemon')).toBe(false);
     expect(existsSync(binary)).toBe(true);
   });
+
+  it('places the terminal in a bottom row under the changes, the commits, and the diff', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeFileSync(join(repo.repo, '.workspaces', 'feature', 'notes.txt'), 'changed\n');
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    fixture.nativeElement.querySelector('[data-testid="changed-file"]').click();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const columns = sheet.querySelector('.sheet-columns') as HTMLElement;
+    const split = sheet.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    const row = sheet.querySelector('[data-testid="terminal-row"]') as HTMLElement;
+    const diff = sheet.querySelector('[data-testid="diff"]') as HTMLElement;
+
+    expect(split.getAttribute('role')).toBe('separator');
+    expect(split.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(columns.contains(sheet.querySelector('[data-testid="changes"]'))).toBe(true);
+    expect(columns.contains(sheet.querySelector('[data-testid="commits"]'))).toBe(true);
+    expect(columns.contains(diff)).toBe(true);
+    expect(columns.compareDocumentPosition(split) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(split.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.contains(sheet.querySelector('[data-testid="terminal-pane"]'))).toBe(true);
+    expect(row.querySelector('[data-testid="terminal-collapse"]')?.getAttribute('aria-label')).toBe(
+      'Collapse terminal',
+    );
+    expect(row.parentElement?.style.gridTemplateRows).toMatch(/minmax\(0, 1fr\) 8px \d+px/);
+  });
+
+  it('resizes the terminal row from the horizontal splitter and keeps that height across worktrees', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    const before = terminalRowHeight(split.parentElement as HTMLElement);
+
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+
+    const after = terminalRowHeight(split.parentElement as HTMLElement);
+    expect(after).toBe(before + 80);
+
+    clickBranch(fixture, 'master');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    const again = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    expect(terminalRowHeight(again.parentElement as HTMLElement)).toBe(after);
+  });
+
+  it('collapses the terminal row to its header', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    clickCollapse(fixture);
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-testid="terminal-row"]') as HTMLElement;
+    expect(row.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(row.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(row.querySelector('[data-testid="terminal-collapse"]')?.getAttribute('aria-label')).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="commits"]')).not.toBeNull();
+  });
+
+  it('restores the last terminal row height when the row expands', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 80 });
+    fixture.detectChanges();
+    const height = terminalRowHeight(split.parentElement as HTMLElement);
+
+    clickCollapse(fixture);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+
+    clickCollapse(fixture);
+
+    const again = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    expect(terminalRowHeight(again.parentElement as HTMLElement)).toBe(height);
+    expect(visiblePaneCount(fixture)).toBe(1);
+  });
+
+  it('leaves the terminal row open or collapsed when New, Split, or Kill is clicked', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => tabNames(fixture!).length === 1);
+
+    clickControl(fixture, 'New');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).not.toBeNull();
+
+    clickControl(fixture, 'Split');
+    await waitFor(() => visiblePaneCount(fixture!) === 2);
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+
+    clickCollapse(fixture);
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => tabNames(fixture!).length === 1);
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
+
+  it('shows the running terminal count on the collapsed header when it is greater than zero', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    expect(runningCount(fixture)).toBeNull();
+
+    clickCollapse(fixture);
+    expect(runningCount(fixture)).toBe('1');
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+
+    clickControl(fixture, 'New');
+    await waitFor(() => runningCount(fixture!) === '2');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+  });
+
+  it('hides the running terminal count when the selected worktree has no terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    clickCollapse(fixture);
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(runningCount(fixture)).toBeNull();
+    expect(branchRow(fixture, 'feature').querySelector('[data-testid="terminal-count"]')).toBeNull();
+  });
+
+  it('keeps the terminal row collapsed when another worktree is selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    clickCollapse(fixture);
+
+    clickBranch(fixture, 'master');
+    await waitFor(() => terminalCount(fixture!, 'master') === '1');
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(runningCount(fixture)).toBe('1');
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+  });
+
+  it('collapses the terminal row when the last terminal is killed', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(runningCount(fixture)).toBeNull();
+  });
+
+  it('starts a terminal when a collapsed row with none is opened', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    const height = terminalRowHeight(split.parentElement as HTMLElement);
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+
+    clickCollapse(fixture);
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(tabNames(fixture)).toHaveLength(1);
+    expect(terminalRowHeight(
+      (fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement).parentElement as HTMLElement,
+    )).toBe(height);
+  });
+
+  it('shows the running terminals when the row expands and does not start another', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => tabNames(fixture!).length === 1);
+    clickControl(fixture, 'New');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    const tabs = tabNames(fixture);
+
+    clickCollapse(fixture);
+    clickCollapse(fixture);
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    expect(tabNames(fixture)).toEqual(tabs);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+  });
+
+  it('refits the terminal grid when the row is resized', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+
+    const pane = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]') as HTMLElement;
+    pane.style.width = '1000px';
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(split, { x: 400, y: 3000 }, { x: 400, y: 0 });
+    fixture.detectChanges();
+    await waitFor(() => gridRows(fixture!.nativeElement) > 1);
+    const mid = gridRows(fixture.nativeElement);
+
+    dragDivider(split, { x: 400, y: 2000 }, { x: 400, y: 0 });
+    fixture.detectChanges();
+    await waitFor(() => gridRows(fixture!.nativeElement) > mid);
+    const tall = gridRows(fixture.nativeElement);
+
+    dragDivider(split, { x: 400, y: 0 }, { x: 400, y: 2000 });
+    fixture.detectChanges();
+    await waitFor(() => gridRows(fixture!.nativeElement) < tall);
+  });
+
+  it('runs an in-app shell in the worktree when tmux is not installed', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const worktree = join(repo.repo, '.workspaces', 'feature');
+    before = listTmuxSessions();
+    fixture = await renderWorkspace(repo.repo, 'linux', false);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-row"]')).toBeNull();
+    clickBranch(fixture, 'feature');
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(tabNames(fixture)).toEqual([]);
+    expect(controlButton(fixture, 'New')).toBeNull();
+    expect(controlButton(fixture, 'Split')).toBeNull();
+    expect(controlButton(fixture, 'Kill')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+
+    submitCommand(fixture.nativeElement, 'pwd');
+    await waitFor(() => paneText(fixture!).includes(worktree));
+    expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
+    expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
+  });
 });
+
+function gridRows(root: HTMLElement): number {
+  return root.querySelectorAll('[data-testid="terminal-pane"] .xterm-rows > div').length;
+}
+
+function runningCount(fixture: ComponentFixture<WorkspaceComponent>): string | null {
+  const count = fixture.nativeElement.querySelector('[data-testid="terminal-running-count"]');
+  if (!count) {
+    return null;
+  }
+  const text = count.textContent?.trim() ?? '';
+  return text.length === 0 ? null : text;
+}
+
+function collapseLabel(fixture: ComponentFixture<WorkspaceComponent>): string | null {
+  return fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]')?.getAttribute('aria-label') ?? null;
+}
+
+function clickCollapse(fixture: ComponentFixture<WorkspaceComponent>): void {
+  const button = fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error('Collapse terminal is not shown');
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
+function terminalRowHeight(element: HTMLElement): number {
+  const match = /(\d+)px\s*$/.exec(element.style.gridTemplateRows);
+  if (!match?.[1]) {
+    throw new Error(`Terminal row height is missing from ${element.style.gridTemplateRows}`);
+  }
+  return Number(match[1]);
+}
+
+function dragDivider(split: HTMLElement, start: { x: number; y: number }, end: { x: number; y: number }): void {
+  split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: start.x, clientY: start.y }));
+  split.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: end.x, clientY: end.y }));
+  split.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: end.x, clientY: end.y }));
+}

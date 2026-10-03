@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
+import { fitTerminalGrid, watchTerminalBox } from './terminal-fit';
 import { terminalEnvironment, tmuxBinary } from './tmux-sessions';
 
 @Directive({
@@ -26,6 +27,7 @@ export class TerminalPane implements OnInit, OnDestroy {
   private pty: IPty | null = null;
   private attachedSession = '';
   private generation = 0;
+  private stopWatchingSize: (() => void) | null = null;
 
   constructor() {
     afterRenderEffect(() => {
@@ -52,11 +54,14 @@ export class TerminalPane implements OnInit, OnDestroy {
       this.pty?.write(data);
     });
     this.term = term;
+    this.stopWatchingSize = watchTerminalBox(this.host.nativeElement, () => this.fitPane());
     this.attach(this.sessionName());
   }
 
   ngOnDestroy(): void {
     this.generation += 1;
+    this.stopWatchingSize?.();
+    this.stopWatchingSize = null;
     this.detach();
     this.term?.dispose();
     this.term = null;
@@ -72,8 +77,8 @@ export class TerminalPane implements OnInit, OnDestroy {
     const generation = ++this.generation;
     const pty = spawn(tmuxBinary(), ['attach-session', '-t', session], {
       name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
+      cols: term.cols,
+      rows: term.rows,
       env: terminalEnvironment(),
     });
     this.pty = pty;
@@ -88,6 +93,15 @@ export class TerminalPane implements OnInit, OnDestroy {
       this.zone.run(() => this.sessionEnded.emit(session));
     });
     term.focus();
+    this.fitPane();
+  }
+
+  private fitPane(): void {
+    const term = this.term;
+    if (!term) {
+      return;
+    }
+    fitTerminalGrid(this.host.nativeElement, term, this.pty);
   }
 
   private detach(): void {

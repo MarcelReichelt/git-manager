@@ -54,11 +54,13 @@ Drag the splitters between the panes to resize them. Each region scrolls on its 
 
 ## Terminal
 
-Selecting a worktree opens a terminal in that checkout.
+The terminal is a row at the bottom of the worktree, under the changes, the commits, and the diff. The row starts expanded. Drag the horizontal splitter to resize it. That height stays for the life of the workspace, including when you switch worktrees. The chevron collapses the row to the header and hides the splitter. Expanding restores that height. While the row is collapsed, the header shows how many terminals are running for the selected worktree when that count is greater than zero. Killing the last terminal collapses the row. Opening it starts a terminal when the worktree has none.
 
-On Linux and macOS the terminal is a `tmux` session. The name starts with `gm_`, a short hash of the repository path, and the branch. New, Split, and Kill manage the sessions for that branch. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+Selecting a worktree opens a terminal in that checkout when the worktree has none. The row stays collapsed when it was already collapsed.
 
-On Windows the pane is one shell in the worktree directory.
+On Linux and macOS, when `tmux` is installed, the terminal is a `tmux` session. The name starts with `gm_`, a short hash of the repository path, and the branch. New, Split, and Kill manage the sessions for that branch. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+
+On Windows, and when `tmux` is not installed, the row is one shell in the worktree directory.
 
 ## Remotes
 

@@ -398,10 +398,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: rgba(58, 58, 56, 0.7);
 }
 
+.sheet-body {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .sheet-columns {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -549,12 +555,20 @@ ul { margin: 0; padding: 0; list-style: none; }
   overflow-y: auto;
 }
 
+.terminal-row {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .terminal-chrome {
   display: flex;
   gap: 4px;
   align-items: center;
   height: 36px;
-  margin-top: auto;
+  flex: none;
   padding: 0 8px;
   background: #252526;
   color: #cccccc;
@@ -569,7 +583,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .terminal-pane {
   background-color: #1e1e1e;
-  min-height: 12rem;
+  flex: 1;
+  min-height: 0;
 }
 
 [data-testid='workspace-error'] { color: var(--coral); }

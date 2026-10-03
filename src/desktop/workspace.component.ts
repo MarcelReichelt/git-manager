@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal, viewChild } from '@angular/core';
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
@@ -28,6 +29,7 @@ import {
   killTmuxSession,
   nextSessionIndex,
   sessionsForBranch,
+  tmuxBinary,
 } from './tmux-sessions';
 import {
   listRemoteBranchesWithoutWorktree,
@@ -857,6 +859,7 @@ button, input { font: inherit; color: inherit; }
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
+            <div class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
             <div class="sheet-columns" [style.grid-template-columns]="sheetColumns()">
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
@@ -974,35 +977,75 @@ button, input { font: inherit; color: inherit; }
             }
             }
             </div>
-            @if (platform() === 'win32' && shellRunning() && worktreePath()) {
-              <div
-                class="terminal-pane"
-                data-testid="terminal-pane"
-                [gmShell]="worktreePath()"
-                (shellEnded)="onShellEnded()"
-                style="background-color: #1e1e1e"
-              ></div>
-            } @else if (sessions().length > 0) {
-              <div class="terminal-chrome">
-                <div role="tablist">
-                  @for (session of sessions(); track session) {
-                    <button type="button" role="tab" (click)="focusSession(session)">{{ session }}</button>
-                  }
-                </div>
-                <button type="button" (click)="splitSession()">Split</button>
-                <button type="button" (click)="newSession()">New</button>
-                <button type="button" (click)="killSession()">Kill</button>
-              </div>
-              @for (session of visibleSessions(); track session) {
+            @if (showTerminalRow()) {
+              @if (terminalExpanded()) {
                 <div
-                  class="terminal-pane"
-                  data-testid="terminal-pane"
-                  [gmTerminal]="session"
-                  (sessionEnded)="onSessionEnded(session)"
-                  style="background-color: #1e1e1e"
+                  class="splitter"
+                  role="separator"
+                  data-testid="terminal-split"
+                  aria-orientation="horizontal"
+                  tabindex="0"
+                  (pointerdown)="beginTerminalSplit($event)"
+                  (pointermove)="moveSplit($event)"
+                  (pointerup)="endSplit($event)"
                 ></div>
               }
+              <div class="terminal-row" data-testid="terminal-row">
+                <div class="terminal-chrome" data-testid="terminal-header">
+                  <button
+                    type="button"
+                    data-testid="terminal-collapse"
+                    [attr.aria-label]="terminalExpanded() ? 'Collapse terminal' : 'Expand terminal'"
+                    (click)="toggleTerminalRow()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      @if (terminalExpanded()) {
+                        <path fill="currentColor" d="M4.47 5.47a.75.75 0 0 1 1.06 0L8 7.94l2.47-2.47a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06Z" />
+                      } @else {
+                        <path fill="currentColor" d="M4.47 10.53a.75.75 0 0 0 1.06 0L8 8.06l2.47 2.47a.75.75 0 1 0 1.06-1.06l-3-3a.75.75 0 0 0-1.06 0l-3 3a.75.75 0 0 0 0 1.06Z" />
+                      }
+                    </svg>
+                  </button>
+                  @if (!terminalExpanded() && terminalCount(branch.name) > 0) {
+                    <span data-testid="terminal-running-count">{{ terminalCount(branch.name) }}</span>
+                  }
+                  @if (!inAppShell()) {
+                    <div role="tablist">
+                      @for (session of sessions(); track session) {
+                        <button type="button" role="tab" (click)="focusSession(session)">{{ session }}</button>
+                      }
+                    </div>
+                    <button type="button" (click)="splitSession()">Split</button>
+                    <button type="button" (click)="newSession()">New</button>
+                    <button type="button" (click)="killSession()">Kill</button>
+                  }
+                </div>
+                @if (terminalExpanded()) {
+                  @if (inAppShell() && shellRunning() && worktreePath()) {
+                    <div
+                      class="terminal-pane"
+                      data-testid="terminal-pane"
+                      [gmShell]="worktreePath()"
+                      (shellEnded)="onShellEnded()"
+                      [style.height.px]="terminalPaneHeight()"
+                      style="background-color: #1e1e1e"
+                    ></div>
+                  } @else {
+                    @for (session of visibleSessions(); track session) {
+                      <div
+                        class="terminal-pane"
+                        data-testid="terminal-pane"
+                        [gmTerminal]="session"
+                        (sessionEnded)="onSessionEnded(session)"
+                        [style.height.px]="terminalPaneHeight()"
+                        style="background-color: #1e1e1e"
+                      ></div>
+                    }
+                  }
+                }
+              </div>
             }
+            </div>
           } @else {
             <p class="empty-sheet">Select a branch</p>
           }
@@ -1225,6 +1268,7 @@ export class WorkspaceComponent implements OnInit {
   readonly repositoryPath = input<string | null>(null);
   readonly liveRegistry = input(false);
   readonly platform = input(hostPlatform());
+  readonly tmuxInstalled = input(tmuxIsInstalled());
   readonly selectedName = signal<string | null>(null);
   readonly openedPath = signal<string | null>(null);
   readonly registered = signal<RegisteredRepository[]>([]);
@@ -1266,12 +1310,15 @@ export class WorkspaceComponent implements OnInit {
   readonly changesFileWidth = signal(240);
   readonly changesPaneHeight = signal(280);
   readonly commitFileWidth = signal(240);
+  readonly terminalRowHeight = signal(240);
+  readonly terminalExpanded = signal(true);
   private splitDrag: {
     pointerId: number;
     axis: 'x' | 'y';
     start: number;
     origin: number;
     limit: number | undefined;
+    invert: boolean;
     apply: (value: number) => void;
   } | null = null;
   readonly visibleSessions = computed(() => {
@@ -1640,7 +1687,7 @@ export class WorkspaceComponent implements OnInit {
   }
 
   terminalCount(name: string): number {
-    if (this.platform() === 'win32') {
+    if (this.inAppShell()) {
       return name === this.selectedBranchName() && this.shellRunning() ? 1 : 0;
     }
     const repo = this.effectivePath();
@@ -1660,7 +1707,7 @@ export class WorkspaceComponent implements OnInit {
     const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd || this.platform() === 'win32') {
+    if (!repo || !branch || !cwd || this.inAppShell()) {
       return;
     }
     const index = nextSessionIndex(repo, branch, this.sessions());
@@ -1673,7 +1720,7 @@ export class WorkspaceComponent implements OnInit {
     const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd || this.platform() === 'win32') {
+    if (!repo || !branch || !cwd || this.inAppShell()) {
       return;
     }
     if (this.sessions().length < 2) {
@@ -1696,10 +1743,14 @@ export class WorkspaceComponent implements OnInit {
       this.splitView.set(false);
     }
     this.focused.set(remaining[0] ?? '');
+    if (remaining.length === 0) {
+      this.terminalExpanded.set(false);
+    }
   }
 
   onShellEnded(): void {
     this.shellRunning.set(false);
+    this.terminalExpanded.set(false);
   }
 
   onSessionEnded(session: string): void {
@@ -1713,6 +1764,9 @@ export class WorkspaceComponent implements OnInit {
     }
     if (this.focused() === session) {
       this.focused.set(remaining[0] ?? '');
+    }
+    if (remaining.length === 0) {
+      this.terminalExpanded.set(false);
     }
   }
 
@@ -1736,6 +1790,50 @@ export class WorkspaceComponent implements OnInit {
       (value) => this.commitFileWidth.set(value),
       this.changesFileWidth() + 8,
     );
+  }
+
+  beginTerminalSplit(event: PointerEvent): void {
+    this.beginSplit(
+      event,
+      'y',
+      this.terminalRowHeight(),
+      (value) => this.terminalRowHeight.set(value),
+      0,
+      true,
+    );
+  }
+
+  terminalRowTracks(): string {
+    if (!this.showTerminalRow()) {
+      return 'minmax(0, 1fr)';
+    }
+    if (!this.terminalExpanded()) {
+      return 'minmax(0, 1fr) auto';
+    }
+    return `minmax(0, 1fr) 8px ${this.terminalRowHeight()}px`;
+  }
+
+  terminalPaneHeight(): number {
+    const available = Math.max(1, this.terminalRowHeight() - terminalHeaderHeight);
+    const panes = this.inAppShell() ? 1 : Math.max(1, this.visibleSessions().length);
+    return Math.max(1, Math.floor(available / panes));
+  }
+
+  toggleTerminalRow(): void {
+    if (this.terminalExpanded()) {
+      this.terminalExpanded.set(false);
+      return;
+    }
+    this.terminalExpanded.set(true);
+    this.ensureTerminal();
+  }
+
+  showTerminalRow(): boolean {
+    return this.selectedBranchName() !== null && this.worktreePath() !== '';
+  }
+
+  inAppShell(): boolean {
+    return this.platform() === 'win32' || !this.tmuxInstalled();
   }
 
   sheetColumns(): string {
@@ -1770,7 +1868,9 @@ export class WorkspaceComponent implements OnInit {
       return;
     }
     const point = drag.axis === 'x' ? event.clientX : event.clientY;
-    drag.apply(clampSplit(drag.origin + (point - drag.start), drag.limit));
+    const delta = point - drag.start;
+    const next = drag.invert ? drag.origin - delta : drag.origin + delta;
+    drag.apply(clampSplit(next, drag.limit));
   }
 
   endSplit(event: PointerEvent): void {
@@ -1785,6 +1885,7 @@ export class WorkspaceComponent implements OnInit {
     origin: number,
     apply: (value: number) => void,
     occupied = 0,
+    invert = false,
   ): void {
     if (event.button !== 0) {
       return;
@@ -1800,6 +1901,7 @@ export class WorkspaceComponent implements OnInit {
       start: axis === 'x' ? event.clientX : event.clientY,
       origin,
       limit: room >= 80 ? room : undefined,
+      invert,
       apply,
     };
   }
@@ -2118,6 +2220,35 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
+  private ensureTerminal(): void {
+    const repo = this.effectivePath();
+    const branch = this.selectedBranchName();
+    const cwd = this.worktreePath();
+    if (!repo || !branch || !cwd) {
+      return;
+    }
+    if (this.inAppShell()) {
+      if (!this.shellRunning()) {
+        this.shellRunning.set(true);
+      }
+      return;
+    }
+    if (this.sessions().length > 0) {
+      return;
+    }
+    const existing = sessionsForBranch(repo, branch);
+    if (existing.length > 0) {
+      this.sessions.set(existing);
+      if (!existing.includes(this.focused())) {
+        this.focused.set(existing[0] ?? '');
+      }
+      return;
+    }
+    const name = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, existing));
+    this.sessions.set([name]);
+    this.focused.set(name);
+  }
+
   private openTerminals(branch: string): void {
     const repo = this.effectivePath();
     if (!repo) {
@@ -2131,7 +2262,7 @@ export class WorkspaceComponent implements OnInit {
     }
     this.worktreePath.set(cwd);
     this.splitView.set(false);
-    if (this.platform() === 'win32') {
+    if (this.inAppShell()) {
       this.sessions.set([]);
       this.focused.set('');
       this.shellRunning.set(true);
@@ -2234,9 +2365,15 @@ function readRepositoryName(repoPath: string): string {
   return basename(gitDir);
 }
 
+const terminalHeaderHeight = 36;
+
 function hostPlatform(): string {
   if (typeof process !== 'undefined' && typeof process.platform === 'string') {
     return process.platform;
   }
   return 'linux';
+}
+
+function tmuxIsInstalled(): boolean {
+  return existsSync(tmuxBinary());
 }

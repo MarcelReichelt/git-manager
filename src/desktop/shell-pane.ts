@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
+import { fitTerminalGrid, watchTerminalBox } from './terminal-fit';
 import { terminalEnvironment } from './tmux-sessions';
 
 @Directive({
@@ -26,6 +27,7 @@ export class ShellPane implements OnInit, OnDestroy {
   private pty: IPty | null = null;
   private currentCwd = '';
   private generation = 0;
+  private stopWatchingSize: (() => void) | null = null;
 
   constructor() {
     afterRenderEffect(() => {
@@ -52,11 +54,14 @@ export class ShellPane implements OnInit, OnDestroy {
     term.onData((data) => {
       this.pty?.write(data);
     });
+    this.stopWatchingSize = watchTerminalBox(this.host.nativeElement, () => this.fitPane());
     this.spawnShell(this.cwd());
   }
 
   ngOnDestroy(): void {
     this.generation += 1;
+    this.stopWatchingSize?.();
+    this.stopWatchingSize = null;
     this.stopShell();
     this.term?.dispose();
     this.term = null;
@@ -74,8 +79,8 @@ export class ShellPane implements OnInit, OnDestroy {
     const program = shellProgram();
     const pty = spawn(program.file, program.args, {
       name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
+      cols: term.cols,
+      rows: term.rows,
       cwd,
       env: terminalEnvironment(),
     });
@@ -90,6 +95,15 @@ export class ShellPane implements OnInit, OnDestroy {
       this.zone.run(() => this.shellEnded.emit());
     });
     term.focus();
+    this.fitPane();
+  }
+
+  private fitPane(): void {
+    const term = this.term;
+    if (!term) {
+      return;
+    }
+    fitTerminalGrid(this.host.nativeElement, term, this.pty);
   }
 
   private stopShell(): void {

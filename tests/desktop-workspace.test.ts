@@ -516,6 +516,10 @@ describe('desktop workspace', () => {
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-label')).toBe('Add remote');
     expect(settings.contains(dialog)).toBe(false);
+    const confirmAdd = dialog.querySelector('[data-testid="confirm-add-remote"]');
+    expect(getComputedStyle(confirmAdd).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(confirmAdd).color).toBe('rgb(255, 255, 255)');
+    expect(confirmAdd.textContent.trim()).toBe('Add remote');
     dialog.querySelector('h2').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"]')).not.toBeNull();
@@ -563,6 +567,10 @@ describe('desktop workspace', () => {
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-label')).toBe('Change remote');
     expect(settings.contains(dialog)).toBe(false);
+    const confirmChange = dialog.querySelector('[data-testid="confirm-change-remote"]');
+    expect(getComputedStyle(confirmChange).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(confirmChange).color).toBe('rgb(255, 255, 255)');
+    expect(confirmChange.textContent.trim()).toBe('Change remote');
     const nameField = dialog.querySelector('[data-testid="change-remote-name"]');
     const urlField = dialog.querySelector('[data-testid="change-remote-url"]');
     expect(nameField.value).toBe('origin');

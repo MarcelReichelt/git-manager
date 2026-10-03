@@ -714,6 +714,13 @@ button, input { font: inherit; color: inherit; }
   cursor: text;
 }
 
+[data-testid='add-remote-dialog'] [data-testid='confirm-add-remote'],
+[data-testid='change-remote-dialog'] [data-testid='confirm-change-remote'] {
+  background-color: #1a3c2b;
+  color: #ffffff;
+  border-color: #1a3c2b;
+}
+
 [data-testid='remote-form-error'] {
   margin: 0;
   color: var(--coral);

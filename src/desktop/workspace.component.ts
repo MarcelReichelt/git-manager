@@ -2,7 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal } from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
-import { addRemote, removeRemote, repositoryRemotes, setRemoteUrl, type RepositoryRemote } from '../remotes.js';
+import { addRemote, changeRemote, listRemotes, removeRemote, repositoryRemotes, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
@@ -600,9 +600,14 @@ button, input { font: inherit; color: inherit; }
   margin-bottom: 8px;
 }
 
+.remote-actions {
+  display: flex;
+  gap: 8px;
+}
+
 [data-testid='repository-settings-dialog'] input,
-[data-testid='confirm-add-remote'],
-[data-testid='confirm-change-remote'],
+[data-testid='open-add-remote'],
+[data-testid='change-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
   box-sizing: border-box;
@@ -627,10 +632,95 @@ button, input { font: inherit; color: inherit; }
   cursor: text;
 }
 
-[data-testid='confirm-add-remote'] {
+[data-testid='open-add-remote'],
+[data-testid='confirm-add-remote'],
+[data-testid='confirm-change-remote'] {
   background: var(--forest);
   color: white;
   border-color: var(--forest);
+}
+
+[data-testid='add-remote-dialog'],
+[data-testid='change-remote-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='add-remote-dialog'] .dialog-panel,
+[data-testid='change-remote-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='add-remote-dialog'] h2,
+[data-testid='change-remote-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='add-remote-dialog'] label,
+[data-testid='change-remote-dialog'] label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+[data-testid='add-remote-dialog'] input,
+[data-testid='change-remote-dialog'] input,
+[data-testid='confirm-add-remote'],
+[data-testid='confirm-change-remote'],
+[data-testid='cancel-add-remote'],
+[data-testid='cancel-change-remote'] {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='add-remote-dialog'] input,
+[data-testid='change-remote-dialog'] input {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: text;
+}
+
+[data-testid='remote-form-error'] {
+  margin: 0;
+  color: var(--coral);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .dialog-actions {
@@ -1046,30 +1136,63 @@ button, input { font: inherit; color: inherit; }
               <li data-testid="remote-row" [attr.data-name]="remote.name">
                 <span data-testid="remote-name">{{ remote.name }}</span>
                 <span data-testid="remote-url">{{ remote.url }}</span>
-                <input
-                  data-testid="remote-url-field"
-                  [value]="remoteDraft(remote.name)"
-                  (input)="setRemoteDraft(remote.name, $event)"
-                />
-                <button type="button" data-testid="confirm-change-remote" (click)="confirmChangeRemote(remote.name)">Change URL</button>
-                <button type="button" data-testid="remove-remote" (click)="confirmRemoveRemote(remote.name)">Remove</button>
+                <div class="remote-actions">
+                  <button type="button" data-testid="change-remote" (click)="openChangeRemote(remote.name)">Change</button>
+                  <button type="button" data-testid="remove-remote" (click)="confirmRemoveRemote(remote.name)">Remove</button>
+                </div>
               </li>
             }
           </ul>
-          <label>
-            Remote name
-            <input data-testid="add-remote-name" [value]="addRemoteName()" (input)="setAddRemoteName($event)" />
-          </label>
-          <label>
-            Remote URL
-            <input data-testid="add-remote-url" [value]="addRemoteUrl()" (input)="setAddRemoteUrl($event)" />
-          </label>
           @if (settingsError(); as message) {
             <p data-testid="settings-error">{{ message }}</p>
           }
           <div class="dialog-actions">
-            <button type="button" data-testid="confirm-add-remote" (click)="confirmAddRemote()">Add remote</button>
+            <button type="button" data-testid="open-add-remote" (click)="openAddRemote()">Add remote</button>
             <button type="button" data-testid="close-repository-settings" (click)="closeSettings()">Close</button>
+          </div>
+        </section>
+      </div>
+    }
+    @if (addRemoteOpen()) {
+      <div data-testid="add-remote-dialog" role="dialog" aria-label="Add remote" (click)="dismissAddRemoteFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
+          <h2>Add remote</h2>
+          <label>
+            Name
+            <input data-testid="add-remote-name" [value]="remoteFormName()" (input)="setRemoteFormName($event)" />
+          </label>
+          <label>
+            URL
+            <input data-testid="add-remote-url" [value]="remoteFormUrl()" (input)="setRemoteFormUrl($event)" />
+          </label>
+          @if (remoteFormError(); as message) {
+            <p data-testid="remote-form-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-add-remote" (click)="confirmAddRemote()">Add remote</button>
+            <button type="button" data-testid="cancel-add-remote" (click)="cancelAddRemote()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
+    @if (editingRemote()) {
+      <div data-testid="change-remote-dialog" role="dialog" aria-label="Change remote" (click)="dismissChangeRemoteFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
+          <h2>Change remote</h2>
+          <label>
+            Name
+            <input data-testid="change-remote-name" [value]="remoteFormName()" (input)="setRemoteFormName($event)" />
+          </label>
+          <label>
+            URL
+            <input data-testid="change-remote-url" [value]="remoteFormUrl()" (input)="setRemoteFormUrl($event)" />
+          </label>
+          @if (remoteFormError(); as message) {
+            <p data-testid="remote-form-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-change-remote" (click)="confirmChangeRemote()">Change remote</button>
+            <button type="button" data-testid="cancel-change-remote" (click)="cancelChangeRemote()">Cancel</button>
           </div>
         </section>
       </div>
@@ -1137,9 +1260,11 @@ export class WorkspaceComponent implements OnInit {
   readonly loadedDiff = signal<string | null>(null);
   readonly settingsOpen = signal(false);
   readonly remotes = signal<RepositoryRemote[]>([]);
-  readonly addRemoteName = signal('');
-  readonly addRemoteUrl = signal('');
-  readonly remoteDrafts = signal<Record<string, string>>({});
+  readonly addRemoteOpen = signal(false);
+  readonly editingRemote = signal<string | null>(null);
+  readonly remoteFormName = signal('');
+  readonly remoteFormUrl = signal('');
+  readonly remoteFormError = signal<string | null>(null);
   readonly settingsError = signal<string | null>(null);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
@@ -1765,6 +1890,14 @@ export class WorkspaceComponent implements OnInit {
       this.cancelAdd();
       return;
     }
+    if (this.addRemoteOpen()) {
+      this.cancelAddRemote();
+      return;
+    }
+    if (this.editingRemote()) {
+      this.cancelChangeRemote();
+      return;
+    }
     if (this.settingsOpen()) {
       this.closeSettings();
       return;
@@ -1788,14 +1921,16 @@ export class WorkspaceComponent implements OnInit {
 
   openSettings(): void {
     this.settingsError.set(null);
-    this.addRemoteName.set('');
-    this.addRemoteUrl.set('');
+    this.cancelAddRemote();
+    this.cancelChangeRemote();
     this.loadRemotes();
     this.settingsOpen.set(true);
   }
 
   closeSettings(): void {
     this.settingsError.set(null);
+    this.cancelAddRemote();
+    this.cancelChangeRemote();
     this.settingsOpen.set(false);
   }
 
@@ -1805,19 +1940,72 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
-  remoteDraft(name: string): string {
-    return this.remoteDrafts()[name] ?? '';
+  openAddRemote(): void {
+    this.remoteFormError.set(null);
+    this.remoteFormName.set('');
+    this.remoteFormUrl.set('');
+    this.editingRemote.set(null);
+    this.addRemoteOpen.set(true);
   }
 
-  setRemoteDraft(name: string, event: Event): void {
-    const value = inputValue(event);
-    this.remoteDrafts.update((drafts) => ({ ...drafts, [name]: value }));
+  cancelAddRemote(): void {
+    this.remoteFormError.set(null);
+    this.addRemoteOpen.set(false);
   }
 
-  confirmChangeRemote(name: string): void {
-    this.editRemotes(() => {
-      setRemoteUrl(this.effectivePath() ?? '', name, this.remoteDraft(name));
-    });
+  dismissAddRemoteFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelAddRemote();
+    }
+  }
+
+  openChangeRemote(name: string): void {
+    const remote = this.remotes().find((item) => item.name === name);
+    if (!remote) {
+      return;
+    }
+    this.remoteFormError.set(null);
+    this.remoteFormName.set(remote.name);
+    this.remoteFormUrl.set(remote.url);
+    this.addRemoteOpen.set(false);
+    this.editingRemote.set(name);
+  }
+
+  cancelChangeRemote(): void {
+    this.remoteFormError.set(null);
+    this.editingRemote.set(null);
+  }
+
+  dismissChangeRemoteFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelChangeRemote();
+    }
+  }
+
+  setRemoteFormName(event: Event): void {
+    this.remoteFormName.set(inputValue(event));
+  }
+
+  setRemoteFormUrl(event: Event): void {
+    this.remoteFormUrl.set(inputValue(event));
+  }
+
+  confirmChangeRemote(): void {
+    const currentName = this.editingRemote();
+    const path = this.effectivePath();
+    if (!currentName || !path) {
+      return;
+    }
+    this.remoteFormError.set(null);
+    try {
+      const existing = listRemotes(path).find((remote) => remote.name === currentName);
+      const pushUrl = existing && existing.pushUrl !== existing.fetchUrl ? existing.pushUrl : undefined;
+      changeRemote(path, currentName, this.remoteFormName().trim(), this.remoteFormUrl().trim(), pushUrl);
+      this.editingRemote.set(null);
+      this.loadRemotes();
+    } catch (error) {
+      this.remoteFormError.set(error instanceof Error ? error.message : String(error));
+    }
   }
 
   confirmRemoveRemote(name: string): void {
@@ -1826,20 +2014,19 @@ export class WorkspaceComponent implements OnInit {
     });
   }
 
-  setAddRemoteName(event: Event): void {
-    this.addRemoteName.set(inputValue(event));
-  }
-
-  setAddRemoteUrl(event: Event): void {
-    this.addRemoteUrl.set(inputValue(event));
-  }
-
   confirmAddRemote(): void {
-    this.editRemotes(() => {
-      addRemote(this.effectivePath() ?? '', this.addRemoteName(), this.addRemoteUrl());
-      this.addRemoteName.set('');
-      this.addRemoteUrl.set('');
-    });
+    const path = this.effectivePath();
+    if (!path) {
+      return;
+    }
+    this.remoteFormError.set(null);
+    try {
+      addRemote(path, this.remoteFormName().trim(), this.remoteFormUrl().trim());
+      this.addRemoteOpen.set(false);
+      this.loadRemotes();
+    } catch (error) {
+      this.remoteFormError.set(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private editRemotes(action: () => void): void {
@@ -1863,9 +2050,7 @@ export class WorkspaceComponent implements OnInit {
       this.remoteDrafts.set({});
       return;
     }
-    const remotes = repositoryRemotes(path);
-    this.remotes.set(remotes);
-    this.remoteDrafts.set(Object.fromEntries(remotes.map((remote) => [remote.name, remote.url])));
+    this.remotes.set(repositoryRemotes(path));
   }
 
   updateBranch(name: string, event: Event): void {

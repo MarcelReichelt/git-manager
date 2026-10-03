@@ -1199,6 +1199,45 @@ describe('desktop workspace', () => {
     expect(dialog.querySelector('[data-testid="repository-location"]').textContent).toBe(pier);
   });
 
+  it('copies the repository location from settings and still copies it from the name', async () => {
+    const copied: string[] = [];
+    setTextCopy((text) => {
+      copied.push(text);
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const location = dialog.querySelector('[data-testid="repository-location"]');
+    const icon = location.querySelector('[data-testid="copy-location-icon"]');
+    expect(location.textContent).toBe(repoPath);
+    expect(location.getAttribute('title')).toBe('Copy location');
+    expect(icon).not.toBeNull();
+    expect(getComputedStyle(location).cursor).toBe('pointer');
+    expect(getComputedStyle(icon).opacity).toBe('0');
+
+    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const hoverShowsIcon = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some((match) => {
+      const selector = match[1] ?? '';
+      const body = match[2] ?? '';
+      return (
+        selector.includes("[data-testid='repository-location']") &&
+        selector.includes(':hover') &&
+        selector.includes("[data-testid='copy-location-icon']") &&
+        /opacity\s*:\s*1/.test(body)
+      );
+    });
+    expect(hoverShowsIcon).toBe(true);
+
+    location.click();
+    const name = fixture.nativeElement.querySelector('[data-testid="repository-name"]');
+    name.click();
+    expect(copied).toEqual([repoPath, repoPath]);
+  });
+
   it('shows the app default worktree mode in repository settings without writing a config', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');

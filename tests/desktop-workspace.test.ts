@@ -6,6 +6,7 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { resetFolderBrowser, setFolderBrowser } from '../src/desktop/folder-browser';
 import { resetTextCopy, setTextCopy } from '../src/desktop/copy-text';
+import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
 import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
@@ -26,6 +27,7 @@ describe('desktop workspace', () => {
   afterEach(() => {
     resetFolderBrowser();
     resetTextCopy();
+    resetIdeLaunch();
     resetWindowChrome();
     restoreSearch?.();
     restoreSearch = undefined;
@@ -415,7 +417,7 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
-    expect(labels).toEqual(['Workspaces', 'Sibling']);
+    expect(labels).toEqual(['Workspaces', 'Sibling', 'IDE command']);
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
     expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
@@ -432,6 +434,214 @@ describe('desktop workspace', () => {
     const reopened = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     expect(layoutChoice(reopened, 'Sibling').checked).toBe(true);
     expect(layoutChoice(reopened, 'Workspaces').checked).toBe(false);
+  });
+
+  it('saves the IDE command as soon as it changes and shows it when App settings reopens', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const field = dialog.querySelector('[data-testid="ide-command"]');
+    expect(field).toBeInstanceOf(HTMLInputElement);
+    if (!(field instanceof HTMLInputElement)) {
+      return;
+    }
+    expect(field.value).toBe('');
+    expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
+
+    field.value = 'cursor --reuse-window';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(readAppSettings().ideCommand).toBe('cursor --reuse-window');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const reopened = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] [data-testid="ide-command"]');
+    expect(reopened).toBeInstanceOf(HTMLInputElement);
+    if (!(reopened instanceof HTMLInputElement)) {
+      return;
+    }
+    expect(reopened.value).toBe('cursor --reuse-window');
+  });
+
+  it('shows a disabled IDE button to the right of the selected branch name while the command is empty', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector('[data-testid="content-sheet"] .branch-heading');
+    const name = heading.querySelector('[data-testid="copy-branch-name"]');
+    const ide = heading.querySelector('[data-testid="open-ide"]');
+    expect(ide).toBeInstanceOf(HTMLButtonElement);
+    if (!(ide instanceof HTMLButtonElement) || !(name instanceof HTMLElement)) {
+      return;
+    }
+    expect(ide.textContent).toContain('IDE');
+    expect(ide.querySelector('svg')).not.toBeNull();
+    expect(getComputedStyle(ide).display).not.toBe('none');
+    expect(getComputedStyle(ide).visibility).not.toBe('hidden');
+    expect(ide.disabled).toBe(true);
+    expect(rightEdge(ide)).toBeGreaterThan(rightEdge(name));
+  });
+
+  it('opens the primary checkout in the IDE from the branch header', async () => {
+    const launched: Array<{ command: string; cwd: string }> = [];
+    setIdeLaunch((command, cwd) => {
+      launched.push({ command, cwd });
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"code -n {folder}"}\n');
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const ide = fixture.nativeElement.querySelector(
+      '[data-testid="content-sheet"] .branch-heading [data-testid="open-ide"]',
+    );
+    expect(ide).toBeInstanceOf(HTMLButtonElement);
+    if (!(ide instanceof HTMLButtonElement)) {
+      return;
+    }
+    expect(ide.disabled).toBe(false);
+    ide.click();
+    fixture.detectChanges();
+
+    expect(launched).toEqual([{ command: `code -n '${repoPath}'`, cwd: repoPath }]);
+  });
+
+  it('opens a branch checkout in the IDE instead of the primary repository', async () => {
+    const launched: Array<{ command: string; cwd: string }> = [];
+    setIdeLaunch((command, cwd) => {
+      launched.push({ command, cwd });
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"code -n {folder}"}\n');
+    git(repoPath, ['branch', 'feature']);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const ide = fixture.nativeElement.querySelector('[data-testid="open-ide"]');
+    expect(ide).toBeInstanceOf(HTMLButtonElement);
+    if (!(ide instanceof HTMLButtonElement)) {
+      return;
+    }
+    ide.click();
+    fixture.detectChanges();
+
+    expect(launched).toEqual([{ command: `code -n '${checkout}'`, cwd: checkout }]);
+  });
+
+  it('runs an IDE command without {folder} in the selected checkout', async () => {
+    const launched: Array<{ command: string; cwd: string }> = [];
+    setIdeLaunch((command, cwd) => {
+      launched.push({ command, cwd });
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const field = fixture.nativeElement.querySelector('[data-testid="ide-command"]');
+    if (!(field instanceof HTMLInputElement)) {
+      throw new Error('missing IDE command');
+    }
+    field.value = 'cursor --reuse-window';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    const ide = fixture.nativeElement.querySelector('[data-testid="open-ide"]');
+    expect(ide).toBeInstanceOf(HTMLButtonElement);
+    if (!(ide instanceof HTMLButtonElement)) {
+      return;
+    }
+    expect(ide.disabled).toBe(false);
+    ide.click();
+    fixture.detectChanges();
+
+    expect(launched).toEqual([{ command: 'cursor --reuse-window', cwd: repoPath }]);
+  });
+
+  it('shows a launch error on the workspace when the IDE fails to start', async () => {
+    setIdeLaunch(() => {
+      throw new Error('cursor failed to start');
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"cursor"}\n');
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="open-ide"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'cursor failed to start',
+    );
+  });
+
+  it('shows a shell failure from the IDE command on the workspace', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"exit 9"}\n');
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="open-ide"]').click();
+    await untilVisible(
+      fixture,
+      (workspace) => workspace.querySelector('[data-testid="workspace-error"]') !== null,
+    );
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'Command failed: exit 9',
+    );
   });
 
   it('offers sidebar and content color choosers and a reset button in App settings', async () => {
@@ -554,6 +764,7 @@ describe('desktop workspace', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#123456',
       contentColor: '#abcdef',
+      ideCommand: '',
     });
   });
 
@@ -589,6 +800,7 @@ describe('desktop workspace', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: 'cursor',
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });
@@ -3737,6 +3949,34 @@ function layoutChoice(dialog: ParentNode, name: string): HTMLInputElement {
 function boxEdge(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function rightEdge(element: HTMLElement): number {
+  const box = element.getBoundingClientRect();
+  if (box.width > 0) {
+    return box.right;
+  }
+  const heading = element.closest('.branch-heading');
+  if (!(heading instanceof HTMLElement)) {
+    return box.right;
+  }
+  const row = [...heading.children].find(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.contains(element) && isHorizontalRow(getComputedStyle(child)),
+  );
+  if (!row) {
+    return box.right;
+  }
+  const items = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
+  const index = items.findIndex((item) => item.contains(element));
+  return index + 1;
+}
+
+function isHorizontalRow(style: CSSStyleDeclaration): boolean {
+  if (style.display !== 'flex' && style.display !== 'inline-flex') {
+    return false;
+  }
+  return style.flexDirection !== 'column' && style.flexDirection !== 'column-reverse';
 }
 
 function horizontalGap(left: HTMLElement, right: HTMLElement): number {

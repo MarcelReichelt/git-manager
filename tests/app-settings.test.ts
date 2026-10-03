@@ -11,6 +11,7 @@ import {
   resolveAppSettingsPath,
   saveContentColor,
   saveDefaultLayout,
+  saveIdeCommand,
   saveSidebarColor,
 } from '../src/app-settings.js';
 import { addRepository, listRepositories } from '../src/registry.js';
@@ -39,7 +40,18 @@ describe('app settings', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: '',
     });
+  });
+
+  it('starts the IDE command empty when that key is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling","sidebarColor":"#112233"}\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).ideCommand).toBe('');
   });
 
   it('uses Workspaces when the app settings file is empty', () => {
@@ -53,6 +65,7 @@ describe('app settings', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: '',
     });
   });
 
@@ -78,6 +91,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#112233',
       contentColor: '#f7f7f5',
+      ideCommand: '',
     });
   });
 
@@ -92,6 +106,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: '',
     });
   });
 
@@ -112,6 +127,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: '',
     });
   });
 
@@ -135,6 +151,28 @@ describe('app settings', () => {
       sidebarColor: '#112233',
     });
     expect(readAppSettings(env).sidebarColor).toBe('#112233');
+  });
+
+  it('saves the IDE command without dropping the layout, colors, or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","sidebarColor":"#112233","contentColor":"#abcdef"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveIdeCommand('code -n {folder}', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      sidebarColor: '#112233',
+      contentColor: '#abcdef',
+      ideCommand: 'code -n {folder}',
+    });
+    expect(readAppSettings(env).ideCommand).toBe('code -n {folder}');
   });
 
   it('saves the content color without dropping the layout or other settings', () => {
@@ -181,6 +219,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      ideCommand: 'cursor',
     });
   });
 

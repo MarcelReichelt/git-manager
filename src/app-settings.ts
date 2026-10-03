@@ -7,6 +7,7 @@ export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
   sidebarColor: string;
   contentColor: string;
+  ideCommand: string;
 }
 
 const originalSidebarColor = '#1a3c2b';
@@ -51,6 +52,7 @@ export function readAppSettings(env: NodeJS.ProcessEnv = process.env): AppSettin
     defaultLayout: stored.defaultLayout === 'sibling' ? 'sibling' : 'workspaces',
     sidebarColor: typeof stored.sidebarColor === 'string' ? stored.sidebarColor : originalSidebarColor,
     contentColor: typeof stored.contentColor === 'string' ? stored.contentColor : originalContentColor,
+    ideCommand: typeof stored.ideCommand === 'string' ? stored.ideCommand : '',
   };
 }
 
@@ -70,6 +72,14 @@ export function saveSidebarColor(color: string, env: NodeJS.ProcessEnv = process
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
   current.sidebarColor = color;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveIdeCommand(command: string, env: NodeJS.ProcessEnv = process.env): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.ideCommand = command;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 

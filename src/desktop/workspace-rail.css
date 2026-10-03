@@ -336,6 +336,40 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-bottom: 1px solid rgba(58, 58, 56, 0.2);
 }
 
+.branch-heading .branch-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.branch-heading [data-testid='open-ide'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  background-color: var(--paper);
+  color: var(--forest);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.branch-heading [data-testid='open-ide']:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.branch-heading [data-testid='open-ide'] svg {
+  flex: none;
+}
+
 .branch-heading h2 {
   color: var(--forest);
   font-family: "Space Grotesk", sans-serif;

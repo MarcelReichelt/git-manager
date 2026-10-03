@@ -11,11 +11,13 @@ import {
   resetAppColors,
   saveContentColor,
   saveDefaultLayout,
+  saveIdeCommand,
   saveSidebarColor,
   type AppSettings,
 } from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import { copyText } from './copy-text';
+import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { ShellPane } from './shell-pane';
@@ -606,6 +608,24 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
+[data-testid='app-settings-dialog'] label.ide-command-field {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+[data-testid='ide-command'] {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 [data-testid='reset-colors'] {
   box-sizing: border-box;
   padding: 8px 12px;
@@ -1019,20 +1039,28 @@ button, input { font: inherit; color: inherit; }
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
             <header class="branch-heading">
-              <h2>
-                <button
-                  type="button"
-                  data-testid="copy-branch-name"
-                  title="Copy branch name"
-                  (click)="copyBranchName(branch.name)"
-                >
-                  {{ branch.name }}
-                  <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                    <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
-                    <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+              <div class="branch-title">
+                <h2>
+                  <button
+                    type="button"
+                    data-testid="copy-branch-name"
+                    title="Copy branch name"
+                    (click)="copyBranchName(branch.name)"
+                  >
+                    {{ branch.name }}
+                    <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+                      <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+                    </svg>
+                  </button>
+                </h2>
+                <button type="button" data-testid="open-ide" [disabled]="ideCommand() === ''" (click)="openIde()">
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                    <path fill="currentColor" d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.5 0h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0V4.56L8.28 8.78a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l4.22-4.22H10.25a.75.75 0 0 1 0-1.5Z" />
                   </svg>
+                  IDE
                 </button>
-              </h2>
+              </div>
               <p>
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
@@ -1379,6 +1407,15 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
+          <label class="ide-command-field">
+            IDE command
+            <input
+              type="text"
+              data-testid="ide-command"
+              [value]="ideCommand()"
+              (input)="chooseIdeCommand($event)"
+            />
+          </label>
           <div class="color-choice">
             <span>Sidebar</span>
             <input
@@ -1471,6 +1508,7 @@ export class WorkspaceComponent implements OnInit {
   readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
   readonly contentColor = signal(readAppSettings().contentColor);
+  readonly ideCommand = signal(readAppSettings().ideCommand);
   readonly remotes = signal<RepositoryRemote[]>([]);
   readonly addRemoteOpen = signal(false);
   readonly editingRemote = signal<string | null>(null);
@@ -2136,13 +2174,45 @@ export class WorkspaceComponent implements OnInit {
   }
 
   openAppSettings(): void {
-    this.defaultLayout.set(readAppSettings().defaultLayout);
+    const settings = readAppSettings();
+    this.defaultLayout.set(settings.defaultLayout);
+    this.ideCommand.set(settings.ideCommand);
     this.appSettingsOpen.set(true);
   }
 
   chooseDefaultLayout(layout: AppSettings['defaultLayout']): void {
     saveDefaultLayout(layout);
     this.defaultLayout.set(layout);
+  }
+
+  chooseIdeCommand(event: Event): void {
+    const command = inputValue(event);
+    saveIdeCommand(command);
+    this.ideCommand.set(command);
+  }
+
+  openIde(): void {
+    const command = this.ideCommand();
+    const cwd = this.worktreePath();
+    if (command === '' || cwd === '') {
+      return;
+    }
+    this.workspaceError.set(null);
+    let pending: void | Promise<void>;
+    try {
+      pending = launchIde(command, cwd);
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return;
+    }
+    if (!isPromise(pending)) {
+      return;
+    }
+    void pending.catch((error: unknown) => {
+      this.zone.run(() => {
+        this.workspaceError.set(errorText(error));
+      });
+    });
   }
 
   chooseSidebarColor(event: Event): void {
@@ -2522,6 +2592,17 @@ function liveQueryFlag(): boolean {
 function inputValue(event: Event): string {
   const target = event.target as { value?: string } | null;
   return target?.value ?? '';
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isPromise(value: void | Promise<void>): value is Promise<void> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  return typeof value.then === 'function';
 }
 
 function clampSplit(value: number, limit: number | undefined): number {

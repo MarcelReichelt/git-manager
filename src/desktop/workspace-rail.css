@@ -581,6 +581,125 @@ ul { margin: 0; padding: 0; list-style: none; }
   cursor: pointer;
 }
 
+.terminal-tabs {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.terminal-tabs button[role='tab'] {
+  max-width: 220px;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-tabs button[role='tab'][aria-selected='true'] {
+  background: #1e1e1e;
+}
+
+.terminal-chrome button.terminal-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.terminal-chrome button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.terminal-panes {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-pane-column {
+  display: flex;
+  flex-basis: 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-panes > .splitter[aria-orientation='vertical'] {
+  width: 8px;
+  flex: none;
+  align-self: stretch;
+}
+
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  flex: none;
+  padding: 0 8px;
+  overflow: hidden;
+  background: #252526;
+  color: #cccccc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.terminal-menu {
+  position: fixed;
+  z-index: 7;
+  width: 160px;
+  padding: 4px 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  background-color: var(--paper);
+  color: var(--grid);
+}
+
+.terminal-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--grid);
+  text-align: left;
+  cursor: pointer;
+}
+
+.terminal-menu button:hover {
+  background: var(--surface);
+}
+
+.terminal-menu button:disabled,
+.terminal-menu button:disabled:hover {
+  opacity: 0.4;
+  background: transparent;
+  cursor: default;
+}
+
+[data-testid='terminal-name-input'] {
+  box-sizing: border-box;
+  width: 140px;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid rgba(204, 204, 204, 0.45);
+  border-radius: 4px;
+  background: #1e1e1e;
+  color: #cccccc;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .terminal-pane {
   background-color: #1e1e1e;
   flex: 1;

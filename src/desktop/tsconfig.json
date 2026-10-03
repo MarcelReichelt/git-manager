@@ -14,6 +14,7 @@
     "./**/*.ts",
     "../../tests/desktop-workspace.test.ts",
     "../../tests/desktop-terminal.test.ts",
-    "../../tests/desktop-terminal-colors.test.ts"
+    "../../tests/desktop-terminal-colors.test.ts",
+    "../../tests/desktop-terminal-tabs.test.ts"
   ]
 }

@@ -104,6 +104,30 @@ export function killTmuxSession(name: string): void {
   }
 }
 
+export function tmuxSessionAlive(name: string): boolean {
+  try {
+    execFileSync(tmuxBinary(), ['has-session', '-t', name], {
+      env: terminalEnvironment(),
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function paneCommand(name: string): string {
+  try {
+    return execFileSync(tmuxBinary(), ['display-message', '-p', '-t', name, '#{pane_current_command}'], {
+      encoding: 'utf8',
+      env: terminalEnvironment(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
 function sessionIndex(prefix: string, name: string): number | undefined {
   if (!name.startsWith(prefix)) {
     return undefined;

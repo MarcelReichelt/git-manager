@@ -30,7 +30,7 @@ The color beside the name is the status. Hovering it shows the title:
 | Local and remote | The configured upstream ref exists |
 | Remote deleted | An upstream is configured and that ref is gone |
 
-A row also shows the changed-file count, and how many commits the branch is ahead and behind. Those counts use the upstream when it exists, and the default branch otherwise. A terminal count appears while a terminal for that worktree is running. On Linux and macOS that count is the number of `tmux` sessions for the branch. On Windows it is 1 while the shell for the selected worktree is open.
+A row also shows the changed-file count, and how many commits the branch is ahead and behind. Those counts use the upstream when it exists, and the default branch otherwise. A terminal count appears while terminals for that worktree are running, and it is hidden at zero. The count is the number of running terminals, so a tab with two terminals side by side counts as two.
 
 Click a row to open it. **···** opens the branch actions: Update from master, Merge into master, and Remove worktree. Update from master merges `master` into that checkout. Merge into master opens a dialog with a Squash checkbox, and the primary checkout has to be on `master`. Remove worktree deletes the extra checkout and keeps the branch. The primary checkout stays.
 
@@ -56,11 +56,21 @@ Drag the splitters between the panes to resize them. Each region scrolls on its 
 
 The terminal is a row at the bottom of the worktree, under the changes, the commits, and the diff. The row starts expanded. Drag the horizontal splitter to resize it. That height stays for the life of the workspace, including when you switch worktrees. The chevron collapses the row to the header and hides the splitter. Expanding restores that height. While the row is collapsed, the header shows how many terminals are running for the selected worktree when that count is greater than zero. Killing the last terminal collapses the row. Opening it starts a terminal when the worktree has none.
 
-Selecting a worktree opens a terminal in that checkout when the worktree has none. The row stays collapsed when it was already collapsed.
+Selecting a worktree opens a terminal in that checkout when the worktree has none. The row stays collapsed when it was already collapsed. A worktree keeps its tabs while another worktree is selected, and while the row is collapsed.
 
-On Linux and macOS, when `tmux` is installed, the terminal is a `tmux` session. The name starts with `gm_`, a short hash of the repository path, and the branch. New, Split, and Kill manage the sessions for that branch. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+The terminals for a worktree sit in numbered tabs in the header. A tab holds one terminal, or two side by side. The number is the tab's position, starting at 1. Closing a tab renumbers the tabs after it. Inserting a tab renumbers the tabs after the insertion, so a new tab between 1 and 2 becomes 2 and the old 2 becomes 3.
 
-On Windows, and when `tmux` is not installed, the row is one shell in the worktree directory.
+New, Split, and Kill are icon buttons. New adds a tab at the end with one terminal. On a collapsed header, New also expands the row. Split adds a second terminal to the current tab. The two panes sit side by side with a splitter between them. Split is disabled when the current tab already has two. Kill on the header kills the focused terminal. Killing a terminal closes it. The last terminal in a tab closes the tab.
+
+With no custom name, a one-terminal tab shows its number and the foreground process name, such as `1 bash`. A split tab shows both names, such as `1 bash · npm`, and each pane shows its own name. The process name is the running command, and the shell name again when that command exits. A tooltip on a terminal says `tmux session` or `in-app terminal`.
+
+Right-click a tab that holds one terminal for Rename, Kill, and Split. Right-click a terminal inside a split tab for Rename, Kill, Split, and Unsplit. Split is disabled there. Right-click the tab of a split tab for Rename and Kill of the whole tab. Kill on a tab kills every terminal in it. Unsplit moves the right-clicked terminal into a new tab immediately after the current tab and focuses that new tab. The other terminal stays.
+
+Rename turns the name into a field. Enter commits it. An empty name clears it, and the process name comes back. Escape closes the menu without renaming. Splitting a renamed one-terminal tab keeps that name on the existing terminal. The new terminal starts from its process name. Renaming a split tab replaces the chip until the name is cleared. The pane headers still show each terminal's name. Renaming a terminal inside a split tab sets that terminal's name until it is cleared. Unsplit keeps a renamed terminal's name on its new tab. When one terminal of a pair is closed, a custom tab name stays and the remaining terminal's name is dropped. Without a custom tab name, the remaining terminal's name becomes the tab name.
+
+On Linux and macOS, when `tmux` is installed, each terminal is a `tmux` session. The session name starts with `gm_`, a short hash of the repository path, and the branch. That name is the tmux session, not the tab label. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+
+On Windows, and when `tmux` is not installed, each terminal is a shell in the worktree directory. New, Split, and Kill are the same icon buttons.
 
 App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
 

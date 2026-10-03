@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, HostListener, inject, input, NgZone, OnInit, signal, viewChild } from '@angular/core';
+import { Component, computed, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -31,13 +31,35 @@ import { browseForFolder } from './folder-browser';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
 import { ShellPane } from './shell-pane';
+import { ensureShell, killAllShells, killShell, shellAlive, shellCommand } from './shell-host';
+import {
+  editableName,
+  emptyTerminals,
+  mapTerminalCommand,
+  tabChipText as formatTabChip,
+  terminalDisplayName as formatTerminalName,
+  terminalHostTitle as formatHostTitle,
+  terminalMenuActions,
+  withNewTab,
+  withRename,
+  withSplit,
+  withUnsplit,
+  withoutTab,
+  withoutTerminal,
+  type TerminalMenuActions,
+  type TerminalTabView,
+  type TerminalView,
+  type WorktreeTerminalView,
+} from './terminal-tabs';
 import { TerminalPane } from './terminal-pane';
 import {
   createBranchSession,
   killTmuxSession,
   nextSessionIndex,
+  paneCommand,
   sessionsForBranch,
   tmuxBinary,
+  tmuxSessionAlive,
 } from './tmux-sessions';
 import {
   listRemoteBranchesWithoutWorktree,
@@ -1019,47 +1041,157 @@ button, input { font: inherit; color: inherit; }
                   @if (!terminalExpanded() && terminalCount(branch.name) > 0) {
                     <span data-testid="terminal-running-count">{{ terminalCount(branch.name) }}</span>
                   }
-                  @if (!inAppShell()) {
-                    <div role="tablist">
-                      @for (session of sessions(); track session) {
-                        <button type="button" role="tab" (click)="focusSession(session)">{{ session }}</button>
+                  <div class="terminal-tabs" role="tablist">
+                    @for (tab of terminalTabs(); track tab.id; let index = $index) {
+                      @if (isRenamingTab(tab)) {
+                        <input
+                          data-testid="terminal-name-input"
+                          [value]="renameValue()"
+                          (input)="setRenameValue($event)"
+                          (keydown.enter)="commitRename($event)"
+                          (keydown.escape)="cancelRename($event)"
+                        />
+                      } @else {
+                        <button
+                          type="button"
+                          role="tab"
+                          data-testid="terminal-tab"
+                          [attr.aria-selected]="tab.id === focusedTerminalTab()?.id"
+                          [attr.title]="tabTooltip(tab)"
+                          (click)="focusTab(tab.id)"
+                          (contextmenu)="openTerminalMenu($event, tab.id, null)"
+                        >
+                          {{ tabChipText(index + 1, tab) }}
+                        </button>
                       }
-                    </div>
-                    <button type="button" (click)="splitSession()">Split</button>
-                    <button type="button" (click)="newSession()">New</button>
-                    <button type="button" (click)="killSession()">Kill</button>
-                  }
+                    }
+                  </div>
+                  <button
+                    type="button"
+                    class="terminal-icon"
+                    data-testid="terminal-split-button"
+                    title="Split"
+                    aria-label="Split"
+                    [disabled]="splitUnavailable()"
+                    (click)="splitTerminal()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path fill="currentColor" d="M1.5 1.75A1.75 1.75 0 0 1 3.25 0h9.5C13.216 0 14 .784 14 1.75v12.5A1.75 1.75 0 0 1 12.75 16h-9.5A1.75 1.75 0 0 1 1.5 14.25ZM3.25 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25H7v-13Zm9.5 13a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H8.5v13Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="terminal-icon"
+                    data-testid="terminal-new"
+                    title="New"
+                    aria-label="New"
+                    (click)="newTerminal()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path fill="currentColor" d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="terminal-icon"
+                    data-testid="terminal-kill"
+                    title="Kill"
+                    aria-label="Kill"
+                    (click)="killFocusedTerminal()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path fill="currentColor" d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+                    </svg>
+                  </button>
                 </div>
                 @if (terminalExpanded()) {
-                  @if (inAppShell() && shellRunning() && worktreePath()) {
-                    <div
-                      class="terminal-pane"
-                      data-testid="terminal-pane"
-                      [gmShell]="worktreePath()"
-                      [background]="terminalBackground()"
-                      [foreground]="terminalForeground()"
-                      [fontFamily]="terminalFontFamily()"
-                      (shellEnded)="onShellEnded()"
-                      [style.background-color]="terminalBackground()"
-                      [style.height.px]="terminalPaneHeight()"
-                    ></div>
-                  } @else {
-                    @for (session of visibleSessions(); track session) {
-                      <div
-                        class="terminal-pane"
-                        data-testid="terminal-pane"
-                        [gmTerminal]="session"
-                        [background]="terminalBackground()"
-                        [foreground]="terminalForeground()"
-                        [fontFamily]="terminalFontFamily()"
-                        (sessionEnded)="onSessionEnded(session)"
-                        [style.background-color]="terminalBackground()"
-                        [style.height.px]="terminalPaneHeight()"
-                      ></div>
+                  @if (focusedTerminalTab(); as tab) {
+                    @if (tab.terminals.length < 2) {
+                      @for (terminal of tab.terminals; track terminal.id) {
+                        <ng-container
+                          [ngTemplateOutlet]="terminalHost"
+                          [ngTemplateOutletContext]="{ terminal: terminal, tab: tab }"
+                        />
+                      }
+                    } @else {
+                      <div class="terminal-panes" [style.height.px]="terminalBodyHeight()">
+                        @for (terminal of tab.terminals; track terminal.id; let index = $index; let last = $last) {
+                          <div class="terminal-pane-column" [style.flex-grow]="columnGrow(tab, index)">
+                            <div
+                              class="terminal-pane-header"
+                              data-testid="terminal-pane-header"
+                              [attr.title]="terminalHostTitle(terminal.host)"
+                              (contextmenu)="openTerminalMenu($event, tab.id, terminal.id)"
+                            >
+                              @if (isRenamingTerminal(tab.id, terminal.id)) {
+                                <input
+                                  data-testid="terminal-name-input"
+                                  [value]="renameValue()"
+                                  (input)="setRenameValue($event)"
+                                  (keydown.enter)="commitRename($event)"
+                                  (keydown.escape)="cancelRename($event)"
+                                />
+                              } @else {
+                                {{ terminalDisplayName(terminal) }}
+                              }
+                            </div>
+                            <ng-container
+                              [ngTemplateOutlet]="terminalHost"
+                              [ngTemplateOutletContext]="{ terminal: terminal, tab: tab }"
+                            />
+                          </div>
+                          @if (!last) {
+                            <div
+                              class="splitter"
+                              role="separator"
+                              data-testid="terminal-pane-split"
+                              aria-orientation="vertical"
+                              tabindex="0"
+                              (pointerdown)="beginPaneSplit($event)"
+                              (pointermove)="movePaneSplit($event)"
+                              (pointerup)="endPaneSplit($event)"
+                            ></div>
+                          }
+                        }
+                      </div>
                     }
                   }
                 }
               </div>
+              <ng-template #terminalHost let-terminal="terminal" let-tab="tab">
+                @if (terminal.host === 'shell') {
+                  <div
+                    class="terminal-pane"
+                    data-testid="terminal-pane"
+                    [attr.title]="terminalHostTitle(terminal.host)"
+                    [gmShell]="terminal.cwd"
+                    [shellId]="terminal.id"
+                    [background]="terminalBackground()"
+                    [foreground]="terminalForeground()"
+                    [fontFamily]="terminalFontFamily()"
+                    (shellEnded)="onTerminalEnded(terminal.id)"
+                    (contextmenu)="openPaneMenu($event, tab, terminal.id)"
+                    (pointerdown)="focusTerminal(tab.id, terminal.id)"
+                    [style.background-color]="terminalBackground()"
+                    [style.height.px]="terminalPaneHeight()"
+                  ></div>
+                } @else {
+                  <div
+                    class="terminal-pane"
+                    data-testid="terminal-pane"
+                    [attr.title]="terminalHostTitle(terminal.host)"
+                    [gmTerminal]="terminal.session"
+                    [background]="terminalBackground()"
+                    [foreground]="terminalForeground()"
+                    [fontFamily]="terminalFontFamily()"
+                    (sessionEnded)="onTerminalEnded(terminal.id)"
+                    (contextmenu)="openPaneMenu($event, tab, terminal.id)"
+                    (pointerdown)="focusTerminal(tab.id, terminal.id)"
+                    [style.background-color]="terminalBackground()"
+                    [style.height.px]="terminalPaneHeight()"
+                  ></div>
+                }
+              </ng-template>
             }
             </div>
           } @else {
@@ -1339,9 +1471,39 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (terminalMenu(); as menu) {
+      @if (menuActions(); as actions) {
+        <div
+          class="terminal-menu"
+          data-testid="terminal-menu"
+          role="menu"
+          [style.left.px]="menu.x"
+          [style.top.px]="menu.y"
+        >
+          <button type="button" role="menuitem" data-testid="terminal-rename" (click)="beginRename()">Rename</button>
+          <button type="button" role="menuitem" data-testid="terminal-menu-kill" (click)="killFromMenu()">Kill</button>
+          @if (actions.split) {
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="terminal-menu-split"
+              [disabled]="actions.splitDisabled"
+              (click)="splitFromMenu()"
+            >
+              Split
+            </button>
+          }
+          @if (actions.unsplit) {
+            <button type="button" role="menuitem" data-testid="terminal-menu-unsplit" (click)="unsplitFromMenu()">
+              Unsplit
+            </button>
+          }
+        </div>
+      }
+    }
   `,
 })
-export class WorkspaceComponent implements OnInit {
+export class WorkspaceComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private readonly repositorySettings = viewChild(RepositorySettings);
   readonly repositoryPath = input<string | null>(null);
@@ -1388,15 +1550,27 @@ export class WorkspaceComponent implements OnInit {
   readonly mergeSquash = signal(false);
   readonly workspaceError = signal<string | null>(null);
   readonly worktreePath = signal('');
-  readonly sessions = signal<string[]>([]);
-  readonly focused = signal('');
-  readonly splitView = signal(false);
-  readonly shellRunning = signal(false);
+  readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
+  readonly terminalMenu = signal<TerminalMenuState | null>(null);
+  readonly renaming = signal<{ tabId: string; terminalId: string | null } | null>(null);
+  readonly renameValue = signal('');
+  readonly tabChipText = formatTabChip;
+  readonly terminalDisplayName = formatTerminalName;
+  readonly terminalHostTitle = formatHostTitle;
   readonly changesFileWidth = signal(240);
   readonly changesPaneHeight = signal(280);
   readonly commitFileWidth = signal(240);
   readonly terminalRowHeight = signal(240);
   readonly terminalExpanded = signal(true);
+  private terminalSerial = 0;
+  private commandPoll: ReturnType<typeof setInterval> | null = null;
+  private paneSplitDrag: {
+    pointerId: number;
+    startX: number;
+    width: number;
+    origin: number;
+    tabId: string;
+  } | null = null;
   private splitDrag: {
     pointerId: number;
     axis: 'x' | 'y';
@@ -1406,17 +1580,17 @@ export class WorkspaceComponent implements OnInit {
     invert: boolean;
     apply: (value: number) => void;
   } | null = null;
-  readonly visibleSessions = computed(() => {
-    const focused = this.focused();
-    const sessions = this.sessions();
-    if (!focused) {
-      return [];
+  readonly terminalState = computed(() => {
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return emptyTerminals();
     }
-    if (!this.splitView() || sessions.length < 2) {
-      return [focused];
-    }
-    const other = sessions.find((session) => session !== focused) ?? focused;
-    return [focused, other];
+    return this.terminalsByBranch()[branch] ?? emptyTerminals();
+  });
+  readonly terminalTabs = computed(() => this.terminalState().tabs);
+  readonly focusedTerminalTab = computed(() => {
+    const state = this.terminalState();
+    return state.tabs.find((tab) => tab.id === state.focusedTabId) ?? null;
   });
   readonly registryMode = computed(() => this.liveRegistry() || liveQueryFlag());
   readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
@@ -1533,6 +1707,17 @@ export class WorkspaceComponent implements OnInit {
       this.registered.set(listRepositories());
     }
     this.refreshBranches();
+    this.commandPoll = setInterval(() => {
+      this.zone.run(() => this.refreshTerminalCommands());
+    }, 250);
+  }
+
+  ngOnDestroy(): void {
+    if (this.commandPoll !== null) {
+      clearInterval(this.commandPoll);
+      this.commandPoll = null;
+    }
+    killAllShells();
   }
 
   choose(name: string): void {
@@ -1724,6 +1909,8 @@ export class WorkspaceComponent implements OnInit {
 
   selectBranch(name: string, event?: Event): void {
     event?.stopPropagation();
+    this.terminalMenu.set(null);
+    this.renaming.set(null);
     this.selectedBranchName.set(name);
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
@@ -1772,86 +1959,235 @@ export class WorkspaceComponent implements OnInit {
   }
 
   terminalCount(name: string): number {
-    if (this.inAppShell()) {
-      return name === this.selectedBranchName() && this.shellRunning() ? 1 : 0;
-    }
-    const repo = this.effectivePath();
-    if (!repo) {
+    const state = this.terminalsByBranch()[name];
+    if (!state) {
       return 0;
     }
-    return sessionsForBranch(repo, name).length;
+    return state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
   }
 
-  focusSession(session: string): void {
-    if (this.sessions().includes(session)) {
-      this.focused.set(session);
+  focusTab(tabId: string): void {
+    this.updateSelected((state) => ({ ...state, focusedTabId: tabId }));
+  }
+
+  focusTerminal(tabId: string, terminalId: string): void {
+    this.updateSelected((state) => ({
+      ...state,
+      focusedTabId: tabId,
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, focusedTerminalId: terminalId } : tab,
+      ),
+    }));
+  }
+
+  newTerminal(): void {
+    const terminal = this.spawnTerminal();
+    if (!terminal) {
+      return;
     }
+    const tab = this.makeTab([terminal]);
+    this.updateSelected((state) => withNewTab(state, tab));
+    this.terminalExpanded.set(true);
+    this.closeTerminalMenu();
   }
 
-  newSession(): void {
-    const repo = this.effectivePath();
+  splitTerminal(tabId?: string): void {
     const branch = this.selectedBranchName();
-    const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd || this.inAppShell()) {
+    const state = branch ? this.terminalsByBranch()[branch] : undefined;
+    if (!branch || !state) {
       return;
     }
-    const index = nextSessionIndex(repo, branch, this.sessions());
-    const name = createBranchSession(repo, branch, cwd, index);
-    this.sessions.update((sessions) => [...sessions, name]);
-    this.focused.set(name);
+    const id = tabId ?? state.focusedTabId;
+    const tab = state.tabs.find((item) => item.id === id);
+    if (!tab || tab.terminals.length >= 2) {
+      return;
+    }
+    const terminal = this.spawnTerminal();
+    if (!terminal) {
+      return;
+    }
+    this.updateSelected((current) => withSplit(current, tab.id, terminal));
+    this.closeTerminalMenu();
   }
 
-  splitSession(): void {
-    const repo = this.effectivePath();
+  killFocusedTerminal(): void {
     const branch = this.selectedBranchName();
-    const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd || this.inAppShell()) {
+    const tab = this.focusedTerminalTab();
+    if (!branch || !tab) {
       return;
     }
-    if (this.sessions().length < 2) {
-      const index = nextSessionIndex(repo, branch, this.sessions());
-      const name = createBranchSession(repo, branch, cwd, index);
-      this.sessions.update((sessions) => [...sessions, name]);
-    }
-    this.splitView.set(true);
-  }
-
-  killSession(): void {
-    const current = this.focused();
-    if (!current) {
+    const terminal = tab.terminals.find((item) => item.id === tab.focusedTerminalId) ?? tab.terminals[0];
+    if (!terminal) {
       return;
     }
-    killTmuxSession(current);
-    const remaining = this.sessions().filter((session) => session !== current);
-    this.sessions.set(remaining);
-    if (remaining.length < 2) {
-      this.splitView.set(false);
-    }
-    this.focused.set(remaining[0] ?? '');
-    if (remaining.length === 0) {
-      this.terminalExpanded.set(false);
-    }
+    this.removeTerminal(branch, tab.id, terminal.id);
   }
 
-  onShellEnded(): void {
-    this.shellRunning.set(false);
-    this.terminalExpanded.set(false);
-  }
-
-  onSessionEnded(session: string): void {
-    if (!this.sessions().includes(session)) {
+  onTerminalEnded(terminalId: string): void {
+    const located = this.locateTerminal(terminalId);
+    if (!located) {
       return;
     }
-    const remaining = this.sessions().filter((name) => name !== session);
-    this.sessions.set(remaining);
-    if (remaining.length < 2) {
-      this.splitView.set(false);
+    this.removeTerminal(located.branch, located.tabId, terminalId);
+  }
+
+  splitUnavailable(): boolean {
+    const tab = this.focusedTerminalTab();
+    return tab === null || tab.terminals.length >= 2;
+  }
+
+  tabTooltip(tab: TerminalTabView): string | null {
+    const only = tab.terminals.length === 1 ? tab.terminals[0] : undefined;
+    return only ? formatHostTitle(only.host) : null;
+  }
+
+  isRenamingTab(tab: TerminalTabView): boolean {
+    const renaming = this.renaming();
+    return renaming !== null && renaming.tabId === tab.id && renaming.terminalId === null;
+  }
+
+  isRenamingTerminal(tabId: string, terminalId: string): boolean {
+    const renaming = this.renaming();
+    return renaming !== null && renaming.tabId === tabId && renaming.terminalId === terminalId;
+  }
+
+  columnGrow(tab: TerminalTabView, index: number): number {
+    return index === 0 ? tab.splitRatio : 1 - tab.splitRatio;
+  }
+
+  openTerminalMenu(event: MouseEvent, tabId: string, terminalId: string | null): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.renaming.set(null);
+    this.terminalMenu.set({
+      tabId,
+      terminalId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  openPaneMenu(event: MouseEvent, tab: TerminalTabView, terminalId: string): void {
+    this.focusTerminal(tab.id, terminalId);
+    this.openTerminalMenu(event, tab.id, tab.terminals.length > 1 ? terminalId : null);
+  }
+
+  menuActions(): TerminalMenuActions | null {
+    const menu = this.terminalMenu();
+    const tab = menu ? this.terminalTabs().find((item) => item.id === menu.tabId) : undefined;
+    if (!menu || !tab) {
+      return null;
     }
-    if (this.focused() === session) {
-      this.focused.set(remaining[0] ?? '');
+    return terminalMenuActions(tab, menu.terminalId);
+  }
+
+  beginRename(): void {
+    const menu = this.terminalMenu();
+    const tab = menu ? this.terminalTabs().find((item) => item.id === menu.tabId) : undefined;
+    if (!menu || !tab) {
+      return;
     }
-    if (remaining.length === 0) {
-      this.terminalExpanded.set(false);
+    this.renameValue.set(editableName(tab, menu.terminalId));
+    this.renaming.set({ tabId: menu.tabId, terminalId: menu.terminalId });
+    this.terminalMenu.set(null);
+    queueMicrotask(() => {
+      const input = document.querySelector('[data-testid="terminal-name-input"]');
+      if (input instanceof HTMLInputElement) {
+        input.focus();
+        input.select();
+      }
+    });
+  }
+
+  setRenameValue(event: Event): void {
+    this.renameValue.set(inputValue(event));
+  }
+
+  commitRename(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const renaming = this.renaming();
+    if (!renaming || !this.selectedBranchName()) {
+      this.renaming.set(null);
+      return;
+    }
+    this.updateSelected((state) => withRename(state, renaming.tabId, renaming.terminalId, this.renameValue()));
+    this.renaming.set(null);
+  }
+
+  cancelRename(event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.renaming.set(null);
+  }
+
+  killFromMenu(): void {
+    const menu = this.terminalMenu();
+    const branch = this.selectedBranchName();
+    if (!menu || !branch) {
+      return;
+    }
+    if (menu.terminalId === null) {
+      this.removeTab(branch, menu.tabId);
+      return;
+    }
+    this.removeTerminal(branch, menu.tabId, menu.terminalId);
+  }
+
+  splitFromMenu(): void {
+    const menu = this.terminalMenu();
+    if (!menu || menu.terminalId !== null) {
+      return;
+    }
+    this.splitTerminal(menu.tabId);
+  }
+
+  unsplitFromMenu(): void {
+    const menu = this.terminalMenu();
+    const terminalId = menu?.terminalId;
+    if (!menu || !this.selectedBranchName() || terminalId === undefined || terminalId === null) {
+      return;
+    }
+    const newTabId = this.nextTerminalKey('tab');
+    this.updateSelected((state) => withUnsplit(state, menu.tabId, terminalId, newTabId));
+    this.closeTerminalMenu();
+  }
+
+  beginPaneSplit(event: PointerEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
+    const tab = this.focusedTerminalTab();
+    const parent = (event.currentTarget as HTMLElement | null)?.parentElement;
+    if (!tab || !parent) {
+      return;
+    }
+    event.preventDefault();
+    const width = parent.clientWidth || parent.offsetWidth || 1;
+    this.paneSplitDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      width,
+      origin: tab.splitRatio,
+      tabId: tab.id,
+    };
+  }
+
+  movePaneSplit(event: PointerEvent): void {
+    const drag = this.paneSplitDrag;
+    if (!drag || drag.pointerId !== event.pointerId || drag.width <= 0) {
+      return;
+    }
+    const ratio = Math.min(0.8, Math.max(0.2, drag.origin + (event.clientX - drag.startX) / drag.width));
+    this.updateSelected((state) => ({
+      ...state,
+      tabs: state.tabs.map((tab) => (tab.id === drag.tabId ? { ...tab, splitRatio: ratio } : tab)),
+    }));
+  }
+
+  endPaneSplit(event: PointerEvent): void {
+    if (this.paneSplitDrag?.pointerId === event.pointerId) {
+      this.paneSplitDrag = null;
     }
   }
 
@@ -1898,10 +2234,17 @@ export class WorkspaceComponent implements OnInit {
     return `minmax(0, 1fr) 8px ${this.terminalRowHeight()}px`;
   }
 
+  terminalBodyHeight(): number {
+    return Math.max(1, this.terminalRowHeight() - terminalHeaderHeight);
+  }
+
   terminalPaneHeight(): number {
-    const available = Math.max(1, this.terminalRowHeight() - terminalHeaderHeight);
-    const panes = this.inAppShell() ? 1 : Math.max(1, this.visibleSessions().length);
-    return Math.max(1, Math.floor(available / panes));
+    const available = this.terminalBodyHeight();
+    const tab = this.focusedTerminalTab();
+    if (tab && tab.terminals.length > 1) {
+      return Math.max(1, available - terminalPaneHeaderHeight);
+    }
+    return available;
   }
 
   toggleTerminalRow(): void {
@@ -2040,6 +2383,7 @@ export class WorkspaceComponent implements OnInit {
 
   @HostListener('document:click', ['$event'])
   closeBranchMenuOutside(event: Event): void {
+    this.closeTerminalMenuOnClick(event);
     const name = this.openBranch();
     if (name === null) {
       return;
@@ -2080,6 +2424,14 @@ export class WorkspaceComponent implements OnInit {
     }
     if (this.overlayOpen()) {
       this.closeSwitch();
+      return;
+    }
+    if (this.renaming() !== null) {
+      this.cancelRename();
+      return;
+    }
+    if (this.terminalMenu() !== null) {
+      this.terminalMenu.set(null);
       return;
     }
     if (this.openBranch() !== null) {
@@ -2343,75 +2695,264 @@ export class WorkspaceComponent implements OnInit {
   }
 
   private ensureTerminal(): void {
-    const repo = this.effectivePath();
     const branch = this.selectedBranchName();
-    const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd) {
+    if (!branch) {
       return;
     }
-    if (this.inAppShell()) {
-      if (!this.shellRunning()) {
-        this.shellRunning.set(true);
-      }
+    const existing = this.terminalsByBranch()[branch];
+    if (existing && existing.tabs.length > 0) {
       return;
     }
-    if (this.sessions().length > 0) {
-      return;
-    }
-    const existing = sessionsForBranch(repo, branch);
-    if (existing.length > 0) {
-      this.sessions.set(existing);
-      if (!existing.includes(this.focused())) {
-        this.focused.set(existing[0] ?? '');
-      }
-      return;
-    }
-    const name = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, existing));
-    this.sessions.set([name]);
-    this.focused.set(name);
+    this.openTerminals(branch);
   }
 
   private openTerminals(branch: string): void {
     const repo = this.effectivePath();
     if (!repo) {
-      this.clearTerminals();
+      this.worktreePath.set('');
       return;
     }
     const cwd = findCheckout(repo, branch);
     if (!cwd) {
-      this.clearTerminals();
+      this.worktreePath.set('');
       return;
     }
     this.worktreePath.set(cwd);
-    this.splitView.set(false);
-    if (this.inAppShell()) {
-      this.sessions.set([]);
-      this.focused.set('');
-      this.shellRunning.set(true);
+    const existing = this.terminalsByBranch()[branch];
+    if (existing && existing.tabs.length > 0) {
       return;
     }
-    this.shellRunning.set(false);
-    const existing = sessionsForBranch(repo, branch);
-    if (existing.length === 0) {
-      const name = createBranchSession(repo, branch, cwd, 1);
-      this.sessions.set([name]);
-      this.focused.set(name);
+    if (!this.inAppShell()) {
+      const sessions = sessionsForBranch(repo, branch);
+      if (sessions.length > 0) {
+        this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
+        return;
+      }
+    }
+    const terminal = this.spawnTerminal();
+    if (!terminal) {
       return;
     }
-    if (existing.join('\n') !== this.sessions().join('\n')) {
-      this.sessions.set(existing);
-    }
-    if (!existing.includes(this.focused())) {
-      this.focused.set(existing[0] ?? '');
-    }
+    const tab = this.makeTab([terminal]);
+    this.storeBranch(branch, { tabs: [tab], focusedTabId: tab.id });
+  }
+
+  private adoptTmuxSessions(repo: string, branch: string, cwd: string): WorktreeTerminalView {
+    const sessions = sessionsForBranch(repo, branch);
+    const tabs = sessions.map((session) =>
+      this.makeTab([
+        {
+          id: this.nextTerminalKey('terminal'),
+          host: 'tmux',
+          cwd,
+          session,
+          customName: '',
+          command: paneCommand(session),
+        },
+      ]),
+    );
+    return { tabs, focusedTabId: tabs[0]?.id ?? '' };
   }
 
   private clearTerminals(): void {
+    for (const state of Object.values(this.terminalsByBranch())) {
+      for (const tab of state.tabs) {
+        for (const terminal of tab.terminals) {
+          if (terminal.host === 'shell') {
+            killShell(terminal.id);
+          }
+        }
+      }
+    }
     this.worktreePath.set('');
-    this.sessions.set([]);
-    this.focused.set('');
-    this.splitView.set(false);
-    this.shellRunning.set(false);
+    this.terminalsByBranch.set({});
+    this.closeTerminalMenu();
+    this.renaming.set(null);
+  }
+
+  private spawnTerminal(): TerminalView | null {
+    const repo = this.effectivePath();
+    const branch = this.selectedBranchName();
+    const cwd = this.worktreePath();
+    if (!repo || !branch || !cwd) {
+      return null;
+    }
+    const id = this.nextTerminalKey('terminal');
+    if (this.inAppShell()) {
+      ensureShell(id, cwd);
+      return {
+        id,
+        host: 'shell',
+        cwd,
+        session: '',
+        customName: '',
+        command: shellCommand(id),
+      };
+    }
+    const known = [
+      ...sessionsForBranch(repo, branch),
+      ...(this.terminalsByBranch()[branch]?.tabs ?? []).flatMap((tab) =>
+        tab.terminals.map((terminal) => terminal.session),
+      ),
+    ];
+    const session = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, known));
+    return {
+      id,
+      host: 'tmux',
+      cwd,
+      session,
+      customName: '',
+      command: paneCommand(session),
+    };
+  }
+
+  private makeTab(terminals: TerminalView[]): TerminalTabView {
+    const focused = terminals[terminals.length - 1];
+    return {
+      id: this.nextTerminalKey('tab'),
+      customName: '',
+      terminals,
+      focusedTerminalId: focused?.id ?? '',
+      splitRatio: 0.5,
+    };
+  }
+
+  private nextTerminalKey(prefix: string): string {
+    this.terminalSerial += 1;
+    return `${prefix}-${this.terminalSerial}`;
+  }
+
+  private storeBranch(branch: string, state: WorktreeTerminalView): void {
+    this.terminalsByBranch.update((current) => ({ ...current, [branch]: state }));
+  }
+
+  private updateSelected(change: (state: WorktreeTerminalView) => WorktreeTerminalView): void {
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return;
+    }
+    this.terminalsByBranch.update((current) => {
+      const state = current[branch] ?? emptyTerminals();
+      return { ...current, [branch]: change(state) };
+    });
+  }
+
+  private removeTerminal(branch: string, tabId: string, terminalId: string): void {
+    const state = this.terminalsByBranch()[branch];
+    const tab = state?.tabs.find((item) => item.id === tabId);
+    const terminal = tab?.terminals.find((item) => item.id === terminalId);
+    if (!state || !terminal) {
+      return;
+    }
+    const result = withoutTerminal(state, tabId, terminalId);
+    this.storeBranch(branch, result.state);
+    this.stopTerminal(terminal);
+    this.collapseIfEmpty(branch, result.state);
+    this.closeTerminalMenu();
+  }
+
+  private removeTab(branch: string, tabId: string): void {
+    const state = this.terminalsByBranch()[branch];
+    if (!state) {
+      return;
+    }
+    const result = withoutTab(state, tabId);
+    this.storeBranch(branch, result.state);
+    for (const terminal of result.removed) {
+      this.stopTerminal(terminal);
+    }
+    this.collapseIfEmpty(branch, result.state);
+    this.closeTerminalMenu();
+  }
+
+  private collapseIfEmpty(branch: string, state: WorktreeTerminalView): void {
+    if (branch === this.selectedBranchName() && state.tabs.length === 0) {
+      this.terminalExpanded.set(false);
+    }
+  }
+
+  private stopTerminal(terminal: TerminalView): void {
+    if (terminal.host === 'tmux') {
+      killTmuxSession(terminal.session);
+      return;
+    }
+    killShell(terminal.id);
+  }
+
+  private locateTerminal(terminalId: string): { branch: string; tabId: string } | null {
+    for (const [branch, state] of Object.entries(this.terminalsByBranch())) {
+      for (const tab of state.tabs) {
+        if (tab.terminals.some((terminal) => terminal.id === terminalId)) {
+          return { branch, tabId: tab.id };
+        }
+      }
+    }
+    return null;
+  }
+
+  private refreshTerminalCommands(): void {
+    const current = this.terminalsByBranch();
+    let next = current;
+    let collapse = false;
+    const selected = this.selectedBranchName();
+    for (const [branch, state] of Object.entries(current)) {
+      for (const tab of state.tabs) {
+        for (const terminal of tab.terminals) {
+          const latest = next[branch];
+          if (!latest || !branchHasTerminal(latest, terminal.id)) {
+            continue;
+          }
+          const live = this.liveTerminal(terminal);
+          if (!live.alive) {
+            const result = withoutTerminal(latest, tab.id, terminal.id);
+            next = { ...next, [branch]: result.state };
+            this.stopTerminal(terminal);
+            if (branch === selected && result.state.tabs.length === 0) {
+              collapse = true;
+            }
+            continue;
+          }
+          if (live.command.length > 0 && live.command !== terminal.command) {
+            next = { ...next, [branch]: mapTerminalCommand(latest, terminal.id, live.command) };
+          }
+        }
+      }
+    }
+    if (next !== current) {
+      this.terminalsByBranch.set(next);
+    }
+    if (collapse) {
+      this.terminalExpanded.set(false);
+    }
+  }
+
+  private liveTerminal(terminal: TerminalView): { alive: boolean; command: string } {
+    if (terminal.host === 'tmux') {
+      if (!tmuxSessionAlive(terminal.session)) {
+        return { alive: false, command: '' };
+      }
+      return { alive: true, command: paneCommand(terminal.session) };
+    }
+    if (!shellAlive(terminal.id)) {
+      return { alive: false, command: '' };
+    }
+    return { alive: true, command: shellCommand(terminal.id) };
+  }
+
+  private closeTerminalMenu(): void {
+    this.terminalMenu.set(null);
+  }
+
+  private closeTerminalMenuOnClick(event: Event): void {
+    if (this.terminalMenu() === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (element?.closest('[data-testid="terminal-menu"]')) {
+      return;
+    }
+    this.terminalMenu.set(null);
   }
 
   private refreshBranches(): void {
@@ -2488,6 +3029,18 @@ function readRepositoryName(repoPath: string): string {
 }
 
 const terminalHeaderHeight = 36;
+const terminalPaneHeaderHeight = 22;
+
+interface TerminalMenuState {
+  tabId: string;
+  terminalId: string | null;
+  x: number;
+  y: number;
+}
+
+function branchHasTerminal(state: WorktreeTerminalView, terminalId: string): boolean {
+  return state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.id === terminalId));
+}
 
 function hostPlatform(): string {
   if (typeof process !== 'undefined' && typeof process.platform === 'string') {

@@ -96,7 +96,22 @@ function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number
 
 function controlButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): HTMLButtonElement | null {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
-  return buttons.find((candidate) => candidate.textContent?.trim() === label) ?? null;
+  return (
+    buttons.find((candidate) => {
+      const text = candidate.textContent?.trim() ?? '';
+      return text === label || candidate.getAttribute('aria-label') === label || candidate.getAttribute('title') === label;
+    }) ?? null
+  );
+}
+
+function clickTab(fixture: ComponentFixture<WorkspaceComponent>, index: number): void {
+  const tabs = fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]');
+  const tab = tabs[index];
+  if (!(tab instanceof HTMLElement)) {
+    throw new Error(`Tab ${index + 1} is not shown`);
+  }
+  tab.click();
+  fixture.detectChanges();
 }
 
 function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
@@ -202,7 +217,9 @@ describe('branch terminal', () => {
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
 
-    const started = listTmuxSessions().filter((name) => !before.includes(name));
+    const started = listTmuxSessions().filter(
+      (name) => !before.includes(name) && sessionDirectory(name).startsWith(root),
+    );
     expect(started).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
 
     submitCommand(fixture.nativeElement, 'echo marker-from-pane');
@@ -222,38 +239,44 @@ describe('branch terminal', () => {
     clickBranch(fixture, 'feature');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
 
-    const firstTabs = tabNames(fixture);
-    expect(firstTabs).toHaveLength(1);
+    expect(tabNames(fixture)).toHaveLength(1);
     expect(visiblePaneCount(fixture)).toBe(1);
-    const first = firstTabs[0] ?? '';
+    const first = sessionsForBranch(repo.repo, 'feature');
+    expect(first).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
 
     clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).length === 2);
-    const second = tabNames(fixture).find((name) => name !== first);
-    expect(second).toMatch(/^gm_[0-9a-f]{8}_feature_2$/);
+    const second = sessionsForBranch(repo.repo, 'feature');
+    expect(second).toHaveLength(2);
+    const secondSession = second.find((name) => name !== first[0]);
+    expect(secondSession).toMatch(/^gm_[0-9a-f]{8}_feature_2$/);
 
-    clickControl(fixture, second!);
+    clickTab(fixture, 1);
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     submitCommand(fixture.nativeElement, 'echo marker-second');
-    await waitFor(() => capturePane(second!).includes('marker-second'));
-    expect(capturePane(first)).not.toContain('marker-second');
+    await waitFor(() => capturePane(secondSession!).includes('marker-second'));
+    expect(capturePane(first[0]!)).not.toContain('marker-second');
 
-    clickControl(fixture, first);
+    clickTab(fixture, 0);
     await waitFor(() => {
       const text = paneText(fixture!);
       return /[$#%]/.test(text) && !text.includes('marker-second');
     });
     submitCommand(fixture.nativeElement, 'echo marker-first');
-    await waitFor(() => capturePane(first).includes('marker-first'));
-    expect(capturePane(second!)).not.toContain('marker-first');
+    await waitFor(() => capturePane(first[0]!).includes('marker-first'));
+    expect(capturePane(secondSession!)).not.toContain('marker-first');
 
     clickControl(fixture, 'Split');
     await waitFor(() => visiblePaneCount(fixture!) === 2);
+    const splitSessions = sessionsForBranch(repo.repo, 'feature');
+    expect(splitSessions).toHaveLength(3);
 
     clickControl(fixture, 'Kill');
-    await waitFor(() => !tabNames(fixture!).includes(first));
-    expect(hasSession(first)).toBe(false);
-    expect(hasSession(second!)).toBe(true);
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 2);
+    expect(hasSession(first[0]!)).toBe(true);
+    expect(hasSession(secondSession!)).toBe(true);
+    const killed = splitSessions.find((name) => !sessionsForBranch(repo.repo, 'feature').includes(name));
+    expect(hasSession(killed ?? '')).toBe(false);
     expect(visiblePaneCount(fixture)).toBe(1);
   });
 
@@ -292,10 +315,10 @@ describe('branch terminal', () => {
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     expect(visiblePaneCount(fixture)).toBe(1);
-    expect(tabNames(fixture)).toEqual([]);
-    expect(controlButton(fixture, 'Split')).toBeNull();
-    expect(controlButton(fixture, 'New')).toBeNull();
-    expect(controlButton(fixture, 'Kill')).toBeNull();
+    expect(tabNames(fixture)).toHaveLength(1);
+    expect(controlButton(fixture, 'New')?.getAttribute('aria-label')).toBe('New');
+    expect(controlButton(fixture, 'Split')?.getAttribute('aria-label')).toBe('Split');
+    expect(controlButton(fixture, 'Kill')?.getAttribute('aria-label')).toBe('Kill');
     expect(terminalCount(fixture, 'feature')).toBe('1');
 
     submitCommand(fixture.nativeElement, 'pwd');
@@ -304,7 +327,7 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
   });
 
-  it('follows the selected worktree when the Windows shell changes branch', async () => {
+  it('keeps each worktree shell when the selection changes', async () => {
     const repo = createRepo();
     root = repo.root;
     const feature = join(repo.repo, '.workspaces', 'feature');
@@ -323,8 +346,13 @@ describe('branch terminal', () => {
       const text = paneText(fixture!);
       return text.includes(repo.repo) && !text.includes(feature);
     });
-    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
     expect(terminalCount(fixture, 'master')).toBe('1');
+    expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
+    expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => paneText(fixture!).includes(feature));
   });
 
   it('drops the count when the tmux session exits outside the window', async () => {
@@ -335,7 +363,7 @@ describe('branch terminal', () => {
 
     clickBranch(fixture, 'feature');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
-    const session = tabNames(fixture)[0] ?? '';
+    const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     execFileSync(tmuxBinary(), ['kill-session', '-t', session], { stdio: 'ignore', env: tmuxEnv() });
 
     await waitFor(() => {
@@ -352,7 +380,7 @@ describe('branch terminal', () => {
 
     clickBranch(fixture, 'feature');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
-    const session = tabNames(fixture)[0] ?? '';
+    const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     execFileSync(tmuxBinary(), ['new-session', '-d', '-s', `${session}extra`, '-c', root], {
       stdio: 'ignore',
       env: tmuxEnv(),
@@ -484,9 +512,14 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
 
     clickControl(fixture, 'Kill');
-    await waitFor(() => tabNames(fixture!).length === 1);
+    await waitFor(() => terminalCount(fixture!, 'feature') === '2');
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => tabNames(fixture!).length === 1);
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
   });
 
@@ -503,8 +536,11 @@ describe('branch terminal', () => {
     expect(runningCount(fixture)).toBe('1');
     expect(terminalCount(fixture, 'feature')).toBe('1');
 
+    clickCollapse(fixture);
     clickControl(fixture, 'New');
-    await waitFor(() => runningCount(fixture!) === '2');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '2');
+    clickCollapse(fixture);
+    expect(runningCount(fixture)).toBe('2');
     expect(terminalCount(fixture, 'feature')).toBe('2');
   });
 
@@ -590,9 +626,11 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    await waitFor(() => tabNames(fixture!).length === 1);
+    await waitFor(() => tabNames(fixture!).length === 1 && /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
     clickControl(fixture, 'New');
-    await waitFor(() => tabNames(fixture!).length === 2);
+    await waitFor(
+      () => tabNames(fixture!).length === 2 && tabNames(fixture!).every((name) => /^\d+ \S+/.test(name)),
+    );
     const tabs = tabNames(fixture);
 
     clickCollapse(fixture);
@@ -642,10 +680,10 @@ describe('branch terminal', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
     expect(visiblePaneCount(fixture)).toBe(1);
-    expect(tabNames(fixture)).toEqual([]);
-    expect(controlButton(fixture, 'New')).toBeNull();
-    expect(controlButton(fixture, 'Split')).toBeNull();
-    expect(controlButton(fixture, 'Kill')).toBeNull();
+    expect(tabNames(fixture)).toHaveLength(1);
+    expect(controlButton(fixture, 'New')?.getAttribute('aria-label')).toBe('New');
+    expect(controlButton(fixture, 'Split')?.getAttribute('aria-label')).toBe('Split');
+    expect(controlButton(fixture, 'Kill')?.getAttribute('aria-label')).toBe('Kill');
     expect(terminalCount(fixture, 'feature')).toBe('1');
 
     submitCommand(fixture.nativeElement, 'pwd');

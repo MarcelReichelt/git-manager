@@ -566,14 +566,21 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
-[data-testid='repository-settings-dialog'] label {
+[data-testid='repository-settings-dialog'] label,
+[data-testid='remotes-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
+  font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+[data-testid='remotes-heading'] {
+  margin-top: 8px;
 }
 
 [data-testid='repository-location'],
@@ -1181,7 +1188,8 @@ button, input { font: inherit; color: inherit; }
             Location
             <p data-testid="repository-location">{{ repositoryLocation() }}</p>
           </label>
-          <ul data-testid="remote-list">
+          <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
+          <ul data-testid="remote-list" aria-labelledby="remotes-heading">
             @for (remote of remotes(); track remote.name) {
               <li data-testid="remote-row" [attr.data-name]="remote.name">
                 <span data-testid="remote-name">{{ remote.name }}</span>

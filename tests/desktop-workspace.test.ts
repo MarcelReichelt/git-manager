@@ -488,6 +488,12 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const heading = dialog.querySelector('[data-testid="remotes-heading"]');
+    const list = dialog.querySelector('[data-testid="remote-list"]');
+    expect(heading.textContent.trim()).toBe('Remotes');
+    expect(getComputedStyle(heading).textTransform).toBe('uppercase');
+    expect(list.getAttribute('aria-labelledby')).toBe('remotes-heading');
+    expect(heading.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
     expect(rows.map((row) => row.querySelector('[data-testid="remote-name"]')?.textContent?.trim())).toEqual([
       'origin',

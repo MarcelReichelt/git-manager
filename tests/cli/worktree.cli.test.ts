@@ -413,4 +413,114 @@ describe('git-manager worktree create', () => {
     expect(git(repoPath, ['worktree', 'list'])).toContain(resolve(repoPath));
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
   });
+
+  it('leaves an existing workspaces checkout in place when the app default becomes Sibling', () => {
+    const root = makeTempDir('git-manager-app-default-stays-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    git(repoPath, ['branch', 'notes']);
+    const env = {
+      ...gitManagerEnv(registryPath),
+      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+    };
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    expect(created.status).toBe(0);
+    const existing = resolve(repoPath, '.workspaces', 'login');
+    expect(existsSync(existing)).toBe(true);
+    expect(git(existing, ['branch', '--show-current'])).toBe('login');
+
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+
+    const next = runGitManager(['worktree', 'create', 'notes', '--repo', 'Harbor'], env);
+    expect(next.status).toBe(0);
+    expect(existsSync(existing)).toBe(true);
+    expect(git(existing, ['branch', '--show-current'])).toBe('login');
+    const sibling = resolve(root, 'notes');
+    expect(existsSync(sibling)).toBe(true);
+    expect(git(sibling, ['branch', '--show-current'])).toBe('notes');
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+  });
+
+  it('uses the repository Workspaces layout when the app default is Sibling', () => {
+    const root = makeTempDir('git-manager-repo-workspaces-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+    const env = {
+      ...gitManagerEnv(registryPath),
+      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+    };
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    expect(created.status).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('login');
+    expect(existsSync(resolve(root, 'login'))).toBe(false);
+  });
+
+  it('uses the repository Sibling layout when the app default is Workspaces', () => {
+    const root = makeTempDir('git-manager-repo-sibling-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    writeFileSync(settingsPath, '{"defaultLayout":"workspaces"}\n');
+    const env = {
+      ...gitManagerEnv(registryPath),
+      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+    };
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    expect(created.status).toBe(0);
+    const checkout = resolve(root, 'login');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('login');
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
+  });
+
+  it('creates nothing when the repository layout mode is unsupported', () => {
+    const root = makeTempDir('git-manager-unsupported-layout-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+    const env = {
+      ...gitManagerEnv(registryPath),
+      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+    };
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+
+    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(1);
+    expect(created.stderr).toContain('Unsupported layout: custom');
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
+    expect(existsSync(resolve(root, 'login'))).toBe(false);
+  });
 });

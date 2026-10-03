@@ -48,6 +48,18 @@ export function createLayoutForRepository(
   };
 }
 
+export function formatCreateLayout(repoPath: string | null, env?: NodeJS.ProcessEnv): string {
+  const layout =
+    repoPath === null
+      ? {
+          label: readAppSettings(env).defaultLayout === 'sibling' ? 'Sibling' : 'Workspaces',
+          source: 'app' as const,
+        }
+      : createLayoutForRepository(repoPath, env);
+  const origin = layout.source === 'repository' ? 'set by this repository' : 'the app default';
+  return `${layout.label}, ${origin}`;
+}
+
 export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
   const stored = readSettingsObject(resolveAppSettingsPath(env));
   return {

@@ -21,7 +21,6 @@
 
 [data-testid='repository-name'],
 [data-testid='switch-repository'],
-[data-testid='repository-settings'],
 [data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
@@ -34,26 +33,6 @@
   min-width: 0;
 }
 
-[data-testid='repository-settings'] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: white;
-  cursor: pointer;
-}
-
-[data-testid='repository-settings']:hover {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-[data-testid='repository-settings'] svg,
 [data-testid='app-settings'] svg {
   display: block;
 }

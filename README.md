@@ -6,11 +6,12 @@ Requires **Node.js 20** or later.
 
 ## Features
 
-- Desktop window: centered repository card, every local and remote branch, diffs, and a branch terminal
+- Desktop window: centered repository card, checked-out worktrees, diffs, commits, and a branch terminal
 - Registry of path and display name in `~/.config/git-manager/registry.db`
 - Worktree create in the workspaces or sibling layout, from the repository's own config
 - Merge into master or update from master, with squash, and worktree remove
 - Create hooks: shell commands and TypeScript plugins, including abort
+- Repository settings for the checkout location and git remotes
 
 ## Install
 
@@ -52,7 +53,7 @@ yarn test:e2e:docker   # full e2e stack in Docker (Gitea + runner)
 
 This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (see `packageManager` in `package.json`).
 
-Example plugins live in `plugins/`.
+Hook modules are paths in `.git-manager/config.toml`. See [Plugins](docs/plugins.md).
 
 For a reproducible Linux dev environment (including from Windows via Docker), see [.devcontainer/README.md](.devcontainer/README.md).
 
@@ -61,11 +62,13 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 | Guide | Topic |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, register, open the workspace |
+| [Desktop](docs/desktop.md) | Card, worktrees, diffs, commits, terminal, remotes |
 | [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
 | [Configuration](docs/configuration.md) | Registry file and per-repo TOML |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
-| [Plugins](docs/plugins.md) | Hook actions and plugin authoring |
-| [Troubleshooting](docs/troubleshooting.md) | Install issues |
+| [Plugins](docs/plugins.md) | Create hooks and plugin modules |
+| [Use cases](docs/use-cases.md) | Create, merge, remove, copy, and hooks |
+| [Troubleshooting](docs/troubleshooting.md) | Install, create, merge, and registry errors |
 
 ## License
 

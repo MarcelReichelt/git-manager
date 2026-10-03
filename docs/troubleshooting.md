@@ -35,49 +35,46 @@ yarn rebuild better-sqlite3
 
 That rebuilds the binding for the Node CLI. `yarn desktop` keeps a second copy
 of `better-sqlite3` and `node-pty`, compiled for Electron, in `native/electron/`.
+The desktop script rebuilds those addons when that copy is missing, or when it
+was built for a different Electron version, platform, CPU, or addon version.
+The build needs
+the same `python3`, `make`, and `g++` packages, plus network access to the
+Electron headers.
 
-### `git-manager ui` fails with `Cannot find module .../dist/tui/index.js`
+## Unknown command
 
-Versions before `0.2.4` were published without the TUI bundle. Upgrade:
+`add`, `list`, `unregister`, `worktree`, and `merge` are the commands. `clone`, `push`, `pull`, `doctor`, `setup`, `ui`, and `repo` exit with `unknown command`.
 
-```bash
-npm install -g @git-manager/main@latest
-```
+## Not a git repository
 
-## Doctor
+`git-manager add` and Add repository both require a git directory. The error is `Not a git repository: <path>`. In the dialog that message sits under Location, and Add repository stays disabled.
 
-```bash
-git-manager doctor
-git-manager doctor --fix
-```
+## Repository not found
 
-Checks:
+`worktree` and `merge` look up `<repo>` as a registered path or display name. A miss is `Repository not found: <repo>`.
 
-- Missing worktree paths
-- Orphan registry entries
-- Remote branches gone after fetch
-- Missing `.git-manager/config.toml`
+## Worktree create
 
-## Stale registry
+`Branch not found: <branch>` means the name is neither a local branch nor a branch on a remote after fetch.
 
-If a worktree folder was deleted manually:
+`Worktree folder already exists: <path>` means the layout folder is already there. Create stops, and git is unchanged. Remove that folder, or pick another branch name.
 
-```bash
-git-manager doctor --fix
-```
+`Unsupported layout: <mode>` means `[layout].mode` is set to something other than `workspaces` or `sibling`.
 
-Or remove via interactive startup prompt.
+`<plugin name> aborted worktree create` means `preWorktreeCreate` returned `'abort'` before `git worktree add`.
 
-## Editor not opening
+## Worktree remove
 
-Set editor in config:
+`No worktree for branch: <branch>` means that branch has no extra checkout. The primary checkout cannot be removed this way.
 
-```bash
-git-manager settings set editor.command cursor
-```
+## Merge into master
 
-Or export `GIT_MANAGER_EDITOR`.
+`Primary checkout is on <branch>, not master` means the registered repository's checkout is not on `master`. Switch that checkout to `master`, then merge again.
+
+## Empty registry after an upgrade
+
+An older `registry.db`, whose `repositories` table is not `path` and `display_name`, is replaced with an empty registry. Add each repository again. See [ADR 0001](adr/0001-replace-older-registry-file.md).
 
 ## Plugin load errors
 
-Verify path in `[hooks].modules` is relative to layout root. Global plugins go in `~/.config/git-manager/plugins/`.
+`[hooks].modules` paths are relative to the registered repository, and jiti loads them from there. A command in `[hooks.pre_worktree_create]` or `[hooks.post_worktree_create]` runs with that repository as its working directory.

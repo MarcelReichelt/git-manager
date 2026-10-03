@@ -2,6 +2,8 @@
 
 Survey of the git-manager CLI and Ink TUI as implemented on `master` (`febc4d4`, package `0.2.5` in `package.json`). Each claim cites the file that owns the behavior. The v2 brief is used only to mark which of those choices it still describes. This note does not say what v2 should keep.
 
+The user guides this note links, including `docs/plugins.md`, `docs/configuration.md`, and `docs/worktrees-and-layouts.md`, now describe the current app. The paths under `src/tui/` and `src/core/` below are the v1 tree at `febc4d4`.
+
 The running list in both the CLI and the TUI is a list of **worktrees** (checked-out folders), not a list of every local and remote branch.
 
 ## Layouts

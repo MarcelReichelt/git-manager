@@ -418,7 +418,7 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
-    expect(labels).toEqual(['Workspaces', 'Sibling', 'IDE command', 'Font family']);
+    expect(labels).toEqual(['Workspaces', 'Sibling', 'None', 'Terminal', 'Tmux', 'IDE command', 'Font family']);
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
     expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
@@ -863,6 +863,8 @@ describe('desktop workspace', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -902,6 +904,8 @@ describe('desktop workspace', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: 'cursor',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });

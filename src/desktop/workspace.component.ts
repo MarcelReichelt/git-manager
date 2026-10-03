@@ -12,11 +12,14 @@ import {
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveShellCommand,
   saveSidebarColor,
   saveTerminalBackground,
   saveTerminalFont,
   saveTerminalForeground,
+  saveTerminalMode,
   type AppSettings,
+  type TerminalMode,
 } from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import {
@@ -31,7 +34,7 @@ import { browseForFolder } from './folder-browser';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
 import { ShellPane } from './shell-pane';
-import { ensureShell, killAllShells, killShell, shellAlive, shellCommand } from './shell-host';
+import { ensureShell, killAllShells, killShell, shellAlive, shellCommand as runningShellCommand } from './shell-host';
 import {
   editableName,
   emptyTerminals,
@@ -53,6 +56,7 @@ import {
 } from './terminal-tabs';
 import { TerminalPane } from './terminal-pane';
 import {
+  appTmuxSessions,
   createBranchSession,
   killTmuxSession,
   nextSessionIndex,
@@ -598,6 +602,8 @@ button, input { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 8px;
   width: 28rem;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
   padding: 16px;
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -687,7 +693,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='ide-command'],
-[data-testid='terminal-font'] {
+[data-testid='terminal-font'],
+[data-testid='terminal-shell-command'] {
   box-sizing: border-box;
   width: 100%;
   height: 36px;
@@ -700,6 +707,66 @@ button, input { font: inherit; color: inherit; }
   text-transform: none;
 }
 
+.terminal-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-option label {
+  flex: 1;
+}
+
+[data-testid='edit-shell-command'] {
+  padding: 2px 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background-color: var(--paper);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+[data-testid='terminal-mode-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='terminal-mode-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 22rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='terminal-mode-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='terminal-mode-dialog'] p {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+[data-testid='terminal-mode-keep'],
+[data-testid='terminal-mode-kill'],
+[data-testid='terminal-mode-cancel'],
 [data-testid='reset-colors'],
 [data-testid='close-app-settings'] {
   box-sizing: border-box;
@@ -1303,6 +1370,53 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
+          <h3 data-testid="terminal-mode-heading">Terminal mode</h3>
+          <label>
+            <input
+              type="radio"
+              name="terminal-mode"
+              data-testid="terminal-mode-none"
+              [checked]="terminalMode() === 'none'"
+              (click)="requestTerminalMode('none', $event)"
+            />
+            None
+          </label>
+          <div class="terminal-option">
+            <label>
+              <input
+                type="radio"
+                name="terminal-mode"
+                data-testid="terminal-mode-terminal"
+                [checked]="terminalMode() === 'terminal'"
+                (click)="requestTerminalMode('terminal', $event)"
+              />
+              Terminal
+            </label>
+            <button type="button" data-testid="edit-shell-command" (click)="beginShellCommandEdit($event)">Edit</button>
+          </div>
+          @if (shellCommandEditing()) {
+            <label class="terminal-font-field">
+              Shell command
+              <input
+                type="text"
+                data-testid="terminal-shell-command"
+                [value]="shellCommandDraft()"
+                (input)="chooseShellCommand($event)"
+              />
+            </label>
+          }
+          <label [attr.title]="tmuxInstalled() ? null : 'tmux is not installed'">
+            <input
+              type="radio"
+              name="terminal-mode"
+              data-testid="terminal-mode-tmux"
+              [disabled]="!tmuxInstalled()"
+              [attr.title]="tmuxInstalled() ? null : 'tmux is not installed'"
+              [checked]="terminalMode() === 'tmux'"
+              (click)="requestTerminalMode('tmux', $event)"
+            />
+            Tmux
+          </label>
           <label class="ide-command-field">
             IDE command
             <input
@@ -1437,6 +1551,19 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (pendingTerminalMode() !== null) {
+      <div data-testid="terminal-mode-dialog" role="dialog" aria-label="Terminal mode" (click)="dismissTerminalModeFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
+          <h2>Terminal mode</h2>
+          <p>Keep the terminals that are still running, or kill them?</p>
+          <div class="dialog-actions">
+            <button type="button" data-testid="terminal-mode-keep" (click)="keepTerminalMode()">Keep</button>
+            <button type="button" data-testid="terminal-mode-kill" (click)="killTerminalMode()">Kill</button>
+            <button type="button" data-testid="terminal-mode-cancel" (click)="cancelTerminalMode()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository" (click)="dismissAddFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
@@ -1539,6 +1666,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
   readonly contentColor = signal(readAppSettings().contentColor);
   readonly ideCommand = signal(readAppSettings().ideCommand);
+  readonly terminalMode = signal<TerminalMode>(readAppSettings().terminalMode);
+  readonly shellCommand = signal(readAppSettings().shellCommand);
+  readonly shellCommandDraft = signal(readAppSettings().shellCommand);
+  readonly shellCommandEditing = signal(false);
+  readonly pendingTerminalMode = signal<TerminalMode | null>(null);
   readonly terminalFont = signal(readAppSettings().terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
   readonly terminalBackground = signal(readAppSettings().terminalBackground);
@@ -2257,11 +2389,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   showTerminalRow(): boolean {
-    return this.selectedBranchName() !== null && this.worktreePath() !== '';
-  }
-
-  inAppShell(): boolean {
-    return this.platform() === 'win32' || !this.tmuxInstalled();
+    return this.selectedBranchName() !== null && this.worktreePath() !== '' && this.activeTerminalMode() !== 'none';
   }
 
   sheetColumns(): string {
@@ -2403,6 +2531,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (event.key !== 'Escape') {
       return;
     }
+    if (this.pendingTerminalMode() !== null) {
+      this.cancelTerminalMode();
+      return;
+    }
     if (this.appSettingsOpen()) {
       this.closeAppSettings();
       return;
@@ -2443,6 +2575,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     const settings = readAppSettings();
     this.defaultLayout.set(settings.defaultLayout);
     this.ideCommand.set(settings.ideCommand);
+    this.terminalMode.set(settings.terminalMode);
+    this.shellCommand.set(settings.shellCommand);
+    this.shellCommandDraft.set(settings.shellCommand);
     this.terminalFont.set(settings.terminalFont);
     this.terminalBackground.set(settings.terminalBackground);
     this.terminalForeground.set(settings.terminalForeground);
@@ -2464,6 +2599,76 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     const font = inputValue(event);
     saveTerminalFont(font);
     this.terminalFont.set(font);
+  }
+
+  requestTerminalMode(mode: TerminalMode, event: Event): void {
+    event.preventDefault();
+    if (mode === 'tmux' && !this.tmuxInstalled()) {
+      this.syncTerminalModeRadios(event);
+      return;
+    }
+    if (mode === this.terminalMode()) {
+      this.syncTerminalModeRadios(event);
+      return;
+    }
+    const leaving = this.activeTerminalMode();
+    if (mode !== leaving && this.modeHasRunningTerminals(leaving)) {
+      this.pendingTerminalMode.set(mode);
+      this.syncTerminalModeRadios(event);
+      return;
+    }
+    this.commitTerminalMode(mode, false);
+    this.syncTerminalModeRadios(event);
+  }
+
+  beginShellCommandEdit(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.shellCommandDraft.set(this.shellCommand());
+    this.shellCommandEditing.set(true);
+  }
+
+  chooseShellCommand(event: Event): void {
+    const value = inputValue(event);
+    this.shellCommandDraft.set(value);
+    if (/\s/.test(value)) {
+      this.workspaceError.set('Shell command must be a program path with no arguments');
+      return;
+    }
+    saveShellCommand(value);
+    this.shellCommand.set(value);
+    if (this.workspaceError() === 'Shell command must be a program path with no arguments') {
+      this.workspaceError.set(null);
+    }
+  }
+
+  keepTerminalMode(): void {
+    const mode = this.pendingTerminalMode();
+    if (mode === null) {
+      return;
+    }
+    this.commitTerminalMode(mode, false);
+    this.syncTerminalModeRadios();
+  }
+
+  killTerminalMode(): void {
+    const mode = this.pendingTerminalMode();
+    if (mode === null) {
+      return;
+    }
+    this.commitTerminalMode(mode, true);
+    this.syncTerminalModeRadios();
+  }
+
+  cancelTerminalMode(): void {
+    this.pendingTerminalMode.set(null);
+    this.syncTerminalModeRadios();
+  }
+
+  dismissTerminalModeFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelTerminalMode();
+    }
   }
 
   openIde(): void {
@@ -2564,6 +2769,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   closeAppSettings(): void {
+    this.pendingTerminalMode.set(null);
+    this.shellCommandEditing.set(false);
     this.appSettingsOpen.set(false);
   }
 
@@ -2722,12 +2929,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (existing && existing.tabs.length > 0) {
       return;
     }
-    if (!this.inAppShell()) {
-      const sessions = sessionsForBranch(repo, branch);
-      if (sessions.length > 0) {
-        this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
-        return;
-      }
+    if (this.activeTerminalMode() === 'none') {
+      return;
+    }
+    if (sessionsForBranch(repo, branch).length > 0) {
+      this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
+      return;
     }
     const terminal = this.spawnTerminal();
     if (!terminal) {
@@ -2774,19 +2981,25 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     const cwd = this.worktreePath();
-    if (!repo || !branch || !cwd) {
+    if (!repo || !branch || !cwd || this.activeTerminalMode() === 'none') {
       return null;
     }
     const id = this.nextTerminalKey('terminal');
-    if (this.inAppShell()) {
-      ensureShell(id, cwd);
+    if (this.activeTerminalMode() === 'terminal') {
+      try {
+        ensureShell(id, cwd, this.shellCommand());
+      } catch (error) {
+        this.workspaceError.set(errorText(error));
+        return null;
+      }
+      this.clearShellStartError();
       return {
         id,
         host: 'shell',
         cwd,
         session: '',
         customName: '',
-        command: shellCommand(id),
+        command: runningShellCommand(id),
       };
     }
     const known = [
@@ -2795,7 +3008,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
         tab.terminals.map((terminal) => terminal.session),
       ),
     ];
-    const session = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, known));
+    let session: string;
+    try {
+      session = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, known));
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return null;
+    }
+    this.clearShellStartError();
     return {
       id,
       host: 'tmux',
@@ -2804,6 +3024,116 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       customName: '',
       command: paneCommand(session),
     };
+  }
+
+  private activeTerminalMode(): TerminalMode {
+    const saved = this.terminalMode();
+    if (saved === 'tmux' && !this.tmuxInstalled()) {
+      return 'terminal';
+    }
+    return saved;
+  }
+
+  private modeHasRunningTerminals(mode: TerminalMode): boolean {
+    if (mode === 'terminal') {
+      return Object.values(this.terminalsByBranch()).some((state) =>
+        state.tabs.some((tab) =>
+          tab.terminals.some((terminal) => terminal.host === 'shell' && shellAlive(terminal.id)),
+        ),
+      );
+    }
+    if (mode === 'tmux') {
+      return appTmuxSessions().length > 0;
+    }
+    return false;
+  }
+
+  private commitTerminalMode(mode: TerminalMode, kill: boolean): void {
+    const leaving = this.activeTerminalMode();
+    if (kill) {
+      this.killTerminalsOfMode(leaving);
+    }
+    saveTerminalMode(mode);
+    this.terminalMode.set(mode);
+    this.pendingTerminalMode.set(null);
+    const branch = this.selectedBranchName();
+    if (!kill && mode !== 'none' && branch) {
+      this.adoptOpenSessions(branch);
+    }
+    if (mode !== 'none' && branch && this.terminalCount(branch) === 0) {
+      this.terminalExpanded.set(false);
+    }
+  }
+
+  private syncTerminalModeRadios(event?: Event): void {
+    const saved = this.terminalMode();
+    const target = event?.target;
+    const from = target instanceof Element ? target : null;
+    const dialog = from?.closest('[data-testid="app-settings-dialog"]') ?? document.querySelector('[data-testid="app-settings-dialog"]');
+    if (!dialog) {
+      return;
+    }
+    for (const mode of ['none', 'terminal', 'tmux'] as const) {
+      const radio = dialog.querySelector(`[data-testid="terminal-mode-${mode}"]`);
+      if (radio instanceof HTMLInputElement) {
+        radio.checked = mode === saved;
+      }
+    }
+  }
+
+  private killTerminalsOfMode(mode: TerminalMode): void {
+    if (mode === 'none') {
+      return;
+    }
+    if (mode === 'tmux') {
+      for (const name of appTmuxSessions()) {
+        killTmuxSession(name);
+      }
+    }
+    const host = mode === 'terminal' ? 'shell' : 'tmux';
+    const next: Record<string, WorktreeTerminalView> = {};
+    for (const [branch, state] of Object.entries(this.terminalsByBranch())) {
+      const targets = state.tabs.flatMap((tab) =>
+        tab.terminals
+          .filter((terminal) => terminal.host === host)
+          .map((terminal) => ({ tabId: tab.id, terminal })),
+      );
+      let current = state;
+      for (const target of targets) {
+        const result = withoutTerminal(current, target.tabId, target.terminal.id);
+        current = result.state;
+        if (result.removed.length > 0) {
+          this.stopTerminal(target.terminal);
+        }
+      }
+      next[branch] = current;
+    }
+    this.terminalsByBranch.set(next);
+    this.closeTerminalMenu();
+    this.renaming.set(null);
+  }
+
+  private adoptOpenSessions(branch: string): void {
+    const existing = this.terminalsByBranch()[branch];
+    if (existing && existing.tabs.length > 0) {
+      return;
+    }
+    const repo = this.effectivePath();
+    const cwd = this.worktreePath();
+    if (!repo || cwd === '') {
+      return;
+    }
+    if (sessionsForBranch(repo, branch).length === 0) {
+      return;
+    }
+    this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
+  }
+
+  private clearShellStartError(): void {
+    const message = this.workspaceError();
+    if (message !== null && message.startsWith('Could not start ')) {
+      this.workspaceError.set(null);
+    }
   }
 
   private makeTab(terminals: TerminalView[]): TerminalTabView {
@@ -2936,7 +3266,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (!shellAlive(terminal.id)) {
       return { alive: false, command: '' };
     }
-    return { alive: true, command: shellCommand(terminal.id) };
+    return { alive: true, command: runningShellCommand(terminal.id) };
   }
 
   private closeTerminalMenu(): void {

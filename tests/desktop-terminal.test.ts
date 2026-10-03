@@ -184,10 +184,17 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error('timed out waiting for the terminal');
 }
 
+function useTmuxMode(root: string): void {
+  const settingsPath = join(root, 'app-settings.json');
+  writeFileSync(settingsPath, '{"terminalMode":"tmux"}\n');
+  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+}
+
 describe('branch terminal', () => {
   let root = '';
   let before: string[] = [];
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
+  const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -196,6 +203,11 @@ describe('branch terminal', () => {
   afterEach(() => {
     fixture?.destroy();
     fixture = undefined;
+    if (previousSettingsPath === undefined) {
+      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    } else {
+      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
+    }
     if (root) {
       for (const name of listTmuxSessions()) {
         if (sessionDirectory(name).startsWith(root)) {
@@ -211,6 +223,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     before = listTmuxSessions();
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -235,6 +248,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     before = listTmuxSessions();
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
@@ -359,6 +373,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     before = listTmuxSessions();
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -376,6 +391,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     before = listTmuxSessions();
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');

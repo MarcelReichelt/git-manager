@@ -440,6 +440,8 @@ describe('terminal font and colors', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'JetBrains Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 });

@@ -36,6 +36,12 @@ export function sessionDirectory(name: string): string {
   }
 }
 
+const appSessionName = /^gm_[0-9a-f]{8}_[A-Za-z0-9-]+_[1-9][0-9]*$/;
+
+export function appTmuxSessions(): string[] {
+  return listTmuxSessions().filter((name) => appSessionName.test(name));
+}
+
 export function listTmuxSessions(): string[] {
   try {
     const output = execFileSync(tmuxBinary(), ['list-sessions', '-F', '#{session_name}'], {

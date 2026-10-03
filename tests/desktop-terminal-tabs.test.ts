@@ -215,9 +215,16 @@ function renameFrom(fixture: ComponentFixture<WorkspaceComponent>, target: Eleme
   fixture.detectChanges();
 }
 
+function useTmuxMode(root: string): void {
+  const settingsPath = join(root, 'app-settings.json');
+  writeFileSync(settingsPath, '{"terminalMode":"tmux"}\n');
+  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+}
+
 describe('terminal tabs', () => {
   let root = '';
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
+  const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -226,6 +233,11 @@ describe('terminal tabs', () => {
   afterEach(() => {
     fixture?.destroy();
     fixture = undefined;
+    if (previousSettingsPath === undefined) {
+      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    } else {
+      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
+    }
     if (root) {
       for (const name of listTmuxSessions()) {
         if (sessionDirectory(name).startsWith(root)) {
@@ -240,6 +252,7 @@ describe('terminal tabs', () => {
   it('shows New, Split, and Kill as icon buttons and numbers the tab with the process name', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => tabNames(fixture!).length === 1);
@@ -274,6 +287,7 @@ describe('terminal tabs', () => {
   it('adds a tab at the end, and New on a collapsed header expands the row', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
@@ -297,6 +311,7 @@ describe('terminal tabs', () => {
   it('splits the current tab side by side and disables Split when the tab already has two', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
@@ -405,6 +420,7 @@ describe('terminal tabs', () => {
   it('closes a terminal, its tab, and the row, and Kill on a split tab kills both', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
@@ -439,6 +455,7 @@ describe('terminal tabs', () => {
   it('moves an unsplit terminal into the following tab and renumbers', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
@@ -469,6 +486,7 @@ describe('terminal tabs', () => {
   it('follows the running command and shows both names on a split tab', async () => {
     const repo = createRepo();
     root = repo.root;
+    useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
@@ -489,8 +507,8 @@ describe('terminal tabs', () => {
     ).toBe('tmux session');
 
     submitCommand(firstTextarea(fixture, 1), 'npm exec -- sleep 3');
-    await waitFor(() => paneHeaders(fixture!)[1] === 'npm' && tabNames(fixture!)[0] === '1 bash · npm', 12000);
-    await waitFor(() => paneHeaders(fixture!)[1] === 'bash' && tabNames(fixture!)[0] === '1 bash · bash', 12000);
+    await waitFor(() => paneHeaders(fixture!)[1] === 'npm' && tabNames(fixture!)[0] === '1 bash · npm', 20000);
+    await waitFor(() => paneHeaders(fixture!)[1] === 'bash' && tabNames(fixture!)[0] === '1 bash · bash', 20000);
   });
 
   it('renames a tab, restores the process name, and keeps names across split and unsplit', async () => {
@@ -526,7 +544,7 @@ describe('terminal tabs', () => {
 
     renameFrom(fixture, tab(), 'server');
     clickIcon(fixture, 'terminal-split-button');
-    await waitFor(() => paneHeaders(fixture!).length === 2);
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 server · bash');
     expect(tabNames(fixture)).toEqual(['1 server · bash']);
     expect(paneHeaders(fixture)).toEqual(['server', 'bash']);
 

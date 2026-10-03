@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { userInfo } from 'node:os';
+import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { terminalEnvironment } from './tmux-sessions';
 
@@ -18,19 +19,28 @@ interface HostedShell {
 const maxBuffer = 200_000;
 const shells = new Map<string, HostedShell>();
 
-export function ensureShell(id: string, cwd: string): void {
+export function ensureShell(id: string, cwd: string, command = ''): void {
   const existing = shells.get(id);
   if (existing && !existing.exited) {
     return;
   }
-  const program = shellProgram();
-  const pty = spawn(program.file, program.args, {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
-    cwd,
-    env: terminalEnvironment(),
-  });
+  const file = shellFile(command);
+  if (!canStart(file)) {
+    throw new Error(`Could not start ${file}: file not found`);
+  }
+  let pty: IPty;
+  try {
+    pty = spawn(file, [], {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd,
+      env: terminalEnvironment(),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not start ${file}: ${detail}`);
+  }
   const hosted: HostedShell = {
     pty,
     buffer: '',
@@ -122,11 +132,64 @@ export function killAllShells(): void {
   }
 }
 
-function shellProgram(): { file: string; args: string[] } {
-  if (process.platform === 'win32') {
-    return { file: 'powershell.exe', args: ['-NoLogo'] };
+function shellFile(command: string): string {
+  if (command.length > 0) {
+    return command;
   }
-  return { file: '/bin/bash', args: ['--noprofile', '--norc', '-i'] };
+  for (const candidate of blankShellCandidates()) {
+    if (canStart(candidate)) {
+      return candidate;
+    }
+  }
+  return process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+}
+
+function blankShellCandidates(): string[] {
+  const candidates = [loginShell(), '/bin/bash', 'powershell.exe'];
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    if (candidate.length > 0 && !unique.includes(candidate)) {
+      unique.push(candidate);
+    }
+  }
+  return unique;
+}
+
+function loginShell(): string {
+  const shell = process.env.SHELL;
+  if (typeof shell === 'string' && shell.length > 0) {
+    return shell;
+  }
+  try {
+    const shellPath = userInfo().shell;
+    if (typeof shellPath === 'string' && shellPath.length > 0) {
+      return shellPath;
+    }
+  } catch {
+    // The OS user entry is unavailable.
+  }
+  return '';
+}
+
+function canStart(command: string): boolean {
+  if (command.includes('/') || command.includes('\\')) {
+    return existsSync(command);
+  }
+  const names =
+    process.platform === 'win32' && !command.toLowerCase().endsWith('.exe')
+      ? [command, `${command}.exe`]
+      : [command];
+  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+    if (directory.length === 0) {
+      continue;
+    }
+    for (const name of names) {
+      if (existsSync(join(directory, name))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function foregroundCommand(pid: number): string {

@@ -18,6 +18,7 @@ export default defineConfig({
             'tests/desktop-terminal.test.ts',
             'tests/desktop-terminal-colors.test.ts',
             'tests/desktop-terminal-tabs.test.ts',
+            'tests/desktop-terminal-mode.test.ts',
             'tests/e2e/**',
             '**/node_modules/**',
             '**/dist/**',
@@ -50,6 +51,7 @@ export default defineConfig({
             'tests/desktop-terminal.test.ts',
             'tests/desktop-terminal-colors.test.ts',
             'tests/desktop-terminal-tabs.test.ts',
+            'tests/desktop-terminal-mode.test.ts',
           ],
           setupFiles: ['src/desktop/test-setup.ts'],
           server: {

@@ -15,9 +15,11 @@ import {
   saveIdeCommand,
   saveRepositoryLayoutMode,
   saveSidebarColor,
+  saveShellCommand,
   saveTerminalBackground,
   saveTerminalFont,
   saveTerminalForeground,
+  saveTerminalMode,
 } from '../src/app-settings.js';
 import { addRepository, listRepositories } from '../src/registry.js';
 
@@ -49,6 +51,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -102,6 +106,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -131,6 +137,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -167,6 +175,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -191,6 +201,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -366,6 +378,8 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: 'cursor',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
   });
 
@@ -399,7 +413,85 @@ describe('app settings', () => {
       terminalForeground: '#d4d4d4',
       terminalFont: 'JetBrains Mono',
       ideCommand: 'cursor',
+      terminalMode: 'terminal',
+      shellCommand: '',
     });
+  });
+
+  it('uses Terminal mode and a blank shell command when those settings are not text', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"terminalMode":1,"shellCommand":["/bin/zsh"]}\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).terminalMode).toBe('terminal');
+    expect(readAppSettings(env).shellCommand).toBe('');
+  });
+
+  it('saves the terminal mode without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","shellCommand":"/bin/zsh"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveTerminalMode('none', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      ideCommand: 'cursor',
+      shellCommand: '/bin/zsh',
+      terminalMode: 'none',
+    });
+    expect(readAppSettings(env).terminalMode).toBe('none');
+
+    saveTerminalMode('tmux', env);
+
+    expect(readAppSettings(env).terminalMode).toBe('tmux');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).theme).toBe('mint');
+  });
+
+  it('saves a shell command path without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"workspaces","terminalMode":"tmux","ideCommand":"cursor"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveShellCommand('/usr/bin/zsh', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'workspaces',
+      terminalMode: 'tmux',
+      ideCommand: 'cursor',
+      shellCommand: '/usr/bin/zsh',
+    });
+    expect(readAppSettings(env).shellCommand).toBe('/usr/bin/zsh');
+  });
+
+  it('leaves the stored shell command unchanged when the value has arguments', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"theme":"mint","shellCommand":"/usr/bin/zsh"}\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveShellCommand('/usr/bin/zsh -l', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      shellCommand: '/usr/bin/zsh',
+    });
+    expect(readAppSettings(env).shellCommand).toBe('/usr/bin/zsh');
   });
 
   it('leaves the registered repository list unchanged when the default layout is saved', () => {

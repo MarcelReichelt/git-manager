@@ -1,6 +1,6 @@
 # Desktop
 
-`yarn desktop` opens the window. It needs a display. On Linux and macOS the branch terminal uses `tmux`.
+`yarn desktop` opens the window. It needs a display. App settings chooses the terminal mode for a new terminal: an in-app terminal, a tmux session, or no terminal section. Terminal is the default.
 
 With nothing selected, a centered card lists registered repositories. An empty card says a repository needs to be added.
 
@@ -56,7 +56,7 @@ Drag the splitters between the panes to resize them. Each region scrolls on its 
 
 The terminal is a row at the bottom of the worktree, under the changes, the commits, and the diff. The row starts expanded. Drag the horizontal splitter to resize it. That height stays for the life of the workspace, including when you switch worktrees. The chevron collapses the row to the header and hides the splitter. Expanding restores that height. While the row is collapsed, the header shows how many terminals are running for the selected worktree when that count is greater than zero. Killing the last terminal collapses the row. Opening it starts a terminal when the worktree has none.
 
-Selecting a worktree opens a terminal in that checkout when the worktree has none. The row stays collapsed when it was already collapsed. A worktree keeps its tabs while another worktree is selected, and while the row is collapsed.
+Selecting a worktree opens a terminal in that checkout when the worktree has none and the terminal mode is Terminal or Tmux. The row stays collapsed when it was already collapsed. A worktree keeps its tabs while another worktree is selected, and while the row is collapsed.
 
 The terminals for a worktree sit in numbered tabs in the header. A tab holds one terminal, or two side by side. The number is the tab's position, starting at 1. Closing a tab renumbers the tabs after it. Inserting a tab renumbers the tabs after the insertion, so a new tab between 1 and 2 becomes 2 and the old 2 becomes 3.
 
@@ -68,9 +68,17 @@ Right-click a tab that holds one terminal for Rename, Kill, and Split. Right-cli
 
 Rename turns the name into a field. Enter commits it. An empty name clears it, and the process name comes back. Escape closes the menu without renaming. Splitting a renamed one-terminal tab keeps that name on the existing terminal. The new terminal starts from its process name. Renaming a split tab replaces the chip until the name is cleared. The pane headers still show each terminal's name. Renaming a terminal inside a split tab sets that terminal's name until it is cleared. Unsplit keeps a renamed terminal's name on its new tab. When one terminal of a pair is closed, a custom tab name stays and the remaining terminal's name is dropped. Without a custom tab name, the remaining terminal's name becomes the tab name.
 
-On Linux and macOS, when `tmux` is installed, each terminal is a `tmux` session. The session name starts with `gm_`, a short hash of the repository path, and the branch. That name is the tmux session, not the tab label. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+App settings chooses the terminal mode: None, Terminal, or Tmux. Terminal is the default, including when tmux is installed. None removes the terminal section, so there is no row, chevron, or New, and selecting a worktree starts nothing. Terminal starts an in-app terminal. Tmux starts a tmux session. New and Split create a terminal of the selected mode.
 
-On Windows, and when `tmux` is not installed, each terminal is a shell in the worktree directory. New, Split, and Kill are the same icon buttons.
+The Terminal option has an edit button for the shell command. The shell command is one program path, with no arguments, stored in app settings. A blank shell command starts the login shell, then `/bin/bash`, then `powershell.exe` on Windows, using the first one that can start. The login shell is `SHELL` when that is a non-empty path, and otherwise the OS user shell. The shell starts interactive, so its own config loads. A path that fails to start shows the workspace error. Changing the shell command leaves terminals that are already running, and terminals started afterward use the new command. Tmux mode ignores the shell command.
+
+The Tmux option is disabled when tmux is not on PATH. Its tooltip is "tmux is not installed". Windows does not hide that option when tmux is installed. If the saved mode is Tmux and tmux is missing, the app behaves as Terminal mode and does not rewrite the saved setting.
+
+Changing mode asks only when the mode you are leaving still has a running terminal of that mode. None has no terminals of its own, so leaving None does not ask. A switch with nothing running does not ask. The dialog offers Keep, Kill, and Cancel. Cancel leaves the mode and the terminals unchanged. Keep leaves those terminals running and shows them on the same tab strip as the mode you are entering. A split tab can hold one in-app terminal and one tmux session when the mode changes between the two panes. Kill stops every terminal of the mode you are leaving, and only that mode. Leaving Terminal kills in-app terminals. Leaving Tmux kills the app's tmux sessions, including sessions for repositories that are not open, and leaves tmux sessions that are not the app's. If the selected worktree then has no terminals, the section collapses, and opening it starts one terminal of the new mode. If any terminals remain, the section stays as it was, expanded or collapsed, and shows them.
+
+Switching to None hides the section. Keep leaves the terminals running, and they show again when you leave None and select that worktree. Switching repository ends the open workspace's in-app terminals. Tmux sessions keep running. In-app terminals exist only for the open workspace. Tmux sessions for another repository stay off this workspace's tab strip and appear when that repository is open. While the mode is Terminal, tmux sessions for the open repository still appear on the tab strip. They stay hidden while the mode is None.
+
+In Tmux mode, the session name starts with `gm_`, a short hash of the repository path, and the branch. That name is the tmux session, not the tab label. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
 
 App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
 

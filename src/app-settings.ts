@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import TOML from '@iarna/toml';
 import { runtimeEnv } from './runtime-env.js';
 
+export type TerminalMode = 'none' | 'terminal' | 'tmux';
+
 export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
   sidebarColor: string;
@@ -12,6 +14,8 @@ export interface AppSettings {
   terminalForeground: string;
   terminalFont: string;
   ideCommand: string;
+  terminalMode: TerminalMode;
+  shellCommand: string;
 }
 
 const originalSidebarColor = '#1a3c2b';
@@ -78,6 +82,8 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
       typeof stored.terminalForeground === 'string' ? stored.terminalForeground : originalTerminalForeground,
     terminalFont: typeof stored.terminalFont === 'string' ? stored.terminalFont : originalTerminalFont,
     ideCommand: typeof stored.ideCommand === 'string' ? stored.ideCommand : '',
+    terminalMode: terminalMode(stored.terminalMode),
+    shellCommand: typeof stored.shellCommand === 'string' ? stored.shellCommand : '',
   };
 }
 
@@ -153,6 +159,25 @@ export function saveTerminalFont(font: string, env?: NodeJS.ProcessEnv): void {
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export function saveTerminalMode(mode: TerminalMode, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.terminalMode = mode;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveShellCommand(command: string, env?: NodeJS.ProcessEnv): void {
+  if (/\s/.test(command)) {
+    return;
+  }
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.shellCommand = command;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
 export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
@@ -207,6 +232,13 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   return String(mode);
+}
+
+function terminalMode(value: unknown): TerminalMode {
+  if (value === 'none' || value === 'terminal' || value === 'tmux') {
+    return value;
+  }
+  return 'terminal';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -5,7 +5,15 @@ import { basename, resolve } from 'node:path';
 import { addRemote, changeRemote, listRemotes, removeRemote, repositoryRemotes, type RepositoryRemote } from '../remotes.js';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
-import { createLayoutForRepository, readAppSettings, saveDefaultLayout, type AppSettings } from '../app-settings.js';
+import {
+  createLayoutForRepository,
+  readAppSettings,
+  resetAppColors,
+  saveContentColor,
+  saveDefaultLayout,
+  saveSidebarColor,
+  type AppSettings,
+} from '../app-settings.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import { copyText } from './copy-text';
 import { browseForFolder } from './folder-browser';
@@ -160,6 +168,10 @@ const sampleCard: CardRepository[] = [
   standalone: true,
   imports: [NgTemplateOutlet, TerminalPane, ShellPane],
   styleUrl: './workspace-rail.css',
+  host: {
+    '[style.--forest]': 'sidebarColor()',
+    '[style.--paper]': 'contentColor()',
+  },
   styles: [
     `
 :host {
@@ -171,7 +183,7 @@ const sampleCard: CardRepository[] = [
   display: block;
   min-height: 100vh;
   overflow: hidden;
-  background: #1a3c2b;
+  background-color: var(--forest);
   border-radius: 8px;
   color: var(--grid);
   font-family: "General Sans", "Segoe UI", sans-serif;
@@ -188,7 +200,7 @@ button, input { font: inherit; color: inherit; }
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--forest);
+  background-color: var(--forest);
 }
 
 .switching-overlay {
@@ -204,7 +216,7 @@ button, input { font: inherit; color: inherit; }
   gap: 8px;
   width: 22rem;
   padding: 16px;
-  background: var(--paper);
+  background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
 }
@@ -249,7 +261,7 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
@@ -261,7 +273,7 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='add-repository'] {
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
   border-color: var(--forest);
 }
@@ -282,7 +294,7 @@ button, input { font: inherit; color: inherit; }
   gap: 8px;
   width: 22rem;
   padding: 16px;
-  background: var(--paper);
+  background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 8px;
   color: var(--grid);
@@ -315,7 +327,7 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
@@ -332,7 +344,7 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='confirm-add-repository'] {
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
   border-color: var(--forest);
 }
@@ -381,7 +393,7 @@ button, input { font: inherit; color: inherit; }
   gap: 8px;
   width: 22rem;
   padding: 16px;
-  background: var(--paper);
+  background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 8px;
   color: var(--grid);
@@ -423,7 +435,7 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
@@ -440,7 +452,7 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='confirm-create-worktree'] {
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
   border-color: var(--forest);
 }
@@ -526,13 +538,13 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
 
 [data-testid='confirm-merge-into-master'] {
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
   border-color: var(--forest);
 }
@@ -568,7 +580,8 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
-[data-testid='app-settings-dialog'] label {
+[data-testid='app-settings-dialog'] label,
+[data-testid='app-settings-dialog'] .color-choice {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -578,6 +591,29 @@ button, input { font: inherit; color: inherit; }
   font-size: 12px;
   letter-spacing: 0;
   text-transform: none;
+}
+
+[data-testid='app-settings-dialog'] .color-choice {
+  justify-content: space-between;
+}
+
+[data-testid='app-settings-dialog'] input[type='color'] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  background-color: var(--paper);
+  cursor: pointer;
+}
+
+[data-testid='reset-colors'] {
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  background-color: var(--paper);
+  text-align: left;
+  cursor: pointer;
 }
 
 [data-testid='repository-settings-dialog'] {
@@ -709,7 +745,7 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
@@ -730,7 +766,7 @@ button, input { font: inherit; color: inherit; }
 [data-testid='open-add-remote'],
 [data-testid='confirm-add-remote'],
 [data-testid='confirm-change-remote'] {
-  background: var(--forest);
+  background-color: var(--forest);
   color: white;
   border-color: var(--forest);
 }
@@ -790,7 +826,7 @@ button, input { font: inherit; color: inherit; }
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
-  background: var(--paper);
+  background-color: var(--paper);
   text-align: left;
   cursor: pointer;
 }
@@ -811,9 +847,9 @@ button, input { font: inherit; color: inherit; }
 
 [data-testid='add-remote-dialog'] [data-testid='confirm-add-remote'],
 [data-testid='change-remote-dialog'] [data-testid='confirm-change-remote'] {
-  background-color: #1a3c2b;
+  background-color: var(--forest);
   color: #ffffff;
-  border-color: #1a3c2b;
+  border-color: var(--forest);
 }
 
 [data-testid='remote-form-error'] {
@@ -1343,6 +1379,29 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
+          <div class="color-choice">
+            <span>Sidebar</span>
+            <input
+              type="color"
+              data-testid="sidebar-color"
+              aria-label="Sidebar color"
+              [value]="sidebarColor()"
+              (input)="chooseSidebarColor($event)"
+              (change)="chooseSidebarColor($event)"
+            />
+          </div>
+          <div class="color-choice">
+            <span>Content</span>
+            <input
+              type="color"
+              data-testid="content-color"
+              aria-label="Content color"
+              [value]="contentColor()"
+              (input)="chooseContentColor($event)"
+              (change)="chooseContentColor($event)"
+            />
+          </div>
+          <button type="button" data-testid="reset-colors" (click)="resetColors()">Reset</button>
         </section>
       </div>
     }
@@ -1410,6 +1469,8 @@ export class WorkspaceComponent implements OnInit {
   readonly settingsOpen = signal(false);
   readonly appSettingsOpen = signal(false);
   readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
+  readonly sidebarColor = signal(readAppSettings().sidebarColor);
+  readonly contentColor = signal(readAppSettings().contentColor);
   readonly remotes = signal<RepositoryRemote[]>([]);
   readonly addRemoteOpen = signal(false);
   readonly editingRemote = signal<string | null>(null);
@@ -2082,6 +2143,25 @@ export class WorkspaceComponent implements OnInit {
   chooseDefaultLayout(layout: AppSettings['defaultLayout']): void {
     saveDefaultLayout(layout);
     this.defaultLayout.set(layout);
+  }
+
+  chooseSidebarColor(event: Event): void {
+    const color = inputValue(event);
+    saveSidebarColor(color);
+    this.sidebarColor.set(color);
+  }
+
+  chooseContentColor(event: Event): void {
+    const color = inputValue(event);
+    saveContentColor(color);
+    this.contentColor.set(color);
+  }
+
+  resetColors(): void {
+    resetAppColors();
+    const settings = readAppSettings();
+    this.sidebarColor.set(settings.sidebarColor);
+    this.contentColor.set(settings.contentColor);
   }
 
   createLayoutLine(): string {

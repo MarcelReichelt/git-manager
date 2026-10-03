@@ -434,6 +434,165 @@ describe('desktop workspace', () => {
     expect(layoutChoice(reopened, 'Workspaces').checked).toBe(false);
   });
 
+  it('offers sidebar and content color choosers and a reset button in App settings', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const sidebar = dialog.querySelector('[data-testid="sidebar-color"]');
+    const content = dialog.querySelector('[data-testid="content-color"]');
+    const reset = dialog.querySelector('[data-testid="reset-colors"]');
+    expect(sidebar).toBeInstanceOf(HTMLInputElement);
+    expect(sidebar.type).toBe('color');
+    expect(sidebar.value).toBe('#1a3c2b');
+    expect(content).toBeInstanceOf(HTMLInputElement);
+    expect(content.type).toBe('color');
+    expect(content.value).toBe('#f7f7f5');
+    expect(reset.tagName).toBe('BUTTON');
+    expect(reset.textContent.trim()).toBe('Reset');
+  });
+
+  it('paints the open window with the chosen sidebar color and keeps the selected row white', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    pickColor(fixture.nativeElement.querySelector('[data-testid="sidebar-color"]'), '#123456');
+    fixture.detectChanges();
+
+    const selected = fixture.nativeElement.querySelector('.branch-row.is-selected');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(selected).color).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(selected).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(
+      getComputedStyle(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] h2')).color,
+    ).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('.branch-heading h2')).color).toBe('rgb(18, 52, 86)');
+    expect(readAppSettings().sidebarColor).toBe('#123456');
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    expect(
+      getComputedStyle(fixture.nativeElement.querySelector('[data-testid="confirm-create-worktree"]')).backgroundColor,
+    ).toBe('rgb(18, 52, 86)');
+  });
+
+  it('paints the content sheet, dialogs, and light buttons with the chosen content color', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    pickColor(fixture.nativeElement.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(
+      getComputedStyle(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] .dialog-panel'))
+        .backgroundColor,
+    ).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="create-worktree"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(
+      getComputedStyle(
+        fixture.nativeElement.querySelector('.branch-row.is-selected [data-testid="branch-menu"]'),
+      ).backgroundColor,
+    ).toBe('rgb(171, 205, 239)');
+    expect(readAppSettings().contentColor).toBe('#abcdef');
+  });
+
+  it('shows the saved colors when the workspace is opened again', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const first = await render();
+    first.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    first.detectChanges();
+    first.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    first.detectChanges();
+    pickColor(first.nativeElement.querySelector('[data-testid="sidebar-color"]'), '#123456');
+    pickColor(first.nativeElement.querySelector('[data-testid="content-color"]'), '#abcdef');
+    first.detectChanges();
+
+    const again = await render();
+    again.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    again.detectChanges();
+
+    expect(getComputedStyle(again.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(again.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(again.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(readAppSettings()).toEqual({
+      defaultLayout: 'workspaces',
+      sidebarColor: '#123456',
+      contentColor: '#abcdef',
+    });
+  });
+
+  it('restores the original colors and leaves a saved Sibling layout in place', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling","ideCommand":"cursor"}\n');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(true);
+    pickColor(dialog.querySelector('[data-testid="sidebar-color"]'), '#123456');
+    pickColor(dialog.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="reset-colors"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(247, 247, 245)',
+    );
+    expect(getComputedStyle(dialog.querySelector('.dialog-panel')).backgroundColor).toBe('rgb(247, 247, 245)');
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(true);
+    expect(readAppSettings()).toEqual({
+      defaultLayout: 'sibling',
+      sidebarColor: '#1a3c2b',
+      contentColor: '#f7f7f5',
+    });
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
+  });
+
   it('names the app default layout on the create dialog for sample Harbor', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
     roots.push(root);
@@ -3555,6 +3714,15 @@ function columnTrackCount(columns: string): number {
     tracks += 1;
   }
   return tracks;
+}
+
+function pickColor(input: Element | null, color: string): void {
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error('missing color input');
+  }
+  input.value = color;
+  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('change'));
 }
 
 function layoutChoice(dialog: ParentNode, name: string): HTMLInputElement {

@@ -5,7 +5,12 @@ import TOML from '@iarna/toml';
 
 export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
+  sidebarColor: string;
+  contentColor: string;
 }
+
+const originalSidebarColor = '#1a3c2b';
+const originalContentColor = '#f7f7f5';
 
 export interface CreateLayout {
   label: string;
@@ -41,7 +46,12 @@ export function createLayoutForRepository(
 }
 
 export function readAppSettings(env: NodeJS.ProcessEnv = process.env): AppSettings {
-  return { defaultLayout: storedDefaultLayout(resolveAppSettingsPath(env)) };
+  const stored = readSettingsObject(resolveAppSettingsPath(env));
+  return {
+    defaultLayout: stored.defaultLayout === 'sibling' ? 'sibling' : 'workspaces',
+    sidebarColor: typeof stored.sidebarColor === 'string' ? stored.sidebarColor : originalSidebarColor,
+    contentColor: typeof stored.contentColor === 'string' ? stored.contentColor : originalContentColor,
+  };
 }
 
 export function saveDefaultLayout(
@@ -55,9 +65,29 @@ export function saveDefaultLayout(
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
-function storedDefaultLayout(settingsPath: string): AppSettings['defaultLayout'] {
-  const stored = readSettingsObject(settingsPath).defaultLayout;
-  return stored === 'sibling' ? 'sibling' : 'workspaces';
+export function saveSidebarColor(color: string, env: NodeJS.ProcessEnv = process.env): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.sidebarColor = color;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveContentColor(color: string, env: NodeJS.ProcessEnv = process.env): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.contentColor = color;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function resetAppColors(env: NodeJS.ProcessEnv = process.env): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.sidebarColor = originalSidebarColor;
+  current.contentColor = originalContentColor;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
 function readSettingsObject(settingsPath: string): Record<string, unknown> {

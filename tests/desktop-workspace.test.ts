@@ -1,5 +1,6 @@
+import TOML from '@iarna/toml';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -1196,6 +1197,174 @@ describe('desktop workspace', () => {
 
     const dialog = live.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(dialog.querySelector('[data-testid="repository-location"]').textContent).toBe(pier);
+  });
+
+  it('shows the app default worktree mode in repository settings without writing a config', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const location = dialog.querySelector('[data-testid="repository-location"]');
+    const heading = dialog.querySelector('[data-testid="worktree-mode-heading"]');
+    const source = dialog.querySelector('[data-testid="worktree-mode-source"]');
+    const remotes = dialog.querySelector('[data-testid="remotes-heading"]');
+    const workspaces = layoutChoice(dialog, 'Workspaces');
+    const sibling = layoutChoice(dialog, 'Sibling');
+
+    expect(location.textContent).toBe(repoPath);
+    expect(heading.textContent.trim()).toBe('Worktree mode');
+    expect(heading.tagName).toBe('H3');
+    expect(getComputedStyle(heading).textTransform).toBe('uppercase');
+    expect(source.textContent.trim()).toBe('Workspaces, the app default');
+    expect(workspaces.checked).toBe(true);
+    expect(sibling.checked).toBe(false);
+    expect(workspaces.name).toBe('worktree-mode');
+    expect(sibling.name).toBe('worktree-mode');
+    expect(workspaces.getAttribute('data-testid')).toBe('worktree-mode-workspaces');
+    expect(sibling.getAttribute('data-testid')).toBe('worktree-mode-sibling');
+    expect(location.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(heading.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(source.compareDocumentPosition(workspaces) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(sibling.compareDocumentPosition(remotes) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+
+    const workspacesLabel = workspaces.closest('label');
+    const siblingLabel = sibling.closest('label');
+    const locationLabel = location.closest('label');
+    expect(workspacesLabel).not.toBeNull();
+    expect(siblingLabel).not.toBeNull();
+    expect(locationLabel).not.toBeNull();
+    if (
+      !(workspacesLabel instanceof HTMLElement) ||
+      !(siblingLabel instanceof HTMLElement) ||
+      !(locationLabel instanceof HTMLElement)
+    ) {
+      return;
+    }
+    for (const label of [workspacesLabel, siblingLabel]) {
+      const style = getComputedStyle(label);
+      expect(style.flexDirection).toBe('row');
+      expect(style.fontSize).toBe('12px');
+      expect(style.letterSpacing).toBe('0');
+      expect(style.textTransform).toBe('none');
+    }
+    expect(getComputedStyle(locationLabel).flexDirection).toBe('column');
+    expect(getComputedStyle(locationLabel).textTransform).toBe('uppercase');
+  });
+
+  it('saves Sibling from repository settings and creates the next worktree beside the repository', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(repoPath, 'Harbor');
+    git(repoPath, ['branch', 'notes']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const parentBefore = readdirSync(root).sort();
+    const repoBefore = readdirSync(repoPath).sort();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    layoutChoice(dialog, 'Sibling').click();
+    fixture.detectChanges();
+
+    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    expect(readFileSync(configPath, 'utf8')).toContain('mode = "sibling"');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(false);
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(true);
+    expect(readdirSync(root).sort()).toEqual(parentBefore);
+    expect(readdirSync(repoPath).sort()).toEqual([...repoBefore, '.git-manager'].sort());
+    expect(existsSync(join(repoPath, '.workspaces'))).toBe(false);
+    expect(existsSync(join(root, 'notes'))).toBe(false);
+
+    dialog.querySelector('[data-testid="close-repository-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const createDialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    expect(createDialog.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+
+    const field = createDialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'notes';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    createDialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    const checkout = join(root, 'notes');
+    await untilVisible(fixture, () => existsSync(checkout));
+
+    expect(git(checkout, ['branch', '--show-current'])).toBe('notes');
+    expect(existsSync(join(repoPath, '.workspaces', 'notes'))).toBe(false);
+  });
+
+  it('shows an unsupported worktree mode with neither choice selected and replaces it with Workspaces', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      ['[layout]', 'workspaces_dir = ".workspaces"', 'mode = "custom"', '', '[copy]', 'files = [".env"]', ''].join('\n'),
+    );
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'custom, set by this repository',
+    );
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(false);
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
+
+    layoutChoice(dialog, 'Workspaces').click();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, set by this repository',
+    );
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { workspaces_dir: '.workspaces', mode: 'workspaces' },
+      copy: { files: ['.env'] },
+    });
+  });
+
+  it('leaves the app default in place when the repository has no path on disk', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
+
+    layoutChoice(dialog, 'Sibling').click();
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
+    expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
+    expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
+    expect(existsSync(join(root, '.git-manager', 'config.toml'))).toBe(false);
   });
 
   it('lists each git remote once with its name and fetch URL', async () => {

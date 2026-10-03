@@ -68,6 +68,19 @@ export function saveDefaultLayout(
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export function saveRepositoryLayoutMode(
+  repoPath: string,
+  mode: 'workspaces' | 'sibling',
+): void {
+  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  mkdirSync(dirname(configPath), { recursive: true });
+  const current = readRepositoryConfig(configPath);
+  const layout = isRecord(current.layout) ? { ...current.layout } : {};
+  layout.mode = mode;
+  current.layout = layout;
+  writeFileSync(configPath, TOML.stringify(current as Parameters<typeof TOML.stringify>[0]));
+}
+
 export function saveSidebarColor(color: string, env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
@@ -120,6 +133,17 @@ function readSettingsObject(settingsPath: string): Record<string, unknown> {
     return {};
   }
   const parsed: unknown = JSON.parse(text);
+  if (!isRecord(parsed)) {
+    return {};
+  }
+  return parsed;
+}
+
+function readRepositoryConfig(configPath: string): Record<string, unknown> {
+  if (!existsSync(configPath)) {
+    return {};
+  }
+  const parsed: unknown = TOML.parse(readFileSync(configPath, 'utf8'));
   if (!isRecord(parsed)) {
     return {};
   }

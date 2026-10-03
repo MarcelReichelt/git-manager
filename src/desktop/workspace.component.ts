@@ -12,6 +12,7 @@ import {
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveRepositoryLayoutMode,
   saveSidebarColor,
   type AppSettings,
 } from '../app-settings.js';
@@ -710,7 +711,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='repository-settings-dialog'] label,
-[data-testid='remotes-heading'] {
+[data-testid='remotes-heading'],
+[data-testid='worktree-mode-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -722,11 +724,22 @@ button, input { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-[data-testid='remotes-heading'] {
+[data-testid='repository-settings-dialog'] label.worktree-mode {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='remotes-heading'],
+[data-testid='worktree-mode-heading'] {
   margin-top: 8px;
 }
 
 [data-testid='repository-location'],
+[data-testid='worktree-mode-source'],
 [data-testid='remote-name'] {
   margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -799,7 +812,7 @@ button, input { font: inherit; color: inherit; }
   }
 }
 
-[data-testid='repository-settings-dialog'] input,
+[data-testid='repository-settings-dialog'] input:not([type='radio']),
 [data-testid='open-add-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
@@ -812,7 +825,7 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='repository-settings-dialog'] input {
+[data-testid='repository-settings-dialog'] input:not([type='radio']) {
   width: 100%;
   height: 36px;
   padding: 0 8px;
@@ -1344,6 +1357,30 @@ button, input { font: inherit; color: inherit; }
           <label>
             Location
             <p data-testid="repository-location">{{ repositoryLocation() }}</p>
+          </label>
+          <h3 data-testid="worktree-mode-heading">Worktree mode</h3>
+          <p data-testid="worktree-mode-source">{{ createLayoutLine() }}</p>
+          <label class="worktree-mode">
+            <input
+              type="radio"
+              name="worktree-mode"
+              data-testid="worktree-mode-workspaces"
+              value="workspaces"
+              [checked]="repositoryWorktreeMode() === 'workspaces'"
+              (change)="chooseRepositoryLayout('workspaces', $event)"
+            />
+            Workspaces
+          </label>
+          <label class="worktree-mode">
+            <input
+              type="radio"
+              name="worktree-mode"
+              data-testid="worktree-mode-sibling"
+              value="sibling"
+              [checked]="repositoryWorktreeMode() === 'sibling'"
+              (change)="chooseRepositoryLayout('sibling', $event)"
+            />
+            Sibling
           </label>
           <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
           <ul data-testid="remote-list" aria-labelledby="remotes-heading">
@@ -2337,6 +2374,42 @@ export class WorkspaceComponent implements OnInit {
     this.contentColor.set(settings.contentColor);
   }
 
+  chooseRepositoryLayout(mode: 'workspaces' | 'sibling', event: Event): void {
+    const path = this.effectivePath();
+    if (path === null) {
+      this.keepWorktreeModeRadios(event);
+      return;
+    }
+    saveRepositoryLayoutMode(path, mode);
+  }
+
+  private keepWorktreeModeRadios(event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const selected = this.repositoryWorktreeMode();
+    const dialog = input.closest('[data-testid="repository-settings-dialog"]');
+    if (!(dialog instanceof HTMLElement)) {
+      return;
+    }
+    for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="worktree-mode"]')) {
+      radio.checked = radio.value === selected;
+    }
+  }
+
+  repositoryWorktreeMode(): 'workspaces' | 'sibling' | null {
+    const path = this.effectivePath();
+    if (path === null) {
+      return readAppSettings().defaultLayout;
+    }
+    const layout = createLayoutForRepository(path);
+    if (!layout.supported) {
+      return null;
+    }
+    return layout.label === 'Sibling' ? 'sibling' : 'workspaces';
+  }
+
   createLayoutLine(): string {
     const path = this.effectivePath();
     const layout =
@@ -2498,7 +2571,6 @@ export class WorkspaceComponent implements OnInit {
     const path = this.effectivePath();
     if (!path) {
       this.remotes.set([]);
-      this.remoteDrafts.set({});
       return;
     }
     this.remotes.set(repositoryRemotes(path));

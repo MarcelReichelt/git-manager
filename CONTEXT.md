@@ -17,11 +17,15 @@ A checkout of a single branch, in either the sibling layout or the workspaces la
 _Avoid_: workspace
 
 **Terminal**:
-A running shell for a worktree, shown at the bottom of that worktree's content. A worktree can have more than one.
-_Avoid_: multiplexer
+A running shell for a worktree. It lives in a terminal tab.
+_Avoid_: multiplexer, tab
+
+**Terminal tab**:
+A numbered view in the terminal section. It holds one terminal, or two side by side.
+_Avoid_: session
 
 **Terminal mode**:
-The app setting that chooses none, an in-app terminal, or tmux. The default is an in-app terminal.
+The app setting that chooses which kind a new terminal is: an in-app terminal or a tmux session. None removes the terminal section. The default is an in-app terminal.
 _Avoid_: shell mode
 
 **Shell command**:

@@ -12,6 +12,7 @@ import {
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveRepositoryLayoutMode,
   saveSidebarColor,
   type AppSettings,
 } from '../app-settings.js';
@@ -710,7 +711,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='repository-settings-dialog'] label,
-[data-testid='remotes-heading'] {
+[data-testid='remotes-heading'],
+[data-testid='worktree-mode-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -722,11 +724,47 @@ button, input { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-[data-testid='remotes-heading'] {
+[data-testid='repository-settings-dialog'] label.worktree-mode {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='remotes-heading'],
+[data-testid='worktree-mode-heading'] {
   margin-top: 8px;
 }
 
+.remotes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.remotes-header [data-testid='remotes-heading'] {
+  margin-top: 0;
+}
+
+[data-testid='repository-settings-dialog'] [data-testid='open-add-remote'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
 [data-testid='repository-location'],
+[data-testid='worktree-mode-source'],
 [data-testid='remote-name'] {
   margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -734,6 +772,28 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: 0;
   text-transform: none;
   word-break: break-all;
+}
+
+[data-testid='repository-location'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-testid='copy-location-icon'] {
+  flex: none;
+  opacity: 0;
+}
+
+[data-testid='repository-location']:hover [data-testid='copy-location-icon'],
+[data-testid='repository-location']:focus-visible [data-testid='copy-location-icon'] {
+  opacity: 1;
 }
 
 [data-testid='remote-list'] {
@@ -799,7 +859,7 @@ button, input { font: inherit; color: inherit; }
   }
 }
 
-[data-testid='repository-settings-dialog'] input,
+[data-testid='repository-settings-dialog'] input:not([type='radio']),
 [data-testid='open-add-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
@@ -812,7 +872,7 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='repository-settings-dialog'] input {
+[data-testid='repository-settings-dialog'] input:not([type='radio']) {
   width: 100%;
   height: 36px;
   padding: 0 8px;
@@ -975,14 +1035,14 @@ button, input { font: inherit; color: inherit; }
             </button>
             <button type="button" data-testid="repository-settings" aria-label="Repository settings" (click)="openSettings()">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M8 1.2a.8.8 0 0 1 .78.6l.22.9a4.8 4.8 0 0 1 1.22.7l.82-.4a.8.8 0 0 1 1.06.3l.5.86a.8.8 0 0 1-.18 1.02l-.7.54a4.9 4.9 0 0 1 0 1.56l.7.54a.8.8 0 0 1 .18 1.02l-.5.86a.8.8 0 0 1-1.06.3l-.82-.4a4.8 4.8 0 0 1-1.22.7l-.22.9a.8.8 0 0 1-.78.6.8.8 0 0 1-.78-.6l-.22-.9a4.8 4.8 0 0 1-1.22-.7l-.82.4a.8.8 0 0 1-1.06-.3l-.5-.86a.8.8 0 0 1 .18-1.02l.7-.54a4.9 4.9 0 0 1 0-1.56l-.7-.54a.8.8 0 0 1-.18-1.02l.5-.86a.8.8 0 0 1 1.06-.3l.82.4a4.8 4.8 0 0 1 1.22-.7l.22-.9A.8.8 0 0 1 8 1.2zm0 4.3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+                <path fill="currentColor" d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.162.346.353.677.573.989.02.03.085.076.195.046l1.102-.303c.56-.153 1.113-.008 1.53.27.161.107.328.204.501.29.447.222.85.629.997 1.189l.289 1.105c.029.109.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.029.175-.016.195-.045.22-.313.411-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.989c-.02-.03-.085-.076-.195-.046l-1.102.303c-.56.153-1.113.008-1.53-.27a4.44 4.44 0 0 0-.501-.29c-.447-.222-.85-.629-.997-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3.001.001A1.5 1.5 0 0 0 9.5 8Z" />
               </svg>
             </button>
           </div>
           <div class="window-controls">
             <button type="button" data-testid="app-settings" aria-label="App settings" (click)="openAppSettings()">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M8 1.2a.8.8 0 0 1 .78.6l.22.9a4.8 4.8 0 0 1 1.22.7l.82-.4a.8.8 0 0 1 1.06.3l.5.86a.8.8 0 0 1-.18 1.02l-.7.54a4.9 4.9 0 0 1 0 1.56l.7.54a.8.8 0 0 1 .18 1.02l-.5.86a.8.8 0 0 1-1.06.3l-.82-.4a4.8 4.8 0 0 1-1.22.7l-.22.9a.8.8 0 0 1-.78.6.8.8 0 0 1-.78-.6l-.22-.9a4.8 4.8 0 0 1-1.22-.7l-.82.4a.8.8 0 0 1-1.06-.3l-.5-.86a.8.8 0 0 1 .18-1.02l.7-.54a4.9 4.9 0 0 1 0-1.56l-.7-.54a.8.8 0 0 1-.18-1.02l.5-.86a.8.8 0 0 1 1.06-.3l.82.4a4.8 4.8 0 0 1 1.22-.7l.22-.9A.8.8 0 0 1 8 1.2zm0 4.3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+                <path fill="currentColor" d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.162.346.353.677.573.989.02.03.085.076.195.046l1.102-.303c.56-.153 1.113-.008 1.53.27.161.107.328.204.501.29.447.222.85.629.997 1.189l.289 1.105c.029.109.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.029.175-.016.195-.045.22-.313.411-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.989c-.02-.03-.085-.076-.195-.046l-1.102.303c-.56.153-1.113.008-1.53-.27a4.44 4.44 0 0 0-.501-.29c-.447-.222-.85-.629-.997-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3.001.001A1.5 1.5 0 0 0 9.5 8Z" />
               </svg>
             </button>
             <button type="button" data-testid="window-minimize" aria-label="Minimize" (click)="controlWindow('minimize')">–</button>
@@ -1343,9 +1403,36 @@ button, input { font: inherit; color: inherit; }
           <h2>Repository settings</h2>
           <label>
             Location
-            <p data-testid="repository-location">{{ repositoryLocation() }}</p>
+            <button type="button" data-testid="repository-location" title="Copy location" (click)="copyLocation()">{{ repositoryLocation() }}<svg data-testid="copy-location-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" /><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" /></svg></button>
           </label>
-          <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
+          <h3 data-testid="worktree-mode-heading">Worktree mode</h3>
+          <p data-testid="worktree-mode-source">{{ createLayoutLine() }}</p>
+          <label class="worktree-mode">
+            <input
+              type="radio"
+              name="worktree-mode"
+              data-testid="worktree-mode-workspaces"
+              value="workspaces"
+              [checked]="repositoryWorktreeMode() === 'workspaces'"
+              (change)="chooseRepositoryLayout('workspaces', $event)"
+            />
+            Workspaces
+          </label>
+          <label class="worktree-mode">
+            <input
+              type="radio"
+              name="worktree-mode"
+              data-testid="worktree-mode-sibling"
+              value="sibling"
+              [checked]="repositoryWorktreeMode() === 'sibling'"
+              (change)="chooseRepositoryLayout('sibling', $event)"
+            />
+            Sibling
+          </label>
+          <div class="remotes-header">
+            <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
+            <button type="button" data-testid="open-add-remote" aria-label="Add remote" (click)="openAddRemote()">+</button>
+          </div>
           <ul data-testid="remote-list" aria-labelledby="remotes-heading">
             @for (remote of remotes(); track remote.name) {
               <li data-testid="remote-row" [attr.data-name]="remote.name">
@@ -1374,7 +1461,6 @@ button, input { font: inherit; color: inherit; }
             <p data-testid="settings-error">{{ message }}</p>
           }
           <div class="dialog-actions">
-            <button type="button" data-testid="open-add-remote" (click)="openAddRemote()">Add remote</button>
             <button type="button" data-testid="close-repository-settings" (click)="closeSettings()">Close</button>
           </div>
         </section>
@@ -2337,6 +2423,42 @@ export class WorkspaceComponent implements OnInit {
     this.contentColor.set(settings.contentColor);
   }
 
+  chooseRepositoryLayout(mode: 'workspaces' | 'sibling', event: Event): void {
+    const path = this.effectivePath();
+    if (path === null) {
+      this.keepWorktreeModeRadios(event);
+      return;
+    }
+    saveRepositoryLayoutMode(path, mode);
+  }
+
+  private keepWorktreeModeRadios(event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const selected = this.repositoryWorktreeMode();
+    const dialog = input.closest('[data-testid="repository-settings-dialog"]');
+    if (!(dialog instanceof HTMLElement)) {
+      return;
+    }
+    for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="worktree-mode"]')) {
+      radio.checked = radio.value === selected;
+    }
+  }
+
+  repositoryWorktreeMode(): 'workspaces' | 'sibling' | null {
+    const path = this.effectivePath();
+    if (path === null) {
+      return readAppSettings().defaultLayout;
+    }
+    const layout = createLayoutForRepository(path);
+    if (!layout.supported) {
+      return null;
+    }
+    return layout.label === 'Sibling' ? 'sibling' : 'workspaces';
+  }
+
   createLayoutLine(): string {
     const path = this.effectivePath();
     const layout =
@@ -2498,7 +2620,6 @@ export class WorkspaceComponent implements OnInit {
     const path = this.effectivePath();
     if (!path) {
       this.remotes.set([]);
-      this.remoteDrafts.set({});
       return;
     }
     this.remotes.set(repositoryRemotes(path));

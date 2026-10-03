@@ -1,3 +1,4 @@
+import TOML from '@iarna/toml';
 import Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import {
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveRepositoryLayoutMode,
   saveSidebarColor,
 } from '../src/app-settings.js';
 import { addRepository, listRepositories } from '../src/registry.js';
@@ -356,6 +358,99 @@ describe('app settings', () => {
       label: '1',
       source: 'repository',
       supported: false,
+    });
+  });
+
+  it('saves Sibling onto a repository that has no layout config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(repoPath);
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json') };
+
+    saveRepositoryLayoutMode(repoPath, 'sibling');
+
+    expect(createLayoutForRepository(repoPath, env)).toEqual({
+      label: 'Sibling',
+      source: 'repository',
+      supported: true,
+    });
+  });
+
+  it('saves Workspaces without dropping copy files, hooks, or other layout keys', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      [
+        '[layout]',
+        'workspaces_dir = ".workspaces"',
+        'mode = "sibling"',
+        '',
+        '[copy]',
+        'files = [".env.local"]',
+        '',
+        '[hooks]',
+        'modules = ["./plugins/mark.ts"]',
+        '',
+        '[hooks.pre_worktree_create]',
+        'commands = ["node hooks/mark.mjs"]',
+        '',
+        '[hooks.post_worktree_create]',
+        'commands = ["yarn"]',
+        '',
+        '[editor]',
+        'command = "vim"',
+        '',
+      ].join('\n'),
+    );
+
+    saveRepositoryLayoutMode(repoPath, 'workspaces');
+
+    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'));
+    expect(parsed).toEqual({
+      layout: { workspaces_dir: '.workspaces', mode: 'workspaces' },
+      copy: { files: ['.env.local'] },
+      hooks: {
+        modules: ['./plugins/mark.ts'],
+        pre_worktree_create: { commands: ['node hooks/mark.mjs'] },
+        post_worktree_create: { commands: ['yarn'] },
+      },
+      editor: { command: 'vim' },
+    });
+    expect(createLayoutForRepository(repoPath)).toEqual({
+      label: 'Workspaces',
+      source: 'repository',
+      supported: true,
+    });
+  });
+
+  it('replaces an unsupported or non-text repository layout mode', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const customPath = join(root, 'custom');
+    const numericPath = join(root, 'numeric');
+    mkdirSync(join(customPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(numericPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(customPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    writeFileSync(join(numericPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    saveDefaultLayout('sibling', env);
+
+    saveRepositoryLayoutMode(customPath, 'workspaces');
+    saveRepositoryLayoutMode(numericPath, 'sibling');
+
+    expect(createLayoutForRepository(customPath, env)).toEqual({
+      label: 'Workspaces',
+      source: 'repository',
+      supported: true,
+    });
+    expect(createLayoutForRepository(numericPath, env)).toEqual({
+      label: 'Sibling',
+      source: 'repository',
+      supported: true,
     });
   });
 });

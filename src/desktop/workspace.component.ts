@@ -738,6 +738,31 @@ button, input { font: inherit; color: inherit; }
   margin-top: 8px;
 }
 
+.remotes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.remotes-header [data-testid='remotes-heading'] {
+  margin-top: 0;
+}
+
+[data-testid='repository-settings-dialog'] [data-testid='open-add-remote'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
 [data-testid='repository-location'],
 [data-testid='worktree-mode-source'],
 [data-testid='remote-name'] {
@@ -1382,7 +1407,10 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
-          <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
+          <div class="remotes-header">
+            <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
+            <button type="button" data-testid="open-add-remote" aria-label="Add remote" (click)="openAddRemote()">+</button>
+          </div>
           <ul data-testid="remote-list" aria-labelledby="remotes-heading">
             @for (remote of remotes(); track remote.name) {
               <li data-testid="remote-row" [attr.data-name]="remote.name">
@@ -1411,7 +1439,6 @@ button, input { font: inherit; color: inherit; }
             <p data-testid="settings-error">{{ message }}</p>
           }
           <div class="dialog-actions">
-            <button type="button" data-testid="open-add-remote" (click)="openAddRemote()">Add remote</button>
             <button type="button" data-testid="close-repository-settings" (click)="closeSettings()">Close</button>
           </div>
         </section>

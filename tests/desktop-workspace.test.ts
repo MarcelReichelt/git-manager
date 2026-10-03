@@ -1418,6 +1418,44 @@ describe('desktop workspace', () => {
     expect(editSlidesIn).toBe(true);
   });
 
+  it('opens add remote from a plus on the Remotes header', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const settings = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const heading = settings.querySelector('[data-testid="remotes-heading"]');
+    const plus = settings.querySelector('[data-testid="open-add-remote"]');
+    const list = settings.querySelector('[data-testid="remote-list"]');
+    const headerRow = plus.parentElement;
+    const actions = settings.querySelector('.dialog-actions');
+
+    expect(plus.textContent.trim()).toBe('+');
+    expect(plus.getAttribute('aria-label')).toBe('Add remote');
+    expect(heading.contains(plus)).toBe(false);
+    expect(actions.contains(plus)).toBe(false);
+    expect(heading.textContent.trim()).toBe('Remotes');
+    expect(heading.compareDocumentPosition(plus) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(headerRow.contains(heading)).toBe(true);
+    expect(headerRow.contains(list)).toBe(false);
+    expect(headerRow.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    const style = getComputedStyle(plus);
+    expect(style.width).toBe('28px');
+    expect(style.height).toBe('28px');
+    expect(style.display === 'flex' || style.display === 'inline-flex').toBe(true);
+    expect(style.alignItems).toBe('center');
+    expect(style.justifyContent).toBe('center');
+
+    plus.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"]')).not.toBeNull();
+    expect(actions.querySelector('[data-testid="open-add-remote"]')).toBeNull();
+    expect(actions.textContent.includes('Add remote')).toBe(false);
+    expect(actions.textContent).toContain('Close');
+  });
+
   it('adds a git remote from its own dialog', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['remote', 'add', 'origin', 'https://example.com/harbor.git']);
@@ -1428,8 +1466,13 @@ describe('desktop workspace', () => {
     const settings = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(settings.querySelector('[data-testid="add-remote-name"]')).toBeNull();
     const settingsInputs = [...settings.querySelectorAll('input')];
-    expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual(['remote-url']);
-    expect(settingsInputs[0].readOnly).toBe(true);
+    expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual([
+      'worktree-mode-workspaces',
+      'worktree-mode-sibling',
+      'remote-url',
+    ]);
+    const remoteUrl = settingsInputs.find((input) => input.getAttribute('data-testid') === 'remote-url');
+    expect(remoteUrl.readOnly).toBe(true);
     settings.querySelector('[data-testid="open-add-remote"]').click();
     fixture.detectChanges();
 

@@ -577,8 +577,7 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='repository-location'],
-[data-testid='remote-name'],
-[data-testid='remote-url'] {
+[data-testid='remote-name'] {
   margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
@@ -595,19 +594,63 @@ button, input { font: inherit; color: inherit; }
 
 [data-testid='remote-row'] {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.remote-actions {
-  display: flex;
-  gap: 8px;
+[data-testid='remote-name'] {
+  flex: none;
+}
+
+[data-testid='remote-row'] [data-testid='remote-url'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+[data-testid='remote-row'] [data-testid='change-remote'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-right: -36px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--forest);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(16px);
+  transition:
+    margin-right 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+[data-testid='remote-row']:hover [data-testid='change-remote'],
+[data-testid='remote-row']:focus-within [data-testid='change-remote'] {
+  margin-right: 0;
+  opacity: 1;
+  transform: translateX(0);
+  border-color: rgba(58, 58, 56, 0.2);
+  background-color: var(--paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='remote-row'] [data-testid='change-remote'] {
+    transition: none;
+  }
 }
 
 [data-testid='repository-settings-dialog'] input,
 [data-testid='open-add-remote'],
-[data-testid='change-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
   box-sizing: border-box;
@@ -1142,11 +1185,23 @@ button, input { font: inherit; color: inherit; }
             @for (remote of remotes(); track remote.name) {
               <li data-testid="remote-row" [attr.data-name]="remote.name">
                 <span data-testid="remote-name">{{ remote.name }}</span>
-                <span data-testid="remote-url">{{ remote.url }}</span>
-                <div class="remote-actions">
-                  <button type="button" data-testid="change-remote" (click)="openChangeRemote(remote.name)">Change</button>
-                  <button type="button" data-testid="remove-remote" (click)="confirmRemoveRemote(remote.name)">Remove</button>
-                </div>
+                <input
+                  data-testid="remote-url"
+                  readonly
+                  [value]="remote.url"
+                  [attr.aria-label]="remote.name + ' URL'"
+                />
+                <button
+                  type="button"
+                  data-testid="change-remote"
+                  aria-label="Edit remote"
+                  title="Edit remote"
+                  (click)="openChangeRemote(remote.name)"
+                >
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                    <path fill="currentColor" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25a1.75 1.75 0 0 1 .445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.81l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064l6.286-6.286Z" />
+                  </svg>
+                </button>
               </li>
             }
           </ul>
@@ -1183,9 +1238,9 @@ button, input { font: inherit; color: inherit; }
       </div>
     }
     @if (editingRemote()) {
-      <div data-testid="change-remote-dialog" role="dialog" aria-label="Change remote" (click)="dismissChangeRemoteFromBackdrop($event)">
+      <div data-testid="change-remote-dialog" role="dialog" aria-label="Edit remote" (click)="dismissChangeRemoteFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
-          <h2>Change remote</h2>
+          <h2>Edit remote</h2>
           <label>
             Name
             <input data-testid="change-remote-name" [value]="remoteFormName()" (input)="setRemoteFormName($event)" />
@@ -1199,6 +1254,7 @@ button, input { font: inherit; color: inherit; }
           }
           <div class="dialog-actions">
             <button type="button" data-testid="confirm-change-remote" (click)="confirmChangeRemote()">Change remote</button>
+            <button type="button" data-testid="remove-remote" (click)="confirmRemoveRemote()">Remove</button>
             <button type="button" data-testid="cancel-change-remote" (click)="cancelChangeRemote()">Cancel</button>
           </div>
         </section>
@@ -2015,10 +2071,20 @@ export class WorkspaceComponent implements OnInit {
     }
   }
 
-  confirmRemoveRemote(name: string): void {
-    this.editRemotes(() => {
-      removeRemote(this.effectivePath() ?? '', name);
-    });
+  confirmRemoveRemote(): void {
+    const name = this.editingRemote();
+    const path = this.effectivePath();
+    if (!name || !path) {
+      return;
+    }
+    this.remoteFormError.set(null);
+    try {
+      removeRemote(path, name);
+      this.editingRemote.set(null);
+      this.loadRemotes();
+    } catch (error) {
+      this.remoteFormError.set(error instanceof Error ? error.message : String(error));
+    }
   }
 
   confirmAddRemote(): void {

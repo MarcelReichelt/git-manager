@@ -493,10 +493,33 @@ describe('desktop workspace', () => {
       'origin',
       'upstream',
     ]);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual([
       'https://example.com/harbor.git',
       'https://example.com/upstream.git',
     ]);
+    const originUrl = rows[0].querySelector('[data-testid="remote-url"]');
+    expect(originUrl.tagName).toBe('INPUT');
+    expect(originUrl.readOnly).toBe(true);
+    expect(rows[0].querySelector('[data-testid="remote-name"]').tagName).toBe('SPAN');
+    const edit = rows[0].querySelector('[data-testid="change-remote"]');
+    expect(edit.getAttribute('aria-label')).toBe('Edit remote');
+    expect(edit.querySelector('svg')).not.toBeNull();
+    expect(edit.textContent.trim()).toBe('');
+    expect(rows[0].querySelector('[data-testid="remove-remote"]')).toBeNull();
+    expect(getComputedStyle(edit).opacity).toBe('0');
+    const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const editSlidesIn = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some((match) => {
+      const selector = match[1] ?? '';
+      const body = match[2] ?? '';
+      return (
+        selector.includes("[data-testid='remote-row']") &&
+        selector.includes(':hover') &&
+        selector.includes("[data-testid='change-remote']") &&
+        /opacity\s*:\s*1/.test(body) &&
+        /translateX\(\s*0\s*\)/.test(body)
+      );
+    });
+    expect(editSlidesIn).toBe(true);
   });
 
   it('adds a git remote from its own dialog', async () => {
@@ -508,7 +531,9 @@ describe('desktop workspace', () => {
 
     const settings = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(settings.querySelector('[data-testid="add-remote-name"]')).toBeNull();
-    expect(settings.querySelector('input')).toBeNull();
+    const settingsInputs = [...settings.querySelectorAll('input')];
+    expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual(['remote-url']);
+    expect(settingsInputs[0].readOnly).toBe(true);
     settings.querySelector('[data-testid="open-add-remote"]').click();
     fixture.detectChanges();
 
@@ -541,7 +566,7 @@ describe('desktop workspace', () => {
       ),
     ];
     expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin', 'upstream']);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual([
       'https://example.com/harbor.git',
       'https://example.com/upstream.git',
     ]);
@@ -559,13 +584,16 @@ describe('desktop workspace', () => {
 
     const settings = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     const origin = settings.querySelector('[data-testid="remote-row"][data-name="origin"]');
-    expect(origin.querySelector('input')).toBeNull();
+    const shownUrl = origin.querySelector('[data-testid="remote-url"]');
+    expect(shownUrl.readOnly).toBe(true);
+    expect(shownUrl.value).toBe('https://example.com/harbor.git');
     origin.querySelector('[data-testid="change-remote"]').click();
     fixture.detectChanges();
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="change-remote-dialog"]');
     expect(dialog.getAttribute('role')).toBe('dialog');
-    expect(dialog.getAttribute('aria-label')).toBe('Change remote');
+    expect(dialog.getAttribute('aria-label')).toBe('Edit remote');
+    expect(dialog.querySelector('[data-testid="remove-remote"]').textContent.trim()).toBe('Remove');
     expect(settings.contains(dialog)).toBe(false);
     const confirmChange = dialog.querySelector('[data-testid="confirm-change-remote"]');
     expect(getComputedStyle(confirmChange).backgroundColor).toBe('rgb(26, 60, 43)');
@@ -590,7 +618,7 @@ describe('desktop workspace', () => {
       ),
     ];
     expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['harbor', 'upstream']);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual([
       'https://example.com/harbor-next.git',
       'https://example.com/upstream.git',
     ]);
@@ -609,14 +637,23 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     const upstream = dialog.querySelector('[data-testid="remote-row"][data-name="upstream"]');
-    upstream.querySelector('[data-testid="remove-remote"]').click();
+    expect(upstream.querySelector('[data-testid="remove-remote"]')).toBeNull();
+    upstream.querySelector('[data-testid="change-remote"]').click();
     fixture.detectChanges();
 
-    const rows = [...dialog.querySelectorAll('[data-testid="remote-row"]')];
+    const edit = fixture.nativeElement.querySelector('[data-testid="change-remote-dialog"]');
+    edit.querySelector('[data-testid="remove-remote"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="change-remote-dialog"]')).toBeNull();
+    const rows = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="repository-settings-dialog"] [data-testid="remote-row"]',
+      ),
+    ];
     expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin']);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
-      'https://example.com/harbor.git',
-    ]);
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual(['https://example.com/harbor.git']);
+    expect(git(repoPath, ['remote'])).toBe('origin');
   });
 
   it('shows an error and leaves existing remotes unchanged when a remote name is rejected', async () => {
@@ -649,9 +686,7 @@ describe('desktop workspace', () => {
       ),
     ];
     expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin']);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
-      'https://example.com/harbor.git',
-    ]);
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual(['https://example.com/harbor.git']);
     expect(git(repoPath, ['remote', 'get-url', 'origin'])).toBe('https://example.com/harbor.git');
   });
 
@@ -685,9 +720,7 @@ describe('desktop workspace', () => {
       ),
     ];
     expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['origin']);
-    expect(rows.map((row) => row.querySelector('[data-testid="remote-url"]')?.textContent?.trim())).toEqual([
-      'https://example.com/harbor.git',
-    ]);
+    expect(rows.map((row) => remoteUrlValue(row))).toEqual(['https://example.com/harbor.git']);
     expect(git(repoPath, ['remote'])).toBe('origin');
     expect(git(repoPath, ['remote', 'get-url', 'origin'])).toBe('https://example.com/harbor.git');
   });
@@ -3473,4 +3506,9 @@ function initGitRepo(repoPath: string, branch = 'master'): void {
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+function remoteUrlValue(root: ParentNode): string {
+  const field = root.querySelector('[data-testid="remote-url"]');
+  return field instanceof HTMLInputElement ? field.value : '';
 }

@@ -49,7 +49,7 @@ With nothing selected, a centered card lists registered repositories. Choosing o
 
 ## Create a worktree
 
-Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, the checkout goes under `.workspaces`. The branch already exists locally, or on a remote that create fetches.
+Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, create uses the app default. The branch already exists locally, or on a remote that create fetches.
 
 ```bash
 git-manager worktree create feature --repo Harbor

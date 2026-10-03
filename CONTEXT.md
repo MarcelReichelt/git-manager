@@ -27,3 +27,7 @@ _Avoid_: side-by-side
 **Workspaces**:
 The worktree layout where branch checkouts are subfolders under `.workspaces`.
 _Avoid_: subfolder mode
+
+**App default**:
+The layout used when a registered repository has not chosen Sibling or Workspaces.
+_Avoid_: unset layout

@@ -25,7 +25,7 @@ commands = ["node hooks/mark.mjs"]
 commands = ["yarn"]
 ```
 
-`[layout].mode` is `workspaces` or `sibling`. When it is unset, worktree create uses `workspaces` and the folder `.workspaces`. Any other mode fails with `Unsupported layout`.
+`[layout].mode` is `workspaces` or `sibling`. When it is unset, worktree create uses the app default. Any other mode fails with `Unsupported layout`.
 
 `[copy].files` are copied from the registered repository into the new checkout after `git worktree add`. A missing source is skipped.
 

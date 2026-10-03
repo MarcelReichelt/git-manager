@@ -95,6 +95,24 @@ describe('app settings', () => {
     });
   });
 
+  it('reads the process environment when no env argument is passed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    const previous = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    try {
+      saveDefaultLayout('sibling');
+      expect(readAppSettings().defaultLayout).toBe('sibling');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      } else {
+        process.env.GIT_MANAGER_APP_SETTINGS_PATH = previous;
+      }
+    }
+  });
+
   it('saves the default layout immediately', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
     roots.push(root);

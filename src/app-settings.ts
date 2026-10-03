@@ -19,13 +19,14 @@ export interface CreateLayout {
   supported: boolean;
 }
 
-export function resolveAppSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.GIT_MANAGER_APP_SETTINGS_PATH ?? join(homedir(), '.config', 'git-manager', 'app-settings.json');
+export function resolveAppSettingsPath(env?: NodeJS.ProcessEnv): string {
+  const settingsEnv = runtimeEnv(env);
+  return settingsEnv.GIT_MANAGER_APP_SETTINGS_PATH ?? join(homedir(), '.config', 'git-manager', 'app-settings.json');
 }
 
 export function createLayoutForRepository(
   repoPath: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env?: NodeJS.ProcessEnv,
 ): CreateLayout {
   const mode = readRepositoryLayoutMode(repoPath);
   if (mode === 'workspaces' || mode === 'sibling') {
@@ -46,7 +47,7 @@ export function createLayoutForRepository(
   };
 }
 
-export function readAppSettings(env: NodeJS.ProcessEnv = process.env): AppSettings {
+export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
   const stored = readSettingsObject(resolveAppSettingsPath(env));
   return {
     defaultLayout: stored.defaultLayout === 'sibling' ? 'sibling' : 'workspaces',
@@ -58,7 +59,7 @@ export function readAppSettings(env: NodeJS.ProcessEnv = process.env): AppSettin
 
 export function saveDefaultLayout(
   layout: AppSettings['defaultLayout'],
-  env: NodeJS.ProcessEnv = process.env,
+  env?: NodeJS.ProcessEnv,
 ): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
@@ -67,7 +68,7 @@ export function saveDefaultLayout(
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
-export function saveSidebarColor(color: string, env: NodeJS.ProcessEnv = process.env): void {
+export function saveSidebarColor(color: string, env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
@@ -75,7 +76,7 @@ export function saveSidebarColor(color: string, env: NodeJS.ProcessEnv = process
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
-export function saveIdeCommand(command: string, env: NodeJS.ProcessEnv = process.env): void {
+export function saveIdeCommand(command: string, env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
@@ -83,7 +84,7 @@ export function saveIdeCommand(command: string, env: NodeJS.ProcessEnv = process
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
-export function saveContentColor(color: string, env: NodeJS.ProcessEnv = process.env): void {
+export function saveContentColor(color: string, env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
@@ -91,13 +92,23 @@ export function saveContentColor(color: string, env: NodeJS.ProcessEnv = process
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
-export function resetAppColors(env: NodeJS.ProcessEnv = process.env): void {
+export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
   current.sidebarColor = originalSidebarColor;
   current.contentColor = originalContentColor;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+function runtimeEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (env) {
+    return env;
+  }
+  // The desktop bundle inlines any direct `process.env` reference. Building the
+  // name keeps the running environment, including GIT_MANAGER_APP_SETTINGS_PATH.
+  const processRef = (globalThis as { process?: { env?: NodeJS.ProcessEnv } })['pro' + 'cess'];
+  return processRef?.env ?? {};
 }
 
 function readSettingsObject(settingsPath: string): Record<string, unknown> {

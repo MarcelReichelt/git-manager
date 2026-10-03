@@ -53,12 +53,20 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+[data-testid='repository-settings'] svg,
+[data-testid='app-settings'] svg {
+  display: block;
+}
+
 .window-controls {
   display: flex;
   gap: 4px;
 }
 
 [data-testid='app-settings'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-right: 8px;
 }
 

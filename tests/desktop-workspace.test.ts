@@ -1168,6 +1168,41 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
   });
 
+  it('centers the repository and app settings icons', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    const root = fixture.nativeElement;
+    const buttons = [
+      ['repository-settings', 'Repository settings', 'repository-settings-dialog'],
+      ['app-settings', 'App settings', 'app-settings-dialog'],
+    ] as const;
+
+    for (const [testId, label, dialogId] of buttons) {
+      const button = root.querySelector(`[data-testid="${testId}"]`);
+      expect(button.getAttribute('aria-label')).toBe(label);
+
+      const style = getComputedStyle(button);
+      expect(style.display === 'inline-flex' || style.display === 'flex').toBe(true);
+      expect(style.alignItems).toBe('center');
+      expect(style.justifyContent).toBe('center');
+      expect(style.paddingTop).toBe('0px');
+      expect(style.paddingRight).toBe('0px');
+      expect(style.paddingBottom).toBe('0px');
+      expect(style.paddingLeft).toBe('0px');
+
+      const svg = button.querySelector('svg');
+      expect(getComputedStyle(svg).display).toBe('block');
+      const path = svg.querySelector('path').getAttribute('d');
+      expect(path).toContain('M11 8a3 3 0 1 1-6 0');
+      expect(path).not.toContain('M8 1.2');
+
+      expect(root.querySelector(`[data-testid="${dialogId}"]`)).toBeNull();
+      button.click();
+      fixture.detectChanges();
+      expect(root.querySelector(`[data-testid="${dialogId}"]`)).not.toBeNull();
+    }
+  });
+
   it('shows the open repository location in settings', async () => {
     const repoPath = createEmptyRepository(roots);
     const opened = await renderRepository(repoPath);

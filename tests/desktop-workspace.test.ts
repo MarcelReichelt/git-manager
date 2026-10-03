@@ -418,7 +418,7 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
-    expect(labels).toEqual(['Workspaces', 'Sibling', 'IDE command']);
+    expect(labels).toEqual(['Workspaces', 'Sibling', 'IDE command', 'Font family']);
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
     expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
@@ -859,6 +859,9 @@ describe('desktop workspace', () => {
       defaultLayout: 'workspaces',
       sidebarColor: '#123456',
       contentColor: '#abcdef',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: '',
     });
   });
@@ -895,6 +898,9 @@ describe('desktop workspace', () => {
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
       contentColor: '#f7f7f5',
+      terminalBackground: '#1e1e1e',
+      terminalForeground: '#d4d4d4',
+      terminalFont: 'UbuntuMono Nerd Font Mono',
       ideCommand: 'cursor',
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');

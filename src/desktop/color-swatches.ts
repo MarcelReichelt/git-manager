@@ -5,6 +5,8 @@ export interface ColorSwatch {
 
 const originalSidebar = '#1a3c2b';
 const originalContent = '#f7f7f5';
+const originalTerminalBackground = '#1e1e1e';
+const originalTerminalForeground = '#d4d4d4';
 
 const primeNgFamilies = [
   ['Emerald', '#065f46', '#ecfdf5'],
@@ -35,4 +37,14 @@ export const sidebarSwatches: ColorSwatch[] = [
 export const contentSwatches: ColorSwatch[] = [
   { name: 'Original', color: originalContent },
   ...primeNgFamilies.map(([name, , color]) => ({ name, color })),
+];
+
+export const terminalBackgroundSwatches: ColorSwatch[] = [
+  { name: 'Original', color: originalTerminalBackground },
+  ...primeNgFamilies.map(([name, color]) => ({ name, color })),
+];
+
+export const terminalForegroundSwatches: ColorSwatch[] = [
+  { name: 'Original', color: originalTerminalForeground },
+  { name: 'White', color: '#ffffff' },
 ];

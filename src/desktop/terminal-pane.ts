@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
 import { spawn, type IPty } from 'node-pty';
+import { applyTerminalAppearance } from './terminal-appearance';
 import { terminalEnvironment, tmuxBinary } from './tmux-sessions';
 
 @Directive({
@@ -19,6 +20,9 @@ import { terminalEnvironment, tmuxBinary } from './tmux-sessions';
 })
 export class TerminalPane implements OnInit, OnDestroy {
   readonly sessionName = input.required<string>({ alias: 'gmTerminal' });
+  readonly background = input('#1e1e1e');
+  readonly foreground = input('#d4d4d4');
+  readonly fontFamily = input('UbuntuMono Nerd Font Mono, monospace');
   readonly sessionEnded = output<string>();
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly zone = inject(NgZone);
@@ -35,6 +39,9 @@ export class TerminalPane implements OnInit, OnDestroy {
       }
       this.attach(session);
     });
+    afterRenderEffect(() => {
+      this.applyAppearance(this.background(), this.foreground(), this.fontFamily());
+    });
   }
 
   ngOnInit(): void {
@@ -42,10 +49,10 @@ export class TerminalPane implements OnInit, OnDestroy {
       cols: 80,
       rows: 24,
       theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
+        background: this.background(),
+        foreground: this.foreground(),
       },
-      fontFamily: 'monospace',
+      fontFamily: this.fontFamily(),
     });
     term.open(this.host.nativeElement);
     term.onData((data) => {
@@ -60,6 +67,14 @@ export class TerminalPane implements OnInit, OnDestroy {
     this.detach();
     this.term?.dispose();
     this.term = null;
+  }
+
+  private applyAppearance(background: string, foreground: string, fontFamily: string): void {
+    const term = this.term;
+    if (!term) {
+      return;
+    }
+    applyTerminalAppearance(term, background, foreground, fontFamily);
   }
 
   private attach(session: string): void {

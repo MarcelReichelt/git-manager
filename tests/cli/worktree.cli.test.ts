@@ -523,4 +523,31 @@ describe('git-manager worktree create', () => {
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
     expect(existsSync(resolve(root, 'login'))).toBe(false);
   });
+
+  it('creates nothing when the repository layout mode is not text', () => {
+    const root = makeTempDir('git-manager-unsupported-layout-number-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
+    const env = {
+      ...gitManagerEnv(registryPath),
+      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+    };
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+
+    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(1);
+    expect(created.stderr).toContain('Unsupported layout: 1');
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
+    expect(existsSync(resolve(root, 'login'))).toBe(false);
+  });
 });

@@ -644,6 +644,39 @@ describe('desktop workspace', () => {
     );
   });
 
+  it('shows an error when the selected branch has no checkout to open', async () => {
+    const launched: string[] = [];
+    setIdeLaunch(() => {
+      launched.push('launched');
+    });
+
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-ide-missing-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"cursor"}\n');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const ide = fixture.nativeElement.querySelector('[data-testid="open-ide"]');
+    expect(ide).toBeInstanceOf(HTMLButtonElement);
+    if (!(ide instanceof HTMLButtonElement)) {
+      return;
+    }
+    expect(ide.disabled).toBe(false);
+    ide.click();
+    fixture.detectChanges();
+
+    expect(launched).toEqual([]);
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'No checkout for this branch',
+    );
+  });
+
   it('offers sidebar and content color choosers and a reset button in App settings', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
     roots.push(root);

@@ -2194,7 +2194,11 @@ export class WorkspaceComponent implements OnInit {
   openIde(): void {
     const command = this.ideCommand();
     const cwd = this.worktreePath();
-    if (command === '' || cwd === '') {
+    if (command === '') {
+      return;
+    }
+    if (cwd === '') {
+      this.workspaceError.set('No checkout for this branch');
       return;
     }
     this.workspaceError.set(null);

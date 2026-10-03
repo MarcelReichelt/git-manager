@@ -125,7 +125,13 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   const mode = parsed.layout.mode;
-  return typeof mode === 'string' ? mode : undefined;
+  if (typeof mode === 'string') {
+    return mode;
+  }
+  if (mode === undefined || mode === null) {
+    return undefined;
+  }
+  return String(mode);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

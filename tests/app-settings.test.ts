@@ -324,4 +324,20 @@ describe('app settings', () => {
       supported: false,
     });
   });
+
+  it('reports a non-string repository layout mode as set by the repository', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    saveDefaultLayout('sibling', env);
+
+    expect(createLayoutForRepository(repoPath, env)).toEqual({
+      label: '1',
+      source: 'repository',
+      supported: false,
+    });
+  });
 });

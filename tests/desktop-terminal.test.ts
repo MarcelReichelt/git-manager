@@ -7,8 +7,10 @@ import {
   killTmuxSession,
   listTmuxSessions,
   sessionDirectory,
+  createBranchSession,
   sessionsForBranch,
   tmuxBinary,
+  tmuxOnPath,
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
@@ -412,6 +414,28 @@ describe('branch terminal', () => {
     const binary = tmuxBinary();
     expect(binary.startsWith('/exec-daemon')).toBe(false);
     expect(existsSync(binary)).toBe(true);
+  });
+
+  it('treats tmux as missing when it is not on PATH', () => {
+    expect(tmuxOnPath('/tmp/git-manager-no-tmux')).toBeNull();
+  });
+
+  it('counts a tmux session for a worktree before that worktree is selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listTmuxSessions();
+    useTmuxMode(root);
+    const worktree = join(repo.repo, '.workspaces', 'feature');
+    createBranchSession(repo.repo, 'feature', worktree, 1);
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(terminalCount(fixture, 'master')).toBeNull();
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => tabNames(fixture!).length === 1);
+    expect(sessionsForBranch(repo.repo, 'feature')).toHaveLength(1);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
   });
 
   it('places the terminal in a bottom row under the changes, the commits, and the diff', async () => {

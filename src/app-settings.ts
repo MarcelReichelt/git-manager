@@ -168,9 +168,6 @@ export function saveTerminalMode(mode: TerminalMode, env?: NodeJS.ProcessEnv): v
 }
 
 export function saveShellCommand(command: string, env?: NodeJS.ProcessEnv): void {
-  if (/\s/.test(command)) {
-    return;
-  }
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);

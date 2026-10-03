@@ -478,20 +478,20 @@ describe('app settings', () => {
     expect(readAppSettings(env).shellCommand).toBe('/usr/bin/zsh');
   });
 
-  it('leaves the stored shell command unchanged when the value has arguments', () => {
+  it('stores a shell path that contains a space', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"theme":"mint","shellCommand":"/usr/bin/zsh"}\n');
     const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
-    saveShellCommand('/usr/bin/zsh -l', env);
+    saveShellCommand('/opt/Git Manager/bash', env);
 
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
       theme: 'mint',
-      shellCommand: '/usr/bin/zsh',
+      shellCommand: '/opt/Git Manager/bash',
     });
-    expect(readAppSettings(env).shellCommand).toBe('/usr/bin/zsh');
+    expect(readAppSettings(env).shellCommand).toBe('/opt/Git Manager/bash');
   });
 
   it('leaves the registered repository list unchanged when the default layout is saved', () => {

@@ -11,6 +11,7 @@ interface ShellListener {
 
 interface HostedShell {
   pty: IPty;
+  program: string;
   buffer: string;
   exited: boolean;
   listeners: Set<ShellListener>;
@@ -21,7 +22,7 @@ const shells = new Map<string, HostedShell>();
 
 export function ensureShell(id: string, cwd: string, command = ''): void {
   const existing = shells.get(id);
-  if (existing && !existing.exited) {
+  if (existing) {
     return;
   }
   const file = shellFile(command);
@@ -43,6 +44,7 @@ export function ensureShell(id: string, cwd: string, command = ''): void {
   }
   const hosted: HostedShell = {
     pty,
+    program: file,
     buffer: '',
     exited: false,
     listeners: new Set(),
@@ -109,7 +111,11 @@ export function shellCommand(id: string): string {
   if (!hosted || hosted.exited) {
     return '';
   }
-  return foregroundCommand(hosted.pty.pid);
+  const running = foregroundCommand(hosted.pty.pid);
+  if (running.length > 0) {
+    return running;
+  }
+  return basename(hosted.program);
 }
 
 export function killShell(id: string): void {
@@ -144,8 +150,11 @@ function shellFile(command: string): string {
   return process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
 }
 
-function blankShellCandidates(): string[] {
-  const candidates = [loginShell(), '/bin/bash', 'powershell.exe'];
+export function blankShellCandidates(platform = process.platform): string[] {
+  const candidates = [loginShell(), '/bin/bash'];
+  if (platform === 'win32') {
+    candidates.push('powershell.exe');
+  }
   const unique: string[] = [];
   for (const candidate of candidates) {
     if (candidate.length > 0 && !unique.includes(candidate)) {
@@ -213,7 +222,7 @@ function commandName(pid: number): string {
     const raw = readFileSync(`/proc/${pid}/cmdline`);
     const end = raw.indexOf(0);
     const first = (end === -1 ? raw : raw.subarray(0, end)).toString();
-    const word = basename(first).split(/\s+/)[0] ?? '';
+    const word = basename(first).trim();
     if (word.length > 0) {
       return word;
     }
@@ -221,7 +230,7 @@ function commandName(pid: number): string {
     // The process title is unavailable; fall through to comm.
   }
   try {
-    return readFileSync(`/proc/${pid}/comm`, 'utf8').trim().split(/\s+/)[0] ?? '';
+    return readFileSync(`/proc/${pid}/comm`, 'utf8').trim();
   } catch {
     return '';
   }

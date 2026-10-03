@@ -74,8 +74,8 @@ function writeSettings(root: string, settings: Record<string, string>): void {
   process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
 }
 
-function copyLoginShell(root: string): string {
-  const path = join(root, 'login-shell');
+function copyLoginShell(root: string, name = 'login-shell'): string {
+  const path = join(root, name);
   copyFileSync('/bin/bash', path);
   chmodSync(path, 0o755);
   return path;
@@ -419,21 +419,29 @@ describe('terminal mode', () => {
     expect(paneTitles(fixture)).toEqual(['in-app terminal']);
   });
 
-  it('shows the workspace error and does not save a shell command that has arguments', async () => {
+  it('stores a shell path with a space and reports a path that cannot start', async () => {
     const repo = createRepo('git-manager-mode-');
     roots.push(repo.root);
+    const shell = copyLoginShell(repo.root, 'my shell');
     fixture = await renderWorkspace(repo.repo);
     openSettings(fixture);
 
     setShellCommand(fixture, '/bin/bash -l');
 
-    expect(workspaceError(fixture)).toBe('Shell command must be a program path with no arguments');
-    expect(readAppSettings().shellCommand).toBe('');
-
-    setShellCommand(fixture, '/bin/bash');
-
+    expect(readAppSettings().shellCommand).toBe('/bin/bash -l');
     expect(workspaceError(fixture)).toBeNull();
-    expect(readAppSettings().shellCommand).toBe('/bin/bash');
+    closeSettings(fixture);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => workspaceError(fixture!)?.includes('Could not start /bin/bash -l') === true);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    openSettings(fixture);
+    setShellCommand(fixture, shell);
+    closeSettings(fixture);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => tabNames(fixture!).some((name) => name.includes('my shell')));
+    expect(workspaceError(fixture)).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 my shell']);
   });
 
   it('starts an interactive shell so its config loads', async () => {

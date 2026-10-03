@@ -1,7 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
@@ -62,7 +61,7 @@ import {
   nextSessionIndex,
   paneCommand,
   sessionsForBranch,
-  tmuxBinary,
+  tmuxOnPath,
   tmuxSessionAlive,
 } from './tmux-sessions';
 import {
@@ -2092,10 +2091,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
 
   terminalCount(name: string): number {
     const state = this.terminalsByBranch()[name];
-    if (!state) {
-      return 0;
+    const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
+    const repo = this.effectivePath();
+    if (!repo) {
+      return remembered;
     }
-    return state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
+    const known = new Set(
+      state?.tabs.flatMap((tab) =>
+        tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
+      ) ?? [],
+    );
+    const outside = sessionsForBranch(repo, name).filter((session) => !known.has(session)).length;
+    return remembered + outside;
   }
 
   focusTab(tabId: string): void {
@@ -2631,15 +2638,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   chooseShellCommand(event: Event): void {
     const value = inputValue(event);
     this.shellCommandDraft.set(value);
-    if (/\s/.test(value)) {
-      this.workspaceError.set('Shell command must be a program path with no arguments');
-      return;
-    }
     saveShellCommand(value);
     this.shellCommand.set(value);
-    if (this.workspaceError() === 'Shell command must be a program path with no arguments') {
-      this.workspaceError.set(null);
-    }
+    this.clearShellStartError();
   }
 
   keepTerminalMode(): void {
@@ -3380,5 +3381,5 @@ function hostPlatform(): string {
 }
 
 function tmuxIsInstalled(): boolean {
-  return existsSync(tmuxBinary());
+  return tmuxOnPath() !== null;
 }

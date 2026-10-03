@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
 
-export function tmuxBinary(): string {
-  const directories = (process.env.PATH ?? '').split(delimiter);
+export function tmuxOnPath(pathValue = process.env.PATH): string | null {
+  const directories = (pathValue ?? '').split(delimiter);
   for (const directory of directories) {
     if (directory.length === 0 || directory.startsWith('/exec-daemon')) {
       continue;
@@ -14,7 +14,11 @@ export function tmuxBinary(): string {
       return candidate;
     }
   }
-  return '/usr/bin/tmux';
+  return null;
+}
+
+export function tmuxBinary(): string {
+  return tmuxOnPath() ?? '/usr/bin/tmux';
 }
 
 export function terminalEnvironment(): NodeJS.ProcessEnv {

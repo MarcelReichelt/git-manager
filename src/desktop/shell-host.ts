@@ -3,6 +3,7 @@ import { userInfo } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { terminalEnvironment } from './tmux-sessions';
+import { windowsForegroundCommand } from './windows-foreground';
 
 interface ShellListener {
   onData: (data: string) => void;
@@ -202,6 +203,9 @@ function canStart(command: string): boolean {
 }
 
 function foregroundCommand(pid: number): string {
+  if (process.platform === 'win32') {
+    return windowsForegroundCommand(pid);
+  }
   let target = pid;
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');

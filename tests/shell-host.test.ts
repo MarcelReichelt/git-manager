@@ -1,4 +1,16 @@
-import { blankShellCandidates, ensureShell, killShell, shellAlive, shellPty, subscribeShell } from '../src/desktop/shell-host';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  blankShellCandidates,
+  ensureShell,
+  killShell,
+  shellAlive,
+  shellCommand,
+  shellPty,
+  subscribeShell,
+  writeShell,
+} from '../src/desktop/shell-host';
 
 describe('in-app shell host', () => {
   const ids: string[] = [];
@@ -14,6 +26,32 @@ describe('in-app shell host', () => {
     expect(blankShellCandidates('linux')).not.toContain('powershell.exe');
     expect(blankShellCandidates('darwin')).not.toContain('powershell.exe');
     expect(blankShellCandidates('win32').at(-1)).toBe('powershell.exe');
+  });
+
+  it.skipIf(process.platform !== 'win32')('names npm while it runs and the shell after it exits', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-shell-'));
+    writeFileSync(join(root, 'hold.mjs'), 'setTimeout(() => process.exit(0), 2500);\n');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'stay', scripts: { stay: 'node hold.mjs' } }),
+    );
+    const id = `shell-${Date.now()}`;
+    ids.push(id);
+    try {
+      ensureShell(id, root, 'powershell.exe');
+      await waitForCommand(id, 'powershell.exe');
+      writeShell(id, 'npm run stay\r');
+      await waitForCommand(id, 'npm');
+      await waitForCommand(id, 'powershell.exe');
+    } finally {
+      killShell(id);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      try {
+        rmSync(root, { recursive: true, force: true });
+      } catch {
+        // The shell may still hold the directory.
+      }
+    }
   });
 
   it('does not start another process after the shell has exited', async () => {
@@ -43,3 +81,16 @@ describe('in-app shell host', () => {
     expect(shellAlive(id)).toBe(false);
   });
 });
+
+async function waitForCommand(id: string, command: string): Promise<void> {
+  const started = Date.now();
+  let latest = '';
+  while (Date.now() - started < 20000) {
+    latest = shellCommand(id);
+    if (latest === command) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`expected ${command}, last saw ${latest}`);
+}

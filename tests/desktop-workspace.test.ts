@@ -1088,6 +1088,8 @@ describe('desktop workspace', () => {
     expect(settings.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(switcher.getAttribute('aria-label')).toBe('Switch repository');
     expect(switcher.querySelector('svg')).not.toBeNull();
+    const mark = bar.querySelector('[data-testid="app-mark"]');
+    expect(mark.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(bar.querySelector('[data-testid="repository-settings-slot"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
 
@@ -1095,6 +1097,52 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+  });
+
+  it('insets the title and leads with the app mark', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const title = fixture.nativeElement.querySelector('.window-title');
+    const mark = title.querySelector('[data-testid="app-mark"]');
+    const name = title.querySelector('[data-testid="repository-name"]');
+
+    expect(getComputedStyle(title).paddingLeft).toBe('12px');
+    expect(title.firstElementChild).toBe(mark);
+    expect(mark.tagName).toBe('svg');
+    expect(mark.closest('button')).toBeNull();
+    expect(mark.getAttribute('width')).toBe('16');
+    expect(mark.getAttribute('height')).toBe('16');
+    expect(mark.querySelector('rect').getAttribute('fill')).toBe('#1a3c2b');
+    expect(mark.querySelector('rect').getAttribute('rx')).toBe('3.5');
+    expect(mark.querySelectorAll('circle')).toHaveLength(3);
+    expect(mark.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it('draws repository switching as opposing horizontal arrows', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('[data-testid="switch-repository"]');
+    const paths = [...button.querySelectorAll('path')].map((path) => path.getAttribute('d'));
+
+    expect(getComputedStyle(button).color).toBe('rgb(255, 255, 255)');
+    expect(paths).toEqual([
+      'M1.25 3.15H8.7V1.55L14.75 4.35 8.7 7.15V5.55H1.25Z',
+      'M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z',
+    ]);
+  });
+
+  it('uses the app mark as the window icon', () => {
+    const main = readFileSync('src/desktop/electron-main.mjs', 'utf8');
+    expect(main).toContain("icon: join(import.meta.dirname, 'app-icon.png')");
+
+    const png = readFileSync('src/desktop/app-icon.png');
+    expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+    expect(png.readUInt32BE(16)).toBe(512);
+    expect(png.readUInt32BE(20)).toBe(512);
   });
 
   it('shows the repository location on the name and copies that location when the name is clicked', async () => {

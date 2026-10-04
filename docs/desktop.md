@@ -14,9 +14,9 @@ A path that is not a git repository shows that error under Location and disables
 
 ## Workspace
 
-The top bar shows the display name. Hovering it shows the location. Clicking it copies the location.
+The top bar shows the app mark, then the display name. Hovering the name shows the location. Clicking it copies the location.
 
-Switch repository opens the card over the workspace. Repository settings shows the location and the remotes. Minimize, maximize, and close sit on the right. Drag the top bar to move the window.
+Switch repository is the pair of arrows beside the name. It opens the card over the workspace. Repository settings shows the location and the remotes. Minimize, maximize, and close sit on the right. Drag the top bar to move the window.
 
 ## Worktrees
 

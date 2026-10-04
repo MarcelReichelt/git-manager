@@ -4295,6 +4295,100 @@ describe('desktop workspace', () => {
     ).toEqual(listedCommits);
   });
 
+  it('gives the file list and the diff equal width when their divider is double-clicked', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="changes-split"]') as HTMLElement;
+    const columns = split.parentElement as HTMLElement;
+    Object.defineProperty(columns, 'clientWidth', { configurable: true, value: 608 });
+
+    doubleClickDivider(split);
+    fixture.detectChanges();
+
+    expect(columns.style.gridTemplateColumns).toBe('300px 8px minmax(0, 1fr)');
+  });
+
+  it('gives the stack, the commit files, and the diff equal width when a vertical divider is double-clicked', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+
+    const columns = fixture.nativeElement.querySelector('.sheet-columns') as HTMLElement;
+    Object.defineProperty(columns, 'clientWidth', { configurable: true, value: 616 });
+    const commitSplit = fixture.nativeElement.querySelector('[data-testid="commit-detail-split"]') as HTMLElement;
+
+    doubleClickDivider(commitSplit);
+    fixture.detectChanges();
+
+    expect(columns.style.gridTemplateColumns).toBe('200px 8px 200px 8px minmax(0, 1fr)');
+
+    const changesSplit = fixture.nativeElement.querySelector('[data-testid="changes-split"]') as HTMLElement;
+    dragDivider(changesSplit, { x: 200, y: 160 }, { x: 320, y: 160 });
+    fixture.detectChanges();
+    expect(columns.style.gridTemplateColumns).not.toBe('200px 8px 200px 8px minmax(0, 1fr)');
+
+    doubleClickDivider(changesSplit);
+    fixture.detectChanges();
+
+    expect(columns.style.gridTemplateColumns).toBe('200px 8px 200px 8px minmax(0, 1fr)');
+  });
+
+  it('sets the terminal section to one third of the area under the branch heading when its divider is double-clicked', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+
+      const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+      const body = split.parentElement as HTMLElement;
+      Object.defineProperty(body, 'clientHeight', { configurable: true, value: 600 });
+
+      doubleClickDivider(split);
+      fixture.detectChanges();
+
+      expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr) 8px 200px');
+
+      Object.defineProperty(body, 'clientHeight', { configurable: true, value: 900 });
+      window.dispatchEvent(new Event('resize'));
+      fixture.detectChanges();
+
+      expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr) 8px 200px');
+    } finally {
+      fixture.destroy();
+    }
+  });
+
+  it('keeps the terminal section at the drag minimum when one third of the area is shorter', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+
+      const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+      const body = split.parentElement as HTMLElement;
+      Object.defineProperty(body, 'clientHeight', { configurable: true, value: 150 });
+
+      doubleClickDivider(split);
+      fixture.detectChanges();
+
+      expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr) 8px 80px');
+    } finally {
+      fixture.destroy();
+    }
+  });
+
   it('leaves registered repositories unchanged when the add dialog is cancelled', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);
@@ -4362,6 +4456,10 @@ function dragDivider(split: HTMLElement, start: { x: number; y: number }, end: {
   split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: start.x, clientY: start.y }));
   split.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: end.x, clientY: end.y }));
   split.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: end.x, clientY: end.y }));
+}
+
+function doubleClickDivider(split: HTMLElement): void {
+  split.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 }
 
 function sheetSection(element: HTMLElement): HTMLElement {

@@ -89,7 +89,13 @@ function paneText(fixture: ComponentFixture<WorkspaceComponent>): string {
 
 function tabNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
   const tabs = fixture.nativeElement.querySelectorAll('[role="tab"]');
-  return Array.from(tabs, (tab) => (tab as HTMLElement).textContent?.trim() ?? '');
+  return Array.from(tabs, (tab) => tabLabel(tab as HTMLElement));
+}
+
+function tabLabel(tab: HTMLElement): string {
+  const label = tab.querySelector('[data-testid="terminal-tab-label"]');
+  const source = label instanceof HTMLElement ? label : tab;
+  return (source.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number {
@@ -100,6 +106,9 @@ function controlButton(fixture: ComponentFixture<WorkspaceComponent>, label: str
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
   return (
     buttons.find((candidate) => {
+      if (candidate.closest('[data-testid="terminal-tab"], [data-testid="terminal-pane-header"]') !== null) {
+        return false;
+      }
       const text = candidate.textContent?.trim() ?? '';
       return text === label || candidate.getAttribute('aria-label') === label || candidate.getAttribute('title') === label;
     }) ?? null

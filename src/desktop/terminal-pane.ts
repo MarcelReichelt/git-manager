@@ -69,6 +69,10 @@ export class TerminalPane implements OnInit, OnDestroy {
     this.attach(this.sessionName());
   }
 
+  focus(): void {
+    this.term?.focus();
+  }
+
   ngOnDestroy(): void {
     this.generation += 1;
     this.stopWatchingSize?.();

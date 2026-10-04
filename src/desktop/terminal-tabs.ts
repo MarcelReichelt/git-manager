@@ -41,18 +41,49 @@ export function terminalHostTitle(host: TerminalHostKind): string {
   return host === 'tmux' ? 'tmux session' : 'in-app terminal';
 }
 
+export interface TabChipName {
+  terminalId: string;
+  text: string;
+}
+
+export interface TabChipModel {
+  positionText: string;
+  label: string | null;
+  names: TabChipName[] | null;
+}
+
 export function tabChipText(position: number, tab: TerminalTabView): string {
   const custom = tab.customName.trim();
   if (custom.length > 0) {
     return `${position} ${custom}`;
   }
-  const names = tab.terminals
-    .map((terminal) => terminalDisplayName(terminal))
-    .filter((name) => name.length > 0);
-  if (names.length === 0) {
-    return `${position}`;
+  if (tab.terminals.length > 1) {
+    return `${position} ${tab.terminals.map((terminal) => terminalDisplayName(terminal)).join(' · ')}`;
   }
-  return `${position} ${names.join(' · ')}`;
+  const only = tab.terminals[0];
+  const name = only ? terminalDisplayName(only) : '';
+  return name.length > 0 ? `${position} ${name}` : `${position}`;
+}
+
+export function tabChipModel(position: number, tab: TerminalTabView): TabChipModel {
+  const positionText = String(position);
+  if (tab.terminals.length > 1 && tab.customName.trim().length === 0) {
+    return {
+      positionText,
+      label: null,
+      names: tab.terminals.map((terminal) => ({
+        terminalId: terminal.id,
+        text: terminalDisplayName(terminal),
+      })),
+    };
+  }
+  const text = tabChipText(position, tab);
+  const prefix = `${positionText} `;
+  return {
+    positionText,
+    label: text.startsWith(prefix) ? text.slice(prefix.length) : null,
+    names: null,
+  };
 }
 
 export function editableName(tab: TerminalTabView, terminalId: string | null): string {

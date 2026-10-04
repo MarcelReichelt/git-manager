@@ -1191,11 +1191,10 @@ button, input { font: inherit; color: inherit; }
                             <span class="terminal-tab-label" data-testid="terminal-tab-label">
                               <span class="terminal-tab-index" data-testid="terminal-tab-index">{{ chip.positionText }}</span>
                               @if (chip.names; as names) {
+                                <span class="terminal-tab-gap">{{ chipGap }}</span>
                                 @for (name of names; track name.terminalId; let first = $first) {
-                                  @if (first) {
-                                    {{ ' ' }}
-                                  } @else {
-                                    <span class="terminal-tab-separator" data-testid="terminal-tab-separator">{{ ' · ' }}</span>
+                                  @if (!first) {
+                                    <span class="terminal-tab-separator" data-testid="terminal-tab-separator">{{ chipSeparator }}</span>
                                   }
                                   <span
                                     class="terminal-tab-name"
@@ -1209,7 +1208,7 @@ button, input { font: inherit; color: inherit; }
                                   >{{ name.text }}</span>
                                 }
                               } @else if (chip.label; as label) {
-                                {{ ' ' }}
+                                <span class="terminal-tab-gap">{{ chipGap }}</span>
                                 <span class="terminal-tab-text">{{ label }}</span>
                               }
                             </span>
@@ -1808,6 +1807,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly hoveredPaneId = signal<string | null>(null);
   readonly pointedTerminalId = signal<string | null>(null);
   readonly tabChip = tabChipModel;
+  readonly chipGap = ' ';
+  readonly chipSeparator = ' · ';
   readonly terminalDisplayName = formatTerminalName;
   readonly terminalHostTitle = formatHostTitle;
   readonly changesFileWidth = signal(240);

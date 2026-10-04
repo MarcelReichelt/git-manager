@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
+import { Component, computed, ElementRef, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
@@ -1045,6 +1045,7 @@ button, input { font: inherit; color: inherit; }
               (pointerdown)="beginCommitsSplit($event)"
               (pointermove)="moveSplit($event)"
               (pointerup)="endSplit($event)"
+              (dblclick)="halveCommitsSplit()"
             ></div>
             <div data-testid="commits">
             @if (branchIsDefault()) {
@@ -1683,6 +1684,7 @@ button, input { font: inherit; color: inherit; }
 })
 export class WorkspaceComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
+  private readonly host = inject(ElementRef<HTMLElement>);
   private readonly repositorySettings = viewChild(RepositorySettings);
   readonly repositoryPath = input<string | null>(null);
   readonly liveRegistry = input(false);
@@ -1745,6 +1747,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly terminalHostTitle = formatHostTitle;
   readonly changesFileWidth = signal(240);
   readonly changesPaneHeight = signal(280);
+  readonly changesShare = signal<number | null>(null);
   readonly commitFileWidth = signal(240);
   readonly terminalRowHeight = signal(240);
   readonly terminalExpanded = signal(true);
@@ -2394,7 +2397,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   beginCommitsSplit(event: PointerEvent): void {
-    this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => this.changesPaneHeight.set(value));
+    this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => {
+      this.changesPaneHeight.set(value);
+      this.rememberChangesShare();
+    });
+  }
+
+  halveCommitsSplit(): void {
+    this.changesShare.set(0.5);
+    this.applyChangesShare();
   }
 
   beginCommitDetailSplit(event: PointerEvent): void {
@@ -2408,13 +2419,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   beginTerminalSplit(event: PointerEvent): void {
+    this.captureChangesShare();
     this.beginSplit(
       event,
       'y',
       this.terminalRowHeight(),
-      (value) => this.terminalRowHeight.set(value),
+      (value) => {
+        this.terminalRowHeight.set(value);
+        this.applyChangesShare();
+      },
       0,
       true,
+      0,
     );
   }
 
@@ -2442,12 +2458,69 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   toggleTerminalRow(): void {
+    this.captureChangesShare();
     if (this.terminalExpanded()) {
       this.terminalExpanded.set(false);
+    } else {
+      this.terminalExpanded.set(true);
+      this.ensureTerminal();
+    }
+    this.applyChangesShare();
+  }
+
+  @HostListener('window:resize')
+  reapplyChangesShare(): void {
+    this.applyChangesShare();
+  }
+
+  private captureChangesShare(): void {
+    if (this.changesShare() !== null) {
       return;
     }
-    this.terminalExpanded.set(true);
-    this.ensureTerminal();
+    this.rememberChangesShare();
+  }
+
+  private rememberChangesShare(): void {
+    const content = this.stackContentHeight();
+    if (content > 0) {
+      this.changesShare.set(this.changesPaneHeight() / content);
+    }
+  }
+
+  private applyChangesShare(): void {
+    const content = this.stackContentHeight();
+    if (content <= 0) {
+      return;
+    }
+    const share = this.changesShare();
+    if (share === null) {
+      this.rememberChangesShare();
+      return;
+    }
+    let changesPx = share * content;
+    if (content >= headingMinHeight * 2) {
+      changesPx = Math.min(content - headingMinHeight, Math.max(headingMinHeight, changesPx));
+    }
+    this.changesPaneHeight.set(changesPx);
+  }
+
+  private stackContentHeight(): number {
+    const body = this.sheetBody()?.clientHeight ?? 0;
+    if (body <= 0) {
+      return 0;
+    }
+    if (!this.showTerminalRow()) {
+      return body;
+    }
+    if (!this.terminalExpanded()) {
+      return body - terminalHeaderHeight;
+    }
+    return body - 8 - this.terminalRowHeight();
+  }
+
+  private sheetBody(): HTMLElement | null {
+    const body = this.host.nativeElement.querySelector('.sheet-body');
+    return body instanceof HTMLElement ? body : null;
   }
 
   showTerminalRow(): boolean {
@@ -2504,6 +2577,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     apply: (value: number) => void,
     occupied = 0,
     invert = false,
+    reserved = 80,
   ): void {
     if (event.button !== 0) {
       return;
@@ -2512,7 +2586,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.captureSplit(event);
     const parent = (event.currentTarget as HTMLElement | null)?.parentElement ?? null;
     const span = parent === null ? 0 : axis === 'x' ? parent.clientWidth : parent.clientHeight;
-    const room = span - 8 - 80 - occupied;
+    const room = span - 8 - reserved - occupied;
     this.splitDrag = {
       pointerId: event.pointerId,
       axis,
@@ -3382,6 +3456,7 @@ function readRepositoryName(repoPath: string): string {
 }
 
 const terminalHeaderHeight = 36;
+const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
 
 interface TerminalMenuState {

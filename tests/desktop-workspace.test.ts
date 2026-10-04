@@ -4140,6 +4140,119 @@ describe('desktop workspace', () => {
     expect(paneTrack(columns, 'gridTemplateRows')).toBe(312);
   });
 
+  it('keeps the changes and commits share when the terminal section and the window change', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+
+    dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
+    fixture.detectChanges();
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(300);
+
+    const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(240);
+    expect(terminalSectionHeight(body)).toBe(320);
+
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 528 });
+    window.dispatchEvent(new Event('resize'));
+    fixture.detectChanges();
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(150);
+
+    (fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(369);
+
+    (fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(150);
+    expect(terminalSectionHeight(body)).toBe(320);
+
+    fixture.destroy();
+  });
+
+  it('sets changes and commits to half when their divider is double-clicked', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+
+    commitsSplit.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(200);
+    fixture.destroy();
+  });
+
+  it('keeps both headings visible while the stack can hold them', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 448 });
+
+    dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 100 });
+    const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: 160 });
+    fixture.detectChanges();
+
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(116);
+    fixture.destroy();
+  });
+
+  it('keeps the changes heading visible while the stack can hold it', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+
+    dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 0 });
+    const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: -100 });
+    fixture.detectChanges();
+
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(44);
+    fixture.destroy();
+  });
+
+  it('splits a short stack by the share and lets the terminal section keep growing', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+
+    dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
+    const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: -160 });
+    fixture.detectChanges();
+
+    expect(terminalSectionHeight(body)).toBe(600);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(30);
+    fixture.destroy();
+  });
+
   it('drags the divider between the open commit files and the diff', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -4235,6 +4348,14 @@ async function untilVisible(
 
 function paneTrack(element: HTMLElement, property: 'gridTemplateColumns' | 'gridTemplateRows'): number {
   return Number.parseFloat(element.style[property]);
+}
+
+function terminalSectionHeight(body: HTMLElement): number {
+  const match = /(\d+)px\s*$/.exec(body.style.gridTemplateRows);
+  if (!match?.[1]) {
+    throw new Error(`Terminal section height is missing from ${body.style.gridTemplateRows}`);
+  }
+  return Number(match[1]);
 }
 
 function dragDivider(split: HTMLElement, start: { x: number; y: number }, end: { x: number; y: number }): void {

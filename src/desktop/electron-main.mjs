@@ -57,6 +57,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'git-manager',
+    icon: join(import.meta.dirname, 'app-icon.png'),
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',

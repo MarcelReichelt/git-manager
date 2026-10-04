@@ -890,10 +890,19 @@ button, input { font: inherit; color: inherit; }
       <main data-testid="workspace">
         <header class="window-bar" data-testid="window-bar" (pointerdown)="dragWindow($event)">
           <div class="window-title">
+            <svg data-testid="app-mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <rect width="16" height="16" rx="3.5" fill="#1a3c2b" />
+              <path fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" d="M5.2 12V4" />
+              <path fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" d="M5.2 8H11.4" />
+              <circle cx="5.2" cy="4" r="1.6" fill="#ffffff" />
+              <circle cx="5.2" cy="12" r="1.6" fill="#ffffff" />
+              <circle cx="11.4" cy="8" r="1.6" fill="#ffffff" />
+            </svg>
             <h1 data-testid="repository-name" [attr.title]="repositoryLocation()" (click)="copyLocation()">{{ workspaceTitle() }}</h1>
             <button type="button" data-testid="switch-repository" aria-label="Switch repository" (click)="openSwitch()">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M1 3.5A1.5 1.5 0 0 1 2.5 2h4A1.5 1.5 0 0 1 8 3.5V5H6.5V3.5h-4v9h4V11H8v1.5A1.5 1.5 0 0 1 6.5 14h-4A1.5 1.5 0 0 1 1 12.5v-9zm7 0A1.5 1.5 0 0 1 9.5 2h4A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 8 12.5V11h1.5v1.5h4v-9h-4V5H8V3.5z" />
+                <path fill="currentColor" d="M1.25 3.15H8.7V1.55L14.75 4.35 8.7 7.15V5.55H1.25Z" />
+                <path fill="currentColor" d="M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z" />
               </svg>
             </button>
             <gm-repository-settings [repositoryPath]="effectivePath()"></gm-repository-settings>

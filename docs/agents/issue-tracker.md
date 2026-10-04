@@ -47,3 +47,32 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## Orchestrate implement
+
+Used by `/orchestrate-implement`. `claimed-by-agent` and `agent-failed` are claim markers, not triage roles. An issue keeps exactly one triage state role.
+
+Create the labels when they are missing. `--force` updates the color and description when the label is already there:
+
+```
+gh label create claimed-by-agent --description "An agent has started this ticket" --color FBCA04 --force
+gh label create agent-failed --description "The last agent run failed. Leave it unless a human includes it." --color D93F0B --force
+```
+
+**Grab rule.** An open issue labelled `agent-failed` stays put unless the human explicitly includes it. `ready-for-agent` on the same issue does not make it grabbable.
+
+**Retries.** `gh issue list --state open --label agent-failed --limit 100 --json number,title,comments`
+
+**Candidates.** `gh issue list --state open --label ready-for-agent --limit 100 --json number,title,body,labels`
+
+**Unblocked.** `gh api repos/<owner>/<repo>/issues/<n> --jq .issue_dependencies_summary.blocked_by` is `0`, and the body's `Blocked by` line names no open issue. `None (can start immediately)` is unblocked.
+
+**Parent and children.** The GitHub parent is the GraphQL `parent` field. Child tickets are `gh api repos/<owner>/<repo>/issues/<n>/sub_issues`. Where sub-issues are absent, a `## Parent` line in the child body is the parent.
+
+**Claim.** Re-read with `gh issue view <n> --json labels,title`. When `claimed-by-agent` is already present, skip. Otherwise `gh issue edit <n> --remove-label ready-for-agent --add-label claimed-by-agent`, and on a retry add `--remove-label agent-failed`. Then `gh issue comment <n>` that the run has started.
+
+**Success.** After the issue is closed, `gh issue edit <n> --remove-label claimed-by-agent`.
+
+**Failure.** For a still-open issue whose build failed: `gh issue edit <n> --remove-label claimed-by-agent --add-label "ready-for-agent,agent-failed"`, then comment the reason, the branch, and the commits.
+
+**Released before start.** `gh issue edit <n> --remove-label claimed-by-agent --add-label ready-for-agent`, then comment that the run stopped before the group started. Leave `agent-failed` off.

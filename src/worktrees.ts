@@ -44,21 +44,97 @@ function layoutForCreate(repoPath: string): LayoutMode {
   return layout.label === 'Sibling' ? 'sibling' : 'workspaces';
 }
 
-function remoteToFetch(repoPath: string, branch: string): string {
-  let names: string[] = [];
+function remoteNames(repoPath: string): string[] {
   try {
-    names = execFileSync('git', ['remote'], { cwd: repoPath, encoding: 'utf8' })
+    return execFileSync('git', ['remote'], { cwd: repoPath, encoding: 'utf8' })
       .split('\n')
       .map((name) => name.trim())
       .filter((name) => name !== '');
   } catch {
-    names = [];
+    return [];
   }
+}
+
+function remoteToFetch(repoPath: string, branch: string): string {
+  const names = remoteNames(repoPath);
   const holders = names.filter((name) => hasRef(repoPath, `refs/remotes/${name}/${branch}`));
   if (holders.includes('origin') || holders.length === 0) {
     return 'origin';
   }
   return holders[0] ?? 'origin';
+}
+
+function commandText(value: string | Buffer | undefined): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString('utf8');
+  }
+  return '';
+}
+
+function gitCommandError(error: unknown): Error {
+  const failed = error as { stderr?: string | Buffer; message?: string };
+  const detail = commandText(failed.stderr).trim();
+  if (detail !== '') {
+    return new Error(detail);
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error('git failed');
+}
+
+function isMissingRemoteBranch(error: unknown): boolean {
+  const failed = error as { stderr?: string | Buffer; message?: string };
+  const text = `${commandText(failed.stderr)}\n${failed.message ?? ''}`;
+  return text.toLowerCase().includes('find remote ref');
+}
+
+function runGit(repoPath: string, args: string[]): void {
+  try {
+    execFileSync('git', args, {
+      cwd: repoPath,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch (error) {
+    throw gitCommandError(error);
+  }
+}
+
+type BranchCheckout = 'local' | 'new' | { remote: string };
+
+function resolveBranch(repoPath: string, branch: string): BranchCheckout {
+  if (hasRef(repoPath, `refs/heads/${branch}`)) {
+    return 'local';
+  }
+  const remote = remoteToFetch(repoPath, branch);
+  const trackingRef = `refs/remotes/${remote}/${branch}`;
+  const expectsRemote = hasRef(repoPath, trackingRef);
+  if (!expectsRemote && !remoteNames(repoPath).includes(remote)) {
+    return 'new';
+  }
+  try {
+    execFileSync('git', ['fetch', remote, branch], {
+      cwd: repoPath,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch (error) {
+    if (!expectsRemote && isMissingRemoteBranch(error)) {
+      return 'new';
+    }
+    throw gitCommandError(error);
+  }
+  if (!hasRef(repoPath, trackingRef)) {
+    if (expectsRemote) {
+      throw new Error(`Branch not found: ${branch}`);
+    }
+    return 'new';
+  }
+  return { remote };
 }
 
 function hasRef(repoPath: string, ref: string): boolean {
@@ -185,6 +261,9 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   if (!repository) {
     throw new Error(`Repository not found: ${repoQuery}`);
   }
+  if (branch.trim() === '') {
+    throw new Error('Enter a branch name');
+  }
 
   const config = readRepoConfig(repository.path);
   const checkout = checkoutPath(repository.path, layoutForCreate(repository.path), folderName(branch));
@@ -192,36 +271,27 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
     throw new Error(`Worktree folder already exists: ${checkout}`);
   }
 
-  const localBranch = hasRef(repository.path, `refs/heads/${branch}`);
-  const remote = localBranch ? undefined : remoteToFetch(repository.path, branch);
-  if (remote) {
-    execFileSync('git', ['fetch', remote, branch], {
-      cwd: repository.path,
-      stdio: 'inherit',
-    });
-    if (!hasRef(repository.path, `refs/remotes/${remote}/${branch}`)) {
-      throw new Error(`Branch not found: ${branch}`);
-    }
-  }
+  const mode = resolveBranch(repository.path, branch);
 
   const plugins = await loadPlugins(repository.path, config.hooks?.modules);
   runHookCommands(repository.path, config.hooks?.pre_worktree_create?.commands);
   await runPrePlugins(plugins);
 
   mkdirSync(dirname(checkout), { recursive: true });
-  if (localBranch) {
-    execFileSync('git', ['worktree', 'add', checkout, branch], {
-      cwd: repository.path,
-      stdio: 'inherit',
-    });
-  } else if (remote) {
-    execFileSync(
-      'git',
-      ['worktree', 'add', '--track', '-b', branch, checkout, `${remote}/${branch}`],
-      { cwd: repository.path, stdio: 'inherit' },
-    );
+  if (mode === 'local') {
+    runGit(repository.path, ['worktree', 'add', checkout, branch]);
+  } else if (mode === 'new') {
+    runGit(repository.path, ['worktree', 'add', '-b', branch, checkout, 'HEAD']);
   } else {
-    throw new Error(`Branch not found: ${branch}`);
+    runGit(repository.path, [
+      'worktree',
+      'add',
+      '--track',
+      '-b',
+      branch,
+      checkout,
+      `${mode.remote}/${branch}`,
+    ]);
   }
 
   copyConfiguredFiles(repository.path, checkout, config.copy?.files);

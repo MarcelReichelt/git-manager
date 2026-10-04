@@ -32,13 +32,13 @@ The color beside the name is the status. Hovering it shows the title:
 
 A row also shows the changed-file count, and how many commits the branch is ahead and behind. Those counts use the upstream when it exists, and the default branch otherwise. A terminal count appears while terminals for that worktree are running, and it is hidden at zero. The count is the number of running terminals, so a tab with two terminals side by side counts as two.
 
-Click a row to open it. **···** opens the branch actions: Update from master, Merge into master, and Remove worktree. Update from master merges `master` into that checkout. Merge into master opens a dialog with a Squash checkbox, and the primary checkout has to be on `master`. Remove worktree deletes the extra checkout and keeps the branch. The primary checkout stays.
+Click a row to open it. **···** opens the branch actions: Update from master, Merge into master, and Remove worktree. A local-only branch also offers Push. Push publishes that branch and sets the upstream. The remote is `origin` when it exists, and otherwise the first remote. When the repository has no remote, Push reports `No remote to push to`. Update from master merges `master` into that checkout. Merge into master opens a dialog with a Squash checkbox, and the primary checkout has to be on `master`. Remove worktree deletes the extra checkout and keeps the branch. The primary checkout stays.
 
 ## Create a worktree
 
 Create worktree opens a dialog. The name field is New branch. Existing branches lists names that have no checkout, including a branch that exists only on a remote, and omits a branch whose remote copy was deleted. The heading is absent when that list is empty. Choosing a row fills the name field.
 
-Confirm runs the same create as the CLI. The typed name has to be a local branch or a branch on a remote. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout. See [Worktrees and layouts](worktrees-and-layouts.md).
+Confirm runs the same create as the CLI. A new name creates a local branch at the primary checkout's current commit, with no upstream. A local branch is checked out as it is. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout. See [Worktrees and layouts](worktrees-and-layouts.md).
 
 ## Content
 

@@ -35,6 +35,7 @@ import {
   type AppSettings,
   type TerminalMode,
 } from '../app-settings.js';
+import { pushBranch } from '../push.js';
 import { createWorktree, findCheckout, removeWorktree } from '../worktrees.js';
 import {
   contentSwatches,
@@ -986,6 +987,15 @@ button, input { font: inherit; color: inherit; }
                         Merge into master
                       </button>
                     </fieldset>
+                    @if (branch.status === 'local-only') {
+                      <button
+                        type="button"
+                        data-testid="push-branch"
+                        (click)="publishBranch(branch.name, $event)"
+                      >
+                        Push
+                      </button>
+                    }
                     <button
                       type="button"
                       data-testid="remove-worktree"
@@ -1454,7 +1464,7 @@ button, input { font: inherit; color: inherit; }
           }
           <p data-testid="create-layout">{{ createLayoutLine() }}</p>
           <p data-testid="create-worktree-note">
-            A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.
+            A new name creates a local branch from the primary checkout, with no upstream. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.
           </p>
           @if (workspaceError(); as message) {
             <p data-testid="workspace-error">{{ message }}</p>
@@ -3299,6 +3309,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.openBranch.set(null);
       }
     });
+  }
+
+  publishBranch(name: string, event: Event): void {
+    event.stopPropagation();
+    this.runBranchAction(name, () => pushBranch(this.effectivePath() ?? '', name));
   }
 
   openCreateDialog(): void {

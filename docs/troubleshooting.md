@@ -55,7 +55,13 @@ Electron headers.
 
 ## Worktree create
 
-`Branch not found: <branch>` means the name is neither a local branch nor a branch on a remote after fetch.
+A name that is not a local branch, and that the remote does not have, is created as a local branch at the primary checkout's current commit. It has no upstream until it is pushed.
+
+`Enter a branch name` means the name was empty.
+
+`Branch not found: <branch>` means a known remote-tracking ref was gone after fetch.
+
+A fetch that fails for another reason, such as an unreachable remote, is printed as git reported it. Create stops, and no local branch is added.
 
 `Worktree folder already exists: <path>` means the layout folder is already there. Create stops, and git is unchanged. Remove that folder, or pick another branch name.
 
@@ -66,6 +72,10 @@ Electron headers.
 ## Worktree remove
 
 `No worktree for branch: <branch>` means that branch has no extra checkout. The primary checkout cannot be removed this way.
+
+## Push
+
+Push in the branch menu publishes a local-only branch. The remote is `origin` when that remote exists, and otherwise the first remote. `No remote to push to` means the repository has no remote. A rejected push is printed as git reported it. The branch stays local-only.
 
 ## Merge into master
 

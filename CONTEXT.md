@@ -8,6 +8,14 @@ git-manager is the desktop app for working in one selected repository at a time,
 The desktop window for one selected repository.
 _Avoid_: workspaces
 
+**Content**:
+The region of a workspace beside the list of branches. It shows the branch heading, the changed files, the commits, and the diff.
+_Avoid_: sheet
+
+**Terminal section**:
+The row under the content. It holds the terminal tabs for the selected worktree.
+_Avoid_: terminal panel
+
 **Registered repository**:
 A local git repository the app knows how to open, recorded by its path and display name.
 _Avoid_: project

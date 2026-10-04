@@ -25,6 +25,12 @@ describe('desktop workspace', () => {
   const previousAppSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
   let restoreSearch: (() => void) | undefined;
 
+  beforeEach(() => {
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-desktop-settings-'));
+    roots.push(settingsRoot);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+  });
+
   afterEach(() => {
     resetFolderBrowser();
     resetTextCopy();
@@ -865,6 +871,11 @@ describe('desktop workspace', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -906,6 +917,11 @@ describe('desktop workspace', () => {
       ideCommand: 'cursor',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });
@@ -4138,6 +4154,181 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(paneTrack(columns, 'gridTemplateRows')).toBe(312);
+  });
+
+  it('remembers the changes and commits share and the docked terminal height', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const settingsPath = join(repoPath, '..', 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+
+    dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
+    const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
+      changesShare: 0.75,
+      terminalRowHeight: 320,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
+    });
+
+    fixture.destroy();
+
+    const again = await renderRepository(repoPath);
+    again.nativeElement.querySelector('[data-branch="master"]').click();
+    again.detectChanges();
+    const againBody = again.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    Object.defineProperty(againBody, 'clientHeight', { configurable: true, value: 648 });
+    window.dispatchEvent(new Event('resize'));
+    again.detectChanges();
+
+    expect(paneTrack(
+      (again.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement).parentElement as HTMLElement,
+      'gridTemplateRows',
+    )).toBe(240);
+    expect(terminalSectionHeight(againBody)).toBe(320);
+    again.destroy();
+  });
+
+  it('remembers the changes column and the commit-files column across repositories', async () => {
+    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const changesSplit = fixture.nativeElement.querySelector('[data-testid="changes-split"]') as HTMLElement;
+    dragDivider(changesSplit, { x: 240, y: 120 }, { x: 360, y: 120 });
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+    const commitSplit = fixture.nativeElement.querySelector('[data-testid="commit-detail-split"]') as HTMLElement;
+    dragDivider(commitSplit, { x: 240, y: 160 }, { x: 320, y: 160 });
+    fixture.detectChanges();
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
+      changesFileWidth: 360,
+      commitFileWidth: 320,
+    });
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement.querySelector('.sheet-columns') as HTMLElement).style.gridTemplateColumns).toBe(
+      '360px 8px 320px 8px minmax(0, 1fr)',
+    );
+    fixture.destroy();
+
+    const again = await render();
+    again.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    again.detectChanges();
+    again.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    again.detectChanges();
+    again.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    again.detectChanges();
+    expect((again.nativeElement.querySelector('.sheet-columns') as HTMLElement).style.gridTemplateColumns).toBe(
+      '360px 8px 320px 8px minmax(0, 1fr)',
+    );
+    again.destroy();
+  });
+
+  it('remembers a divider that was double-clicked', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const settingsPath = join(repoPath, '..', 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    doubleClickDivider(fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement);
+    fixture.detectChanges();
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).changesShare).toBe(0.5);
+    expect(paneTrack(
+      (fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement).parentElement as HTMLElement,
+      'gridTemplateRows',
+    )).toBe(200);
+
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 600 });
+    doubleClickDivider(fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement);
+    fixture.detectChanges();
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
+      changesShare: 0.5,
+      terminalRowHeight: 200,
+    });
+    expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr) 8px 200px');
+    fixture.destroy();
+  });
+
+  it('shrinks a saved terminal height in memory when the headings would not fit', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const settingsPath = join(repoPath, '..', 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240,"terminalExpanded":true}\n',
+    );
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 248 });
+    window.dispatchEvent(new Event('resize'));
+    fixture.detectChanges();
+
+    expect(terminalSectionHeight(body)).toBe(152);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(44);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(400);
+
+    doubleClickDivider(commitsSplit);
+    fixture.detectChanges();
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(400);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).changesShare).toBe(0.5);
+    fixture.destroy();
+
+    const small = await renderRepository(repoPath);
+    small.nativeElement.querySelector('[data-branch="master"]').click();
+    small.detectChanges();
+    const smallBody = small.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    Object.defineProperty(smallBody, 'clientHeight', { configurable: true, value: 150 });
+    window.dispatchEvent(new Event('resize'));
+    small.detectChanges();
+
+    expect(terminalSectionHeight(smallBody)).toBe(400);
+    expect(paneTrack(
+      (small.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement).parentElement as HTMLElement,
+      'gridTemplateRows',
+    )).toBe(280);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(400);
+    small.destroy();
   });
 
   it('keeps the changes and commits share when the terminal section and the window change', async () => {

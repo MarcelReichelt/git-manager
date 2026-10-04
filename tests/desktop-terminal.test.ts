@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -214,12 +214,15 @@ function useTmuxMode(root: string): void {
 
 describe('branch terminal', () => {
   let root = '';
+  let settingsRoot = '';
   let before: string[] = [];
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
   const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
+    settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-terminal-settings-'));
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
   });
 
   it('hides the terminal keyboard input', () => {
@@ -244,6 +247,10 @@ describe('branch terminal', () => {
       }
       rmSync(root, { recursive: true, force: true });
       root = '';
+    }
+    if (settingsRoot) {
+      rmSync(settingsRoot, { recursive: true, force: true });
+      settingsRoot = '';
     }
   });
 
@@ -879,13 +886,99 @@ describe('branch terminal', () => {
     clickCollapse(fixture);
 
     clickBranch(fixture, 'master');
+    fixture.detectChanges();
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(runningCount(fixture)).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(terminalCount(fixture, 'master')).toBeNull();
+    expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
+
+    clickCollapse(fixture);
     await waitFor(() => terminalCount(fixture!, 'master') === '1');
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+  });
+
+  it('shows a running tmux session when a collapsed row selects that worktree', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listTmuxSessions();
+    useTmuxMode(root);
+    const worktree = join(repo.repo, '.workspaces', 'feature');
+    createBranchSession(repo.repo, 'feature', worktree, 1);
+    writeFileSync(join(root, 'app-settings.json'), '{"terminalMode":"tmux","terminalExpanded":false}\n');
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    fixture.detectChanges();
 
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
     expect(runningCount(fixture)).toBe('1');
     expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(sessionsForBranch(repo.repo, 'feature')).toHaveLength(1);
+  });
+
+  it('restores a collapsed section and starts a shell only when it is expanded', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"terminalExpanded":false,"terminalRowHeight":300}\n');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    fixture.detectChanges();
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-header"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(300);
+
+    clickCollapse(fixture);
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(terminalRowHeight(
+      (fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement).parentElement as HTMLElement,
+    )).toBe(300);
+  });
+
+  it('leaves the saved arrangement in place when the terminal section is maximized', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    clickCollapse(fixture);
+    const collapsed = readFileSync(settingsPath, 'utf8');
+    expect(JSON.parse(collapsed).terminalExpanded).toBe(false);
+
+    clickControl(fixture, 'Maximize terminal');
+    expect(readFileSync(settingsPath, 'utf8')).toBe(collapsed);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalMaximized).toBeUndefined();
+
+    fixture.destroy();
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    fixture.detectChanges();
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
+      'Maximize terminal',
+    );
+    expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
   it('collapses the terminal row when the last terminal is killed', async () => {

@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
   AfterViewChecked,
+  AfterViewInit,
   Component,
   computed,
   ElementRef,
@@ -21,6 +22,7 @@ import {
   formatCreateLayout,
   readAppSettings,
   resetAppColors,
+  saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
@@ -1719,7 +1721,7 @@ button, input { font: inherit; color: inherit; }
     }
   `,
 })
-export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
+export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, AfterViewChecked {
   private readonly zone = inject(NgZone);
   private readonly repositorySettings = viewChild(RepositorySettings);
   readonly repositoryPath = input<string | null>(null);
@@ -1781,12 +1783,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
   readonly tabChipText = formatTabChip;
   readonly terminalDisplayName = formatTerminalName;
   readonly terminalHostTitle = formatHostTitle;
-  readonly changesFileWidth = signal(240);
+  readonly changesFileWidth = signal(readAppSettings().changesFileWidth);
   readonly changesPaneHeight = signal(280);
-  readonly changesShare = signal<number | null>(null);
-  readonly commitFileWidth = signal(240);
-  readonly terminalRowHeight = signal(240);
-  readonly terminalExpanded = signal(true);
+  readonly changesShare = signal<number | null>(readAppSettings().changesShare);
+  readonly commitFileWidth = signal(readAppSettings().commitFileWidth);
+  readonly terminalRowHeight = signal(readAppSettings().terminalRowHeight);
+  readonly terminalExpanded = signal(readAppSettings().terminalExpanded);
+  private arrangedTerminalRowHeight = readAppSettings().terminalRowHeight;
   readonly terminalMaximized = signal(false);
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
@@ -1806,6 +1809,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     origin: number;
     limit: number | undefined;
     invert: boolean;
+    rememberTerminal: boolean;
     apply: (value: number) => void;
   } | null = null;
   readonly terminalState = computed(() => {
@@ -1938,6 +1942,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.commandPoll = setInterval(() => {
       this.zone.run(() => this.refreshTerminalCommands());
     }, 250);
+  }
+
+  ngAfterViewInit(): void {
+    this.fitDockedTerminal();
+    this.applyChangesShare();
   }
 
   ngAfterViewChecked(): void {
@@ -2457,9 +2466,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
       const column = (width - 16) / 3;
       this.changesFileWidth.set(column);
       this.commitFileWidth.set(column);
+      this.persistArrangement();
       return;
     }
     this.changesFileWidth.set((width - 8) / 2);
+    this.persistArrangement();
   }
 
   beginCommitsSplit(event: PointerEvent): void {
@@ -2472,6 +2483,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
   halveCommitsSplit(): void {
     this.changesShare.set(0.5);
     this.applyChangesShare();
+    this.persistArrangement();
   }
 
   beginCommitDetailSplit(event: PointerEvent): void {
@@ -2497,6 +2509,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
       0,
       true,
       0,
+      true,
     );
   }
 
@@ -2507,6 +2520,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     const room = span - 8 - 80;
     this.terminalRowHeight.set(clampSplit(span / 3, room >= 80 ? room : undefined));
     this.applyChangesShare();
+    this.arrangedTerminalRowHeight = this.terminalRowHeight();
+    this.persistArrangement();
   }
 
   terminalRowTracks(): string {
@@ -2548,10 +2563,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.ensureTerminal();
     }
     this.applyChangesShare();
+    this.persistArrangement();
   }
 
   @HostListener('window:resize')
   reapplyChangesShare(): void {
+    this.fitDockedTerminal();
     this.applyChangesShare();
     this.refreshMaximizedTerminal();
   }
@@ -2602,6 +2619,28 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
       return body - terminalHeaderHeight;
     }
     return body - 8 - this.terminalRowHeight();
+  }
+
+  private fitDockedTerminal(): void {
+    const body = this.sheetBody()?.nativeElement.clientHeight ?? 0;
+    if (body <= 0) {
+      return;
+    }
+    const fitted = body - 8 - headingMinHeight * 2;
+    const content = body - 8 - this.terminalRowHeight();
+    if (content < headingMinHeight * 2 && fitted >= 80) {
+      this.terminalRowHeight.set(fitted);
+    }
+  }
+
+  private persistArrangement(): void {
+    saveArrangement({
+      changesShare: this.changesShare(),
+      terminalRowHeight: this.arrangedTerminalRowHeight,
+      changesFileWidth: this.changesFileWidth(),
+      commitFileWidth: this.commitFileWidth(),
+      terminalExpanded: this.terminalExpanded(),
+    });
   }
 
   toggleTerminalMaximize(): void {
@@ -2672,9 +2711,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   endSplit(event: PointerEvent): void {
-    if (this.splitDrag?.pointerId === event.pointerId) {
-      this.splitDrag = null;
+    if (this.splitDrag?.pointerId !== event.pointerId) {
+      return;
     }
+    if (this.splitDrag.rememberTerminal) {
+      this.arrangedTerminalRowHeight = this.terminalRowHeight();
+    }
+    this.splitDrag = null;
+    this.persistArrangement();
   }
 
   private beginSplit(
@@ -2685,6 +2729,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     occupied = 0,
     invert = false,
     reserved = 80,
+    rememberTerminal = false,
   ): void {
     if (event.button !== 0) {
       return;
@@ -2701,6 +2746,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
       origin,
       limit: room >= 80 ? room : undefined,
       invert,
+      rememberTerminal,
       apply,
     };
   }
@@ -3175,6 +3221,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
     if (sessionsForBranch(repo, branch).length > 0) {
       this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
+      return;
+    }
+    if (!this.terminalExpanded()) {
       return;
     }
     const terminal = this.spawnTerminal();

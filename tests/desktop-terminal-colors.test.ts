@@ -442,6 +442,11 @@ describe('terminal font and colors', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 });

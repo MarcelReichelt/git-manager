@@ -16,6 +16,11 @@ export interface AppSettings {
   ideCommand: string;
   terminalMode: TerminalMode;
   shellCommand: string;
+  changesShare: number | null;
+  terminalRowHeight: number;
+  changesFileWidth: number;
+  commitFileWidth: number;
+  terminalExpanded: boolean;
 }
 
 const originalSidebarColor = '#1a3c2b';
@@ -23,6 +28,9 @@ const originalContentColor = '#f7f7f5';
 const originalTerminalBackground = '#1e1e1e';
 const originalTerminalForeground = '#d4d4d4';
 const originalTerminalFont = 'UbuntuMono Nerd Font Mono';
+const defaultTerminalRowHeight = 240;
+const defaultChangesFileWidth = 240;
+const defaultCommitFileWidth = 240;
 
 export interface CreateLayout {
   label: string;
@@ -84,6 +92,11 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
     ideCommand: typeof stored.ideCommand === 'string' ? stored.ideCommand : '',
     terminalMode: terminalMode(stored.terminalMode),
     shellCommand: typeof stored.shellCommand === 'string' ? stored.shellCommand : '',
+    changesShare: readChangesShare(stored.changesShare),
+    terminalRowHeight: readPixels(stored.terminalRowHeight, defaultTerminalRowHeight),
+    changesFileWidth: readPixels(stored.changesFileWidth, defaultChangesFileWidth),
+    commitFileWidth: readPixels(stored.commitFileWidth, defaultCommitFileWidth),
+    terminalExpanded: typeof stored.terminalExpanded === 'boolean' ? stored.terminalExpanded : true,
   };
 }
 
@@ -159,6 +172,31 @@ export function saveTerminalFont(font: string, env?: NodeJS.ProcessEnv): void {
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export function saveArrangement(
+  arrangement: {
+    changesShare: number | null;
+    terminalRowHeight: number;
+    changesFileWidth: number;
+    commitFileWidth: number;
+    terminalExpanded: boolean;
+  },
+  env?: NodeJS.ProcessEnv,
+): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  if (arrangement.changesShare === null) {
+    delete current.changesShare;
+  } else {
+    current.changesShare = arrangement.changesShare;
+  }
+  current.terminalRowHeight = arrangement.terminalRowHeight;
+  current.changesFileWidth = arrangement.changesFileWidth;
+  current.commitFileWidth = arrangement.commitFileWidth;
+  current.terminalExpanded = arrangement.terminalExpanded;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
 export function saveTerminalMode(mode: TerminalMode, env?: NodeJS.ProcessEnv): void {
   const settingsPath = resolveAppSettingsPath(env);
   mkdirSync(dirname(settingsPath), { recursive: true });
@@ -229,6 +267,20 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   return String(mode);
+}
+
+function readChangesShare(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value >= 1) {
+    return null;
+  }
+  return value;
+}
+
+function readPixels(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return value;
 }
 
 function terminalMode(value: unknown): TerminalMode {

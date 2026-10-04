@@ -10,6 +10,7 @@ import {
   readAppSettings,
   resetAppColors,
   resolveAppSettingsPath,
+  saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
@@ -53,7 +54,85 @@ describe('app settings', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
+  });
+
+  it('reads a stored arrangement and ignores a share, size, or collapsed flag that cannot be used', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","changesShare":0.25,"terminalRowHeight":360,"changesFileWidth":180,"commitFileWidth":160,"terminalExpanded":false}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).changesShare).toBe(0.25);
+    expect(readAppSettings(env).terminalRowHeight).toBe(360);
+    expect(readAppSettings(env).changesFileWidth).toBe(180);
+    expect(readAppSettings(env).commitFileWidth).toBe(160);
+    expect(readAppSettings(env).terminalExpanded).toBe(false);
+
+    writeFileSync(
+      settingsPath,
+      '{"changesShare":1,"terminalRowHeight":"360","changesFileWidth":false,"commitFileWidth":null,"terminalExpanded":"false"}\n',
+    );
+
+    expect(readAppSettings(env).changesShare).toBeNull();
+    expect(readAppSettings(env).terminalRowHeight).toBe(240);
+    expect(readAppSettings(env).changesFileWidth).toBe(240);
+    expect(readAppSettings(env).commitFileWidth).toBe(240);
+    expect(readAppSettings(env).terminalExpanded).toBe(true);
+  });
+
+  it('saves the arrangement together and omits the share when it is unset', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"theme":"mint","terminalMode":"tmux","changesShare":0.25}\n');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveArrangement(
+      {
+        changesShare: null,
+        terminalRowHeight: 320,
+        changesFileWidth: 180,
+        commitFileWidth: 160,
+        terminalExpanded: false,
+      },
+      env,
+    );
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      terminalMode: 'tmux',
+      terminalRowHeight: 320,
+      changesFileWidth: 180,
+      commitFileWidth: 160,
+      terminalExpanded: false,
+    });
+    expect(readAppSettings(env).changesShare).toBeNull();
+    expect(readAppSettings(env).terminalRowHeight).toBe(320);
+    expect(readAppSettings(env).terminalExpanded).toBe(false);
+
+    saveArrangement(
+      {
+        changesShare: 0.75,
+        terminalRowHeight: 240,
+        changesFileWidth: 240,
+        commitFileWidth: 240,
+        terminalExpanded: true,
+      },
+      env,
+    );
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).changesShare).toBe(0.75);
+    expect(readAppSettings(env).changesShare).toBe(0.75);
   });
 
   it('uses the original terminal colors and UbuntuMono Nerd Font Mono when those settings are not text', () => {
@@ -108,6 +187,11 @@ describe('app settings', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -139,6 +223,11 @@ describe('app settings', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -177,6 +266,11 @@ describe('app settings', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -203,6 +297,11 @@ describe('app settings', () => {
       ideCommand: '',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -380,6 +479,11 @@ describe('app settings', () => {
       ideCommand: 'cursor',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 
@@ -415,6 +519,11 @@ describe('app settings', () => {
       ideCommand: 'cursor',
       terminalMode: 'terminal',
       shellCommand: '',
+      changesShare: null,
+      terminalRowHeight: 240,
+      changesFileWidth: 240,
+      commitFileWidth: 240,
+      terminalExpanded: true,
     });
   });
 

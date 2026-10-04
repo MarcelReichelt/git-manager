@@ -10,6 +10,7 @@ import {
   output,
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import { spawn, type IPty } from 'node-pty';
 import { applyTerminalAppearance } from './terminal-appearance';
 import { fitTerminalGrid, watchTerminalBox } from './terminal-fit';

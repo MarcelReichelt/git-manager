@@ -10,6 +10,7 @@ import {
   output,
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import { applyTerminalAppearance } from './terminal-appearance';
 import { fitTerminalGrid, watchTerminalBox } from './terminal-fit';
 import { ensureShell, shellPty, subscribeShell, writeShell } from './shell-host';

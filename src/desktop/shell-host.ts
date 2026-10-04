@@ -2,12 +2,42 @@ import { existsSync, readFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
+import { runtimeEnv } from '../runtime-env.js';
 import { terminalEnvironment } from './tmux-sessions';
 import { windowsForegroundCommand } from './windows-foreground';
 
 interface ShellListener {
   onData: (data: string) => void;
   onExit: () => void;
+}
+
+interface ShellMainBridge {
+  shellEnsure(id: string, cwd: string, command: string): void;
+  shellWrite(id: string, data: string): void;
+  shellKill(id: string): void;
+  shellKillAll(): void;
+  shellAlive(id: string): boolean;
+  shellCommand(id: string): string;
+  shellSize(id: string): { cols: number; rows: number } | null;
+  shellResize(id: string, cols: number, rows: number): void;
+  shellSubscribe(id: string, onData: (data: string) => void, onExit: () => void): () => void;
+}
+
+interface ShellGrid {
+  cols: number;
+  rows: number;
+  resize(columns: number, rows: number): void;
+}
+
+// The window process cannot create the worker node-pty needs on Windows.
+// The preload bridge starts the shell in the main process instead.
+function shellMainBridge(): ShellMainBridge | null {
+  const host = globalThis as { gitManager?: Partial<ShellMainBridge> };
+  const bridge = host.gitManager;
+  if (typeof bridge?.shellEnsure !== 'function' || typeof bridge.shellCommand !== 'function') {
+    return null;
+  }
+  return bridge as ShellMainBridge;
 }
 
 interface HostedShell {
@@ -22,6 +52,11 @@ const maxBuffer = 200_000;
 const shells = new Map<string, HostedShell>();
 
 export function ensureShell(id: string, cwd: string, command = ''): void {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    bridge.shellEnsure(id, cwd, command);
+    return;
+  }
   const existing = shells.get(id);
   if (existing) {
     return;
@@ -69,6 +104,10 @@ export function ensureShell(id: string, cwd: string, command = ''): void {
 }
 
 export function subscribeShell(id: string, listener: ShellListener): () => void {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    return bridge.shellSubscribe(id, listener.onData, listener.onExit);
+  }
   const hosted = shells.get(id);
   if (!hosted) {
     return () => undefined;
@@ -87,6 +126,11 @@ export function subscribeShell(id: string, listener: ShellListener): () => void 
 }
 
 export function writeShell(id: string, data: string): void {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    bridge.shellWrite(id, data);
+    return;
+  }
   const hosted = shells.get(id);
   if (!hosted || hosted.exited) {
     return;
@@ -94,7 +138,23 @@ export function writeShell(id: string, data: string): void {
   hosted.pty.write(data);
 }
 
-export function shellPty(id: string): IPty | null {
+export function shellPty(id: string): ShellGrid | null {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    const size = bridge.shellSize(id);
+    if (!size) {
+      return null;
+    }
+    return {
+      cols: size.cols,
+      rows: size.rows,
+      resize(columns: number, rows: number) {
+        bridge.shellResize(id, columns, rows);
+        this.cols = columns;
+        this.rows = rows;
+      },
+    };
+  }
   const hosted = shells.get(id);
   if (!hosted || hosted.exited) {
     return null;
@@ -103,11 +163,19 @@ export function shellPty(id: string): IPty | null {
 }
 
 export function shellAlive(id: string): boolean {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    return bridge.shellAlive(id);
+  }
   const hosted = shells.get(id);
   return hosted !== undefined && !hosted.exited;
 }
 
 export function shellCommand(id: string): string {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    return bridge.shellCommand(id);
+  }
   const hosted = shells.get(id);
   if (!hosted || hosted.exited) {
     return '';
@@ -120,6 +188,11 @@ export function shellCommand(id: string): string {
 }
 
 export function killShell(id: string): void {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    bridge.shellKill(id);
+    return;
+  }
   const hosted = shells.get(id);
   if (!hosted) {
     return;
@@ -134,6 +207,11 @@ export function killShell(id: string): void {
 }
 
 export function killAllShells(): void {
+  const bridge = shellMainBridge();
+  if (bridge) {
+    bridge.shellKillAll();
+    return;
+  }
   for (const id of [...shells.keys()]) {
     killShell(id);
   }
@@ -166,7 +244,7 @@ export function blankShellCandidates(platform = process.platform): string[] {
 }
 
 function loginShell(): string {
-  const shell = process.env.SHELL;
+  const shell = runtimeEnv().SHELL;
   if (typeof shell === 'string' && shell.length > 0) {
     return shell;
   }
@@ -189,7 +267,7 @@ function canStart(command: string): boolean {
     process.platform === 'win32' && !command.toLowerCase().endsWith('.exe')
       ? [command, `${command}.exe`]
       : [command];
-  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+  for (const directory of (runtimeEnv().PATH ?? '').split(delimiter)) {
     if (directory.length === 0) {
       continue;
     }

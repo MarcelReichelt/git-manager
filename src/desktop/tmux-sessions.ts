@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
+import { runtimeEnv } from '../runtime-env.js';
 
-export function tmuxOnPath(pathValue = process.env.PATH): string | null {
+export function tmuxOnPath(pathValue = runtimeEnv().PATH): string | null {
   const directories = (pathValue ?? '').split(delimiter);
   for (const directory of directories) {
     if (directory.length === 0 || directory.startsWith('/exec-daemon')) {
@@ -22,7 +23,7 @@ export function tmuxBinary(): string {
 }
 
 export function terminalEnvironment(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = { ...runtimeEnv() };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return env;

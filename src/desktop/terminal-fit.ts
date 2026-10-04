@@ -1,7 +1,12 @@
 import type { Terminal } from '@xterm/xterm';
-import type { IPty } from 'node-pty';
 
-export function fitTerminalGrid(host: HTMLElement, term: Terminal, pty: IPty | null): void {
+interface FittedPty {
+  cols: number;
+  rows: number;
+  resize(columns: number, rows: number): void;
+}
+
+export function fitTerminalGrid(host: HTMLElement, term: Terminal, pty: FittedPty | null): void {
   const next = proposedGrid(host, term.cols, term.rows);
   if (!next) {
     return;

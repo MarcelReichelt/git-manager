@@ -38,7 +38,7 @@ export default defineConfig({
           // styleUrl is compiled to a CSS import. Vitest blanks those unless
           // CSS processing is enabled, which drops the rail stylesheet.
           css: {
-            include: [/workspace-rail\.css/],
+            include: [/workspace-rail\.css/, /xterm\.css/],
           },
           environment: 'jsdom',
           // The Angular plugin defaults this project to vmThreads, whose

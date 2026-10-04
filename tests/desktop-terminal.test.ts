@@ -186,6 +186,26 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error('timed out waiting for the terminal');
 }
 
+function helperTextareaRule(): CSSStyleDeclaration | null {
+  for (const sheet of document.styleSheets) {
+    let rules: CSSRuleList | undefined;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      rules = undefined;
+    }
+    if (!rules) {
+      continue;
+    }
+    for (const rule of rules) {
+      if (rule instanceof CSSStyleRule && rule.selectorText.includes('xterm-helper-textarea')) {
+        return rule.style;
+      }
+    }
+  }
+  return null;
+}
+
 function useTmuxMode(root: string): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, '{"terminalMode":"tmux"}\n');
@@ -200,6 +220,12 @@ describe('branch terminal', () => {
 
   beforeEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  it('hides the terminal keyboard input', () => {
+    const rule = helperTextareaRule();
+    expect(rule?.getPropertyValue('opacity').trim()).toBe('0');
+    expect(rule?.getPropertyValue('left').trim()).toBe('-9999em');
   });
 
   afterEach(() => {

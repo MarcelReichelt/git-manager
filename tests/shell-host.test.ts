@@ -28,6 +28,25 @@ describe('in-app shell host', () => {
     expect(blankShellCandidates('win32').at(-1)).toBe('powershell.exe');
   });
 
+  it.skipIf(process.platform !== 'win32')('finds powershell.exe on PATH', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-shell-path-'));
+    writeFileSync(join(root, 'powershell.exe'), '');
+    const previousPath = process.env.PATH;
+    process.env.PATH = root;
+    const id = `shell-path-${Date.now()}`;
+    ids.push(id);
+    try {
+      ensureShell(id, root, 'powershell.exe');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toBe('Could not start powershell.exe: file not found');
+    } finally {
+      process.env.PATH = previousPath;
+      killShell(id);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(process.platform !== 'win32')('names npm while it runs and the shell after it exits', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-shell-'));
     writeFileSync(join(root, 'hold.mjs'), 'setTimeout(() => process.exit(0), 2500);\n');

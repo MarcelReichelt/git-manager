@@ -1,3 +1,7 @@
+## Language
+
+The chat follows the user's language. Comments, code, issues, commits, and pull requests are English.
+
 ## Agent skills
 
 ### Issue tracker

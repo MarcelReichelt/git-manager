@@ -1,5 +1,19 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
+import {
+  AfterViewChecked,
+  AfterViewInit,
+  Component,
+  computed,
+  ElementRef,
+  HostListener,
+  inject,
+  input,
+  NgZone,
+  OnDestroy,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
@@ -8,6 +22,7 @@ import {
   formatCreateLayout,
   readAppSettings,
   resetAppColors,
+  saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
@@ -984,6 +999,7 @@ button, input { font: inherit; color: inherit; }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
+            @if (!terminalMaximized()) {
             <header class="branch-heading">
               <div class="branch-title">
                 <h2>
@@ -1011,7 +1027,9 @@ button, input { font: inherit; color: inherit; }
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
-            <div class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
+            }
+            <div #sheetBody class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
+            @if (!terminalMaximized()) {
             <div class="sheet-columns" [style.grid-template-columns]="sheetColumns()">
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
@@ -1045,6 +1063,7 @@ button, input { font: inherit; color: inherit; }
               (pointerdown)="beginCommitsSplit($event)"
               (pointermove)="moveSplit($event)"
               (pointerup)="endSplit($event)"
+              (dblclick)="halveCommitsSplit()"
             ></div>
             <div data-testid="commits">
             @if (branchIsDefault()) {
@@ -1090,6 +1109,7 @@ button, input { font: inherit; color: inherit; }
               (pointerdown)="beginChangesSplit($event)"
               (pointermove)="moveSplit($event)"
               (pointerup)="endSplit($event)"
+              (dblclick)="equalizeContentColumns($event)"
             ></div>
             @if (showingCommit() && visibleCommitFiles().length > 0) {
               <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
@@ -1120,6 +1140,7 @@ button, input { font: inherit; color: inherit; }
                 (pointerdown)="beginCommitDetailSplit($event)"
                 (pointermove)="moveSplit($event)"
                 (pointerup)="endSplit($event)"
+                (dblclick)="equalizeContentColumns($event)"
               ></div>
             }
             @if (diffText()) {
@@ -1129,8 +1150,9 @@ button, input { font: inherit; color: inherit; }
             }
             }
             </div>
+            }
             @if (showTerminalRow()) {
-              @if (terminalExpanded()) {
+              @if (terminalExpanded() && !terminalMaximized()) {
                 <div
                   class="splitter"
                   role="separator"
@@ -1140,6 +1162,7 @@ button, input { font: inherit; color: inherit; }
                   (pointerdown)="beginTerminalSplit($event)"
                   (pointermove)="moveSplit($event)"
                   (pointerup)="endSplit($event)"
+                  (dblclick)="equalizeTerminalRow($event)"
                 ></div>
               }
               <div class="terminal-row" data-testid="terminal-row">
@@ -1214,6 +1237,22 @@ button, input { font: inherit; color: inherit; }
                   <button
                     type="button"
                     class="terminal-icon"
+                    data-testid="terminal-maximize"
+                    [attr.title]="terminalMaximized() ? 'Restore terminal' : 'Maximize terminal'"
+                    [attr.aria-label]="terminalMaximized() ? 'Restore terminal' : 'Maximize terminal'"
+                    (click)="toggleTerminalMaximize()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      @if (terminalMaximized()) {
+                        <path fill="currentColor" d="M5.25 2A1.75 1.75 0 0 0 3.5 3.75v.5a.75.75 0 0 1-1.5 0v-.5C2 2.231 3.231 1 4.75 1h.5a.75.75 0 0 1 0 1.5h-.5ZM2 6.25a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 2 6.25Zm0 3.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1-.75-.75Zm.75 2.75a.75.75 0 0 0-1.5 0v.5c0 1.519 1.231 2.75 2.75 2.75h.5a.75.75 0 0 0 0-1.5h-.5a1.25 1.25 0 0 1-1.25-1.25v-.5ZM6.25 14a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1-.75-.75Zm4.5 0a.75.75 0 0 1 .75-.75h.5a1.25 1.25 0 0 0 1.25-1.25v-.5a.75.75 0 0 1 1.5 0v.5A2.75 2.75 0 0 1 11.75 15h-.5a.75.75 0 0 1-.75-.75Zm3.25-9.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75ZM14 6.25a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75Zm0 3.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75ZM8.75 2a.75.75 0 0 1 0-1.5h2A2.75 2.75 0 0 1 13.5 3.25v.5a.75.75 0 0 1-1.5 0v-.5c0-.69-.56-1.25-1.25-1.25h-2Z" />
+                      } @else {
+                        <path fill="currentColor" d="M1.75 10a.75.75 0 0 1 .75.75v2.5c0 .138.112.25.25.25h2.5a.75.75 0 0 1 0 1.5h-2.5A1.75 1.75 0 0 1 1 13.25v-2.5a.75.75 0 0 1 .75-.75Zm12.5 0a.75.75 0 0 1 .75.75v2.5A1.75 1.75 0 0 1 13.25 15h-2.5a.75.75 0 0 1 0-1.5h2.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 .75-.75ZM4.25 2a.25.25 0 0 0-.25.25v2.5a.75.75 0 0 1-1.5 0v-2.5C2.5 1.784 3.284 1 4.25 1h2.5a.75.75 0 0 1 0 1.5ZM10 1.75a.75.75 0 0 1 .75-.75h2.5c.966 0 1.75.784 1.75 1.75v2.5a.75.75 0 0 1-1.5 0v-2.5a.25.25 0 0 0-.25-.25h-2.5a.75.75 0 0 1-.75-.75Z" />
+                      }
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="terminal-icon"
                     data-testid="terminal-kill"
                     title="Kill"
                     aria-label="Kill"
@@ -1270,6 +1309,7 @@ button, input { font: inherit; color: inherit; }
                               (pointerdown)="beginPaneSplit($event)"
                               (pointermove)="movePaneSplit($event)"
                               (pointerup)="endPaneSplit($event)"
+                              (dblclick)="equalizePaneSplit()"
                             ></div>
                           }
                         }
@@ -1681,7 +1721,7 @@ button, input { font: inherit; color: inherit; }
     }
   `,
 })
-export class WorkspaceComponent implements OnInit, OnDestroy {
+export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, AfterViewChecked {
   private readonly zone = inject(NgZone);
   private readonly repositorySettings = viewChild(RepositorySettings);
   readonly repositoryPath = input<string | null>(null);
@@ -1743,11 +1783,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly tabChipText = formatTabChip;
   readonly terminalDisplayName = formatTerminalName;
   readonly terminalHostTitle = formatHostTitle;
-  readonly changesFileWidth = signal(240);
+  readonly changesFileWidth = signal(readAppSettings().changesFileWidth);
   readonly changesPaneHeight = signal(280);
-  readonly commitFileWidth = signal(240);
-  readonly terminalRowHeight = signal(240);
-  readonly terminalExpanded = signal(true);
+  readonly changesShare = signal<number | null>(readAppSettings().changesShare);
+  readonly commitFileWidth = signal(readAppSettings().commitFileWidth);
+  readonly terminalRowHeight = signal(readAppSettings().terminalRowHeight);
+  readonly terminalExpanded = signal(readAppSettings().terminalExpanded);
+  private arrangedTerminalRowHeight = readAppSettings().terminalRowHeight;
+  readonly terminalMaximized = signal(false);
+  private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
+  private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
   private commandPoll: ReturnType<typeof setInterval> | null = null;
   private paneSplitDrag: {
@@ -1764,6 +1809,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     origin: number;
     limit: number | undefined;
     invert: boolean;
+    rememberTerminal: boolean;
     apply: (value: number) => void;
   } | null = null;
   readonly terminalState = computed(() => {
@@ -1896,6 +1942,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.commandPoll = setInterval(() => {
       this.zone.run(() => this.refreshTerminalCommands());
     }, 250);
+  }
+
+  ngAfterViewInit(): void {
+    this.fitDockedTerminal();
+    this.applyChangesShare();
+  }
+
+  ngAfterViewChecked(): void {
+    this.captureMaximizedBody();
   }
 
   ngOnDestroy(): void {
@@ -2385,6 +2440,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     }
   }
 
+  equalizePaneSplit(): void {
+    const tab = this.focusedTerminalTab();
+    if (!tab) {
+      return;
+    }
+    this.updateSelected((state) => ({
+      ...state,
+      tabs: state.tabs.map((item) => (item.id === tab.id ? { ...item, splitRatio: 0.5 } : item)),
+    }));
+  }
+
   controlWindow(action: WindowAction): void {
     requestWindowAction(action);
   }
@@ -2393,8 +2459,32 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.beginSplit(event, 'x', this.changesFileWidth(), (value) => this.changesFileWidth.set(value));
   }
 
+  equalizeContentColumns(event: MouseEvent): void {
+    const columns = (event.currentTarget as HTMLElement | null)?.parentElement;
+    const width = columns?.clientWidth ?? 0;
+    if (this.showingCommit() && this.visibleCommitFiles().length > 0) {
+      const column = (width - 16) / 3;
+      this.changesFileWidth.set(column);
+      this.commitFileWidth.set(column);
+      this.persistArrangement();
+      return;
+    }
+    this.changesFileWidth.set((width - 8) / 2);
+    this.persistArrangement();
+  }
+
   beginCommitsSplit(event: PointerEvent): void {
-    this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => this.changesPaneHeight.set(value));
+    const stack = (event.currentTarget as HTMLElement | null)?.parentElement?.clientHeight ?? 0;
+    this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => {
+      this.changesPaneHeight.set(this.clampChangesDrag(value, stack));
+      this.rememberChangesShare();
+    });
+  }
+
+  halveCommitsSplit(): void {
+    this.changesShare.set(0.5);
+    this.applyChangesShare();
+    this.persistArrangement();
   }
 
   beginCommitDetailSplit(event: PointerEvent): void {
@@ -2408,18 +2498,35 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   beginTerminalSplit(event: PointerEvent): void {
+    this.captureChangesShare();
     this.beginSplit(
       event,
       'y',
       this.terminalRowHeight(),
-      (value) => this.terminalRowHeight.set(value),
+      (value) => {
+        this.terminalRowHeight.set(value);
+        this.applyChangesShare();
+      },
+      0,
+      true,
       0,
       true,
     );
   }
 
+  equalizeTerminalRow(event: MouseEvent): void {
+    this.captureChangesShare();
+    const body = (event.currentTarget as HTMLElement | null)?.parentElement;
+    const span = body?.clientHeight ?? 0;
+    const room = span - 8 - 80;
+    this.terminalRowHeight.set(clampSplit(span / 3, room >= 80 ? room : undefined));
+    this.applyChangesShare();
+    this.arrangedTerminalRowHeight = this.terminalRowHeight();
+    this.persistArrangement();
+  }
+
   terminalRowTracks(): string {
-    if (!this.showTerminalRow()) {
+    if (!this.showTerminalRow() || this.terminalMaximized()) {
       return 'minmax(0, 1fr)';
     }
     if (!this.terminalExpanded()) {
@@ -2429,6 +2536,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   terminalBodyHeight(): number {
+    if (this.terminalMaximized()) {
+      const measured = this.maximizedBodyHeight();
+      if (measured !== null) {
+        return measured;
+      }
+    }
     return Math.max(1, this.terminalRowHeight() - terminalHeaderHeight);
   }
 
@@ -2442,12 +2555,142 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   toggleTerminalRow(): void {
-    if (this.terminalExpanded()) {
+    this.captureChangesShare();
+    if (this.terminalMaximized() || this.terminalExpanded()) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
+    } else {
+      this.terminalExpanded.set(true);
+      this.ensureTerminal();
+    }
+    this.fitDockedTerminal();
+    this.applyChangesShare();
+    this.persistArrangement();
+  }
+
+  @HostListener('window:resize')
+  reapplyChangesShare(): void {
+    this.fitDockedTerminal();
+    this.applyChangesShare();
+    this.refreshMaximizedTerminal();
+  }
+
+  private captureChangesShare(): void {
+    if (this.changesShare() !== null) {
       return;
     }
+    this.rememberChangesShare();
+  }
+
+  private rememberChangesShare(): void {
+    const room = this.paneRoom();
+    if (room > 0) {
+      this.changesShare.set(this.changesPaneHeight() / room);
+    }
+  }
+
+  private applyChangesShare(): void {
+    const room = this.paneRoom();
+    if (room <= 0) {
+      return;
+    }
+    const share = this.changesShare();
+    if (share === null) {
+      this.rememberChangesShare();
+      return;
+    }
+    let changesPx = Math.round(share * room);
+    if (room >= headingMinHeight * 2) {
+      changesPx = Math.min(room - headingMinHeight, Math.max(headingMinHeight, changesPx));
+    }
+    this.changesPaneHeight.set(changesPx);
+  }
+
+  private paneRoom(): number {
+    const stack = this.stackHeight();
+    if (stack <= 8) {
+      return 0;
+    }
+    return stack - 8;
+  }
+
+  private stackHeight(): number {
+    if (this.terminalMaximized()) {
+      return 0;
+    }
+    const body = this.sheetBody()?.nativeElement.clientHeight ?? 0;
+    if (body <= 0) {
+      return 0;
+    }
+    if (!this.showTerminalRow()) {
+      return body;
+    }
+    if (!this.terminalExpanded()) {
+      return body - terminalHeaderHeight;
+    }
+    return body - 8 - this.terminalRowHeight();
+  }
+
+  private clampChangesDrag(value: number, stack: number): number {
+    if (stack < headingMinHeight * 2 + 8) {
+      return value;
+    }
+    return Math.min(stack - 8 - headingMinHeight, Math.max(headingMinHeight, value));
+  }
+
+  private fitDockedTerminal(): void {
+    if (this.terminalMaximized() || !this.terminalExpanded()) {
+      return;
+    }
+    const body = this.sheetBody()?.nativeElement.clientHeight ?? 0;
+    if (body <= 0) {
+      return;
+    }
+    const roomForTerminal = body - 8 - (headingMinHeight * 2 + 8);
+    if (roomForTerminal >= 80 && this.arrangedTerminalRowHeight > roomForTerminal) {
+      this.terminalRowHeight.set(roomForTerminal);
+      return;
+    }
+    this.terminalRowHeight.set(this.arrangedTerminalRowHeight);
+  }
+
+  private persistArrangement(): void {
+    saveArrangement({
+      changesShare: this.changesShare(),
+      terminalRowHeight: this.arrangedTerminalRowHeight,
+      changesFileWidth: this.changesFileWidth(),
+      commitFileWidth: this.commitFileWidth(),
+      terminalExpanded: this.terminalExpanded(),
+    });
+  }
+
+  toggleTerminalMaximize(): void {
+    if (this.terminalMaximized()) {
+      this.terminalMaximized.set(false);
+      this.terminalExpanded.set(true);
+      this.maximizedBodyHeight.set(null);
+      this.fitDockedTerminal();
+      this.applyChangesShare();
+      this.persistArrangement();
+      return;
+    }
+    this.terminalMaximized.set(true);
     this.terminalExpanded.set(true);
-    this.ensureTerminal();
+    this.captureMaximizedBody();
+  }
+
+  refreshMaximizedTerminal(): void {
+    this.captureMaximizedBody();
+  }
+
+  private captureMaximizedBody(): void {
+    if (!this.terminalMaximized()) {
+      return;
+    }
+    const measured = this.sheetBody()?.nativeElement.clientHeight ?? 0;
+    if (measured > terminalHeaderHeight) {
+      this.maximizedBodyHeight.set(measured - terminalHeaderHeight);
+    }
   }
 
   showTerminalRow(): boolean {
@@ -2492,9 +2735,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   endSplit(event: PointerEvent): void {
-    if (this.splitDrag?.pointerId === event.pointerId) {
-      this.splitDrag = null;
+    if (this.splitDrag?.pointerId !== event.pointerId) {
+      return;
     }
+    if (this.splitDrag.rememberTerminal) {
+      this.arrangedTerminalRowHeight = this.terminalRowHeight();
+    }
+    this.splitDrag = null;
+    this.persistArrangement();
   }
 
   private beginSplit(
@@ -2504,6 +2752,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     apply: (value: number) => void,
     occupied = 0,
     invert = false,
+    reserved = 80,
+    rememberTerminal = false,
   ): void {
     if (event.button !== 0) {
       return;
@@ -2512,7 +2762,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.captureSplit(event);
     const parent = (event.currentTarget as HTMLElement | null)?.parentElement ?? null;
     const span = parent === null ? 0 : axis === 'x' ? parent.clientWidth : parent.clientHeight;
-    const room = span - 8 - 80 - occupied;
+    const room = span - 8 - reserved - occupied;
     this.splitDrag = {
       pointerId: event.pointerId,
       axis,
@@ -2520,6 +2770,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       origin,
       limit: room >= 80 ? room : undefined,
       invert,
+      rememberTerminal,
       apply,
     };
   }
@@ -2996,6 +3247,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
       return;
     }
+    if (!this.terminalExpanded()) {
+      return;
+    }
     const terminal = this.spawnTerminal();
     if (!terminal) {
       return;
@@ -3072,6 +3326,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       this.adoptOpenSessions(branch);
     }
     if (mode !== 'none' && branch && this.terminalCount(branch) === 0) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }
@@ -3198,6 +3453,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
 
   private collapseIfEmpty(branch: string, state: WorktreeTerminalView): void {
     if (branch === this.selectedBranchName() && state.tabs.length === 0) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }
@@ -3245,6 +3501,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       this.terminalsByBranch.set(next);
     }
     if (collapse) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }
@@ -3382,6 +3639,7 @@ function readRepositoryName(repoPath: string): string {
 }
 
 const terminalHeaderHeight = 36;
+const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
 
 interface TerminalMenuState {

@@ -710,10 +710,12 @@ describe('terminal tabs', () => {
     names()[0]!.dispatchEvent(new MouseEvent('mouseenter'));
     fixture.detectChanges();
     expect(names()[0]!.classList.contains('is-pointed')).toBe(true);
-    expect(getComputedStyle(names()[0]!).outline).toBe('1px solid #cccccc');
+    expect(getComputedStyle(names()[0]!).borderTopWidth).toBe('1px');
+    expect(getComputedStyle(names()[0]!).borderTopColor).toBe('rgb(204, 204, 204)');
     names()[0]!.dispatchEvent(new MouseEvent('mouseleave'));
     fixture.detectChanges();
     expect(names()[0]!.classList.contains('is-pointed')).toBe(false);
+    expect(getComputedStyle(names()[0]!).borderTopColor).toBe('rgba(0, 0, 0, 0)');
 
     rightClick(names()[1]!);
     fixture.detectChanges();

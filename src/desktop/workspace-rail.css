@@ -631,17 +631,17 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .terminal-tab-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  box-sizing: border-box;
   min-width: 0.75em;
-  min-height: 1em;
-  padding: 0 2px;
+  padding: 1px 4px;
+  border: 1px solid transparent;
   border-radius: 2px;
 }
 
 .terminal-tab-name.is-pointed,
 .terminal-tab-name:hover {
-  outline: 1px solid #cccccc;
-  outline-offset: 1px;
+  border-color: #cccccc;
 }
 
 .terminal-tab-kill,

@@ -2,9 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
+import { runtimeEnv } from '../runtime-env.js';
 
-export function tmuxBinary(): string {
-  const directories = (process.env.PATH ?? '').split(delimiter);
+export function tmuxOnPath(pathValue = runtimeEnv().PATH): string | null {
+  const directories = (pathValue ?? '').split(delimiter);
   for (const directory of directories) {
     if (directory.length === 0 || directory.startsWith('/exec-daemon')) {
       continue;
@@ -14,11 +15,15 @@ export function tmuxBinary(): string {
       return candidate;
     }
   }
-  return '/usr/bin/tmux';
+  return null;
+}
+
+export function tmuxBinary(): string {
+  return tmuxOnPath() ?? '/usr/bin/tmux';
 }
 
 export function terminalEnvironment(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = { ...runtimeEnv() };
   delete env.TMUX;
   delete env.TMUX_PANE;
   return env;
@@ -34,6 +39,12 @@ export function sessionDirectory(name: string): string {
   } catch {
     return '';
   }
+}
+
+const appSessionName = /^gm_[0-9a-f]{8}_[A-Za-z0-9-]+_[1-9][0-9]*$/;
+
+export function appTmuxSessions(): string[] {
+  return listTmuxSessions().filter((name) => appSessionName.test(name));
 }
 
 export function listTmuxSessions(): string[] {
@@ -101,6 +112,30 @@ export function killTmuxSession(name: string): void {
     });
   } catch {
     // The session is already gone.
+  }
+}
+
+export function tmuxSessionAlive(name: string): boolean {
+  try {
+    execFileSync(tmuxBinary(), ['has-session', '-t', name], {
+      env: terminalEnvironment(),
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function paneCommand(name: string): string {
+  try {
+    return execFileSync(tmuxBinary(), ['display-message', '-p', '-t', name, '#{pane_current_command}'], {
+      encoding: 'utf8',
+      env: terminalEnvironment(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return '';
   }
 }
 

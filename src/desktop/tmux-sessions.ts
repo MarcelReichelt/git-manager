@@ -82,7 +82,16 @@ function branchSegment(branch: string): string {
       segment += `-${byte.toString(16).padStart(2, '0')}`;
     }
   }
+  // A slash already separates this branch from every tmux-safe name.
+  // An encoding made only of letters, digits, and hyphens would be that safe name.
+  if (/^[A-Za-z0-9-]+$/.test(segment)) {
+    return `${segment}/${branchHash(branch)}`;
+  }
   return segment;
+}
+
+function branchHash(branch: string): string {
+  return createHash('sha256').update(branch).digest('hex').slice(0, 8);
 }
 
 function legacySessionPrefix(repoPath: string, branch: string): string {

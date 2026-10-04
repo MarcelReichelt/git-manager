@@ -28,6 +28,10 @@ function repoHash(repoPath: string): string {
   return createHash('sha256').update(resolve(repoPath)).digest('hex').slice(0, 8);
 }
 
+function branchHash(branch: string): string {
+  return createHash('sha256').update(branch).digest('hex').slice(0, 8);
+}
+
 function createDirectory(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
@@ -341,15 +345,20 @@ describe('branch tmux session prefix', () => {
     const repo = createDirectory('git-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
-    const dotted = `gm_${hash}_feature-2efoo_1`;
-    const colon = `gm_${hash}_feature-3afoo_1`;
+    const dotted = `gm_${hash}_feature-2efoo/${branchHash('feature.foo')}_1`;
+    const colon = `gm_${hash}_feature-3afoo/${branchHash('feature:foo')}_1`;
+    const encodedSafe = `gm_${hash}_feature-2efoo_1`;
 
     expect(sessionName(repo, 'feature.foo', 1)).toBe(dotted);
     expect(sessionName(repo, 'feature:foo', 1)).toBe(colon);
+    expect(sessionName(repo, 'feature-2efoo', 1)).toBe(encodedSafe);
     expect(createBranchSession(repo, 'feature.foo', repo, 1)).toBe(dotted);
+    expect(createBranchSession(repo, 'feature-2efoo', repo, 1)).toBe(encodedSafe);
     expect(sessionsForBranch(repo, 'feature.foo')).toEqual([dotted]);
+    expect(sessionsForBranch(repo, 'feature-2efoo')).toEqual([encodedSafe]);
     expect(sessionsForBranch(repo, 'feature-foo')).toEqual([]);
     expect(appTmuxSessions()).toContain(dotted);
+    expect(appTmuxSessions()).toContain(encodedSafe);
   });
 
   it('still lists an untagged legacy session for the branch that created it', () => {

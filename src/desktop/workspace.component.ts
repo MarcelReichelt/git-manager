@@ -63,8 +63,17 @@ import {
   type TerminalView,
   type WorktreeTerminalView,
 } from './terminal-tabs';
-import { sessionsForBranch, tmuxOnPath } from './tmux-sessions';
 import {
+  ambiguousLegacySessions,
+  claimUniqueLegacySessions,
+  killTmuxSession,
+  rememberSessionBranch,
+  sessionsForBranch,
+  tmuxOnPath,
+  type OldSessionChoice,
+} from './tmux-sessions';
+import {
+  listBranches,
   listRemoteBranchesWithoutWorktree,
   listWorktreeBranches,
   pinDefaultBranch,
@@ -757,15 +766,61 @@ button, input { font: inherit; color: inherit; }
   letter-spacing: -0.02em;
 }
 
-[data-testid='terminal-mode-dialog'] p {
+[data-testid='terminal-mode-dialog'] p,
+[data-testid='old-session-dialog'] p {
   margin: 0;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
 }
 
+[data-testid='old-session-dialog'] {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 60, 43, 0.45);
+}
+
+[data-testid='old-session-dialog'] .dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 32rem;
+  max-width: calc(100vw - 32px);
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 8px;
+  color: var(--grid);
+}
+
+[data-testid='old-session-dialog'] h2 {
+  margin-bottom: 4px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-testid='old-session'] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-testid='old-session'] .dialog-actions {
+  flex-wrap: wrap;
+}
+
 [data-testid='terminal-mode-keep'],
 [data-testid='terminal-mode-kill'],
 [data-testid='terminal-mode-cancel'],
+[data-testid='old-session-branch'],
+[data-testid='old-session-kill'],
+[data-testid='old-session-leave'],
 [data-testid='reset-colors'],
 [data-testid='close-app-settings'] {
   box-sizing: border-box;
@@ -1528,6 +1583,26 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (oldSessionChoices().length > 0) {
+      <div data-testid="old-session-dialog" role="dialog" aria-label="Old tmux sessions" (click)="dismissOldSessionsFromBackdrop($event)">
+        <section class="dialog-panel" (click)="$event.stopPropagation()">
+          <h2>Old tmux sessions</h2>
+          <p>These sessions were created before a branch was recorded, and each name matches more than one branch.</p>
+          @for (session of oldSessionChoices(); track session.name) {
+            <div data-testid="old-session" [attr.data-session]="session.name">
+              <p>{{ session.name }}</p>
+              <div class="dialog-actions">
+                @for (branch of session.branches; track branch) {
+                  <button type="button" data-testid="old-session-branch" [attr.data-branch]="branch" (click)="keepOldSession(session.name, branch)">{{ branch }}</button>
+                }
+                <button type="button" data-testid="old-session-kill" (click)="killOldSession(session.name)">Kill</button>
+                <button type="button" data-testid="old-session-leave" (click)="leaveOldSession(session.name)">Leave unchanged</button>
+              </div>
+            </div>
+          }
+        </section>
+      </div>
+    }
     @if (pendingTerminalMode() !== null) {
       <div data-testid="terminal-mode-dialog" role="dialog" aria-label="Terminal mode" (click)="dismissTerminalModeFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
@@ -1648,6 +1723,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly shellCommandDraft = signal(readAppSettings().shellCommand);
   readonly shellCommandEditing = signal(false);
   readonly pendingTerminalMode = signal<TerminalMode | null>(null);
+  readonly oldSessionChoices = signal<OldSessionChoice[]>([]);
+  private dismissedOldSessions = new Set<string>();
+  private oldSessionRepo: string | null = null;
   readonly terminalFont = signal(readAppSettings().terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
   readonly terminalBackground = signal(readAppSettings().terminalBackground);
@@ -2516,6 +2594,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (event.key !== 'Escape') {
       return;
     }
+    if (this.oldSessionChoices().length > 0) {
+      this.dismissOldSessions();
+      return;
+    }
     if (this.pendingTerminalMode() !== null) {
       this.cancelTerminalMode();
       return;
@@ -3189,6 +3271,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (path === null) {
       return;
     }
+    this.claimOldSessions(path);
     this.realBranches.set(
       listWorktreeBranches(path).map((branch) => ({
         name: branch.name,
@@ -3197,6 +3280,48 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
         ahead: branch.ahead,
         behind: branch.behind,
       })),
+    );
+  }
+
+  keepOldSession(name: string, branch: string): void {
+    rememberSessionBranch(name, branch);
+    this.oldSessionChoices.update((choices) => choices.filter((choice) => choice.name !== name));
+  }
+
+  killOldSession(name: string): void {
+    killTmuxSession(name);
+    this.oldSessionChoices.update((choices) => choices.filter((choice) => choice.name !== name));
+  }
+
+  leaveOldSession(name: string): void {
+    this.dismissedOldSessions.add(name);
+    this.oldSessionChoices.update((choices) => choices.filter((choice) => choice.name !== name));
+  }
+
+  dismissOldSessionsFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.dismissOldSessions();
+    }
+  }
+
+  private dismissOldSessions(): void {
+    for (const choice of this.oldSessionChoices()) {
+      this.dismissedOldSessions.add(choice.name);
+    }
+    this.oldSessionChoices.set([]);
+  }
+
+  private claimOldSessions(path: string): void {
+    if (path !== this.oldSessionRepo) {
+      this.dismissedOldSessions.clear();
+      this.oldSessionRepo = path;
+    }
+    const branches = listBranches(path)
+      .filter((branch) => branch.status !== 'remote-only')
+      .map((branch) => branch.name);
+    claimUniqueLegacySessions(path, branches);
+    this.oldSessionChoices.set(
+      ambiguousLegacySessions(path, branches).filter((choice) => !this.dismissedOldSessions.has(choice.name)),
     );
   }
 }

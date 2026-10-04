@@ -16,6 +16,10 @@ _Avoid_: sheet
 The row under the content. It holds the terminal tabs for the selected worktree.
 _Avoid_: terminal panel
 
+**Arrangement**:
+The app-wide sizes of the content and the terminal section, and whether the terminal section is collapsed.
+_Avoid_: layout
+
 **Registered repository**:
 A local git repository the app knows how to open, recorded by its path and display name.
 _Avoid_: project

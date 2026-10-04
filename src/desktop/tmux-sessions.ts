@@ -82,9 +82,70 @@ function branchHash(branch: string): string {
   return createHash('sha256').update(branch).digest('hex').slice(0, 8);
 }
 
+function sanitizedBranch(branch: string): string {
+  return branch.replace(/[^A-Za-z0-9-]/g, '-');
+}
+
 function legacySessionPrefix(repoPath: string, branch: string): string {
-  const safeBranch = branch.replace(/[^A-Za-z0-9-]/g, '-');
-  return `gm_${repositoryHash(repoPath)}_${safeBranch}_`;
+  return `gm_${repositoryHash(repoPath)}_${sanitizedBranch(branch)}_`;
+}
+
+export type OldSessionChoice = {
+  name: string;
+  branches: string[];
+};
+
+export function claimUniqueLegacySessions(repoPath: string, branches: readonly string[]): void {
+  for (const session of untaggedOldSessions(repoPath)) {
+    const matched = branchesMatchingOldName(branches, session.segment);
+    if (matched.length === 1) {
+      rememberSessionBranch(session.name, matched[0]);
+    }
+  }
+}
+
+export function ambiguousLegacySessions(repoPath: string, branches: readonly string[]): OldSessionChoice[] {
+  const choices: OldSessionChoice[] = [];
+  for (const session of untaggedOldSessions(repoPath)) {
+    const matched = branchesMatchingOldName(branches, session.segment);
+    if (matched.length > 1) {
+      choices.push({ name: session.name, branches: matched });
+    }
+  }
+  return choices.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+}
+
+function branchesMatchingOldName(branches: readonly string[], segment: string): string[] {
+  return branches.filter((branch) => sanitizedBranch(branch) === segment);
+}
+
+type OldSession = {
+  name: string;
+  segment: string;
+};
+
+function untaggedOldSessions(repoPath: string): OldSession[] {
+  const prefix = `gm_${repositoryHash(repoPath)}_`;
+  const sessions: OldSession[] = [];
+    for (const session of listedTmuxSessions()) {
+    if (session.branch.length > 0 || !session.name.startsWith(prefix)) {
+      continue;
+    }
+    const segment = oldNameSegment(session.name.slice(prefix.length));
+    if (segment === undefined) {
+      continue;
+    }
+    sessions.push({ name: session.name, segment });
+  }
+  return sessions;
+}
+
+function oldNameSegment(rest: string): string | undefined {
+  const match = /^([A-Za-z0-9-]+)_([1-9][0-9]*)$/.exec(rest);
+  if (!match) {
+    return undefined;
+  }
+  return match[1];
 }
 
 function repositoryHash(repoPath: string): string {
@@ -152,6 +213,13 @@ export function createBranchSession(
     );
   }
   return name;
+}
+
+export function rememberSessionBranch(name: string, branch: string): void {
+  execFileSync(tmuxBinary(), ['set-option', '-t', name, '@gm_branch', branch], {
+    env: terminalEnvironment(),
+    stdio: 'ignore',
+  });
 }
 
 export function killTmuxSession(name: string): void {

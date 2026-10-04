@@ -149,6 +149,39 @@ function hasSession(session: string): boolean {
   }
 }
 
+function recordedBranch(session: string): string {
+  try {
+    return execFileSync(tmuxBinary(), ['show-options', '-v', '-t', session, '@gm_branch'], {
+      encoding: 'utf8',
+      env: tmuxEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function oldSessionDialog(fixture: ComponentFixture<WorkspaceComponent>): HTMLElement | null {
+  const dialog = fixture.nativeElement.querySelector('[data-testid="old-session-dialog"]');
+  return dialog instanceof HTMLElement ? dialog : null;
+}
+
+function oldSessionRow(dialog: ParentNode, session: string): HTMLElement {
+  const row = dialog.querySelector(`[data-testid="old-session"][data-session="${session}"]`);
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`${session} is not in the question`);
+  }
+  return row;
+}
+
+function oldSessionBranch(row: ParentNode, branch: string): HTMLButtonElement {
+  const button = row.querySelector(`[data-testid="old-session-branch"][data-branch="${branch}"]`);
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`${branch} is not offered`);
+  }
+  return button;
+}
+
 describe('branch tmux session prefix', () => {
   const roots: string[] = [];
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
@@ -317,6 +350,408 @@ describe('branch tmux session prefix', () => {
     expect(sessionsForBranch(repo, 'feature/foo')).toEqual([legacySlash]);
     expect(sessionsForBranch(repo, 'feature-foo')).toEqual([legacySlash]);
     expect(sessionsForBranch(repo, 'feature')).toEqual([legacySafe]);
+  });
+
+  it('tags an untagged feature session when that branch is the only match and does not ask', async () => {
+    const repo = createRepo('git-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_feature_1`;
+    startUntaggedSession(session, repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('feature');
+    expect(hasSession(session)).toBe(true);
+    expect(listTmuxSessions()).toContain(session);
+    expect(sessionsForBranch(repo.repo, 'feature')).toEqual([session]);
+    expect(branchRow(fixture, 'feature')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('tags an untagged feature-foo session as feature/foo when that is the only match and keeps the old name', async () => {
+    const repo = createRepo('git-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const session = `gm_${hash}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('feature/foo');
+    expect(hasSession(session)).toBe(true);
+    expect(listTmuxSessions()).toContain(session);
+    expect(listTmuxSessions()).not.toContain(`gm_${hash}_feature/foo_1`);
+    expect(sessionsForBranch(repo.repo, 'feature/foo')).toEqual([session]);
+  });
+
+  it('does not list a silently tagged session for a branch created later with the same old name', async () => {
+    const repo = createRepo('git-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    execFileSync('git', ['branch', 'feature-foo'], { cwd: repo.repo, stdio: 'ignore' });
+
+    expect(recordedBranch(session)).toBe('feature/foo');
+    expect(sessionsForBranch(repo.repo, 'feature/foo')).toEqual([session]);
+    expect(sessionsForBranch(repo.repo, 'feature-foo')).toEqual([]);
+  });
+
+  it('asks before keeping an untagged session that matches two branches', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    const row = oldSessionRow(dialog, session);
+    expect(oldSessionBranch(row, 'feature/foo').textContent?.trim()).toBe('feature/foo');
+    expect(oldSessionBranch(row, 'feature-foo').textContent?.trim()).toBe('feature-foo');
+    expect(row.querySelector('[data-testid="old-session-kill"]')?.textContent?.trim()).toBe('Kill');
+    expect(row.querySelector('[data-testid="old-session-leave"]')?.textContent?.trim()).toBe('Leave unchanged');
+    expect(branchRow(fixture, 'feature/foo')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('lists each ambiguous session and tags a session that matches one branch', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+      { name: 'topic', folder: 'topic' },
+    ]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const first = `gm_${hash}_feature-foo_1`;
+    const second = `gm_${hash}_feature-foo_2`;
+    const unique = `gm_${hash}_topic_1`;
+    startUntaggedSession(first, repo.repo);
+    startUntaggedSession(second, repo.repo);
+    startUntaggedSession(unique, repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+    expect(dialog.querySelectorAll('[data-testid="old-session"]')).toHaveLength(2);
+    expect(oldSessionRow(dialog, first)).toBeInstanceOf(HTMLElement);
+    expect(oldSessionRow(dialog, second)).toBeInstanceOf(HTMLElement);
+    expect(dialog.textContent).not.toContain(unique);
+    expect(recordedBranch(unique)).toBe('topic');
+    expect(recordedBranch(first)).toBe('');
+    expect(recordedBranch(second)).toBe('');
+  });
+
+  it('keeps the old name and lists the session only for the branch the person chooses', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const session = `gm_${hash}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+
+    oldSessionBranch(oldSessionRow(dialog, session), 'feature/foo').click();
+    fixture.detectChanges();
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('feature/foo');
+    expect(hasSession(session)).toBe(true);
+    expect(listTmuxSessions()).toContain(session);
+    expect(listTmuxSessions()).not.toContain(`gm_${hash}_feature/foo_1`);
+    expect(sessionsForBranch(repo.repo, 'feature/foo')).toEqual([session]);
+    expect(sessionsForBranch(repo.repo, 'feature-foo')).toEqual([]);
+  });
+
+  it('ends the session when the person chooses Kill', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const session = `gm_${hash}_feature-foo_1`;
+    const other = `gm_${hash}_feature-foo_2`;
+    startUntaggedSession(session, repo.repo);
+    startUntaggedSession(other, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+
+    const kill = oldSessionRow(dialog, session).querySelector('[data-testid="old-session-kill"]');
+    if (!(kill instanceof HTMLButtonElement)) {
+      throw new Error('Kill is not shown');
+    }
+    kill.click();
+    fixture.detectChanges();
+
+    expect(hasSession(session)).toBe(false);
+    expect(sessionsForBranch(repo.repo, 'feature/foo')).not.toContain(session);
+    expect(sessionsForBranch(repo.repo, 'feature-foo')).not.toContain(session);
+    expect(hasSession(other)).toBe(true);
+    expect(recordedBranch(other)).toBe('');
+    const remaining = oldSessionDialog(fixture);
+    if (!(remaining instanceof HTMLElement)) {
+      throw new Error('The other session left the question');
+    }
+    expect(oldSessionRow(remaining, other)).toBeInstanceOf(HTMLElement);
+  });
+
+  it('leaves an ambiguous session unchanged and still opens the workspace', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const session = `gm_${hash}_feature-foo_1`;
+    const other = `gm_${hash}_feature-foo_2`;
+    startUntaggedSession(session, repo.repo);
+    startUntaggedSession(other, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+
+    const leave = oldSessionRow(dialog, session).querySelector('[data-testid="old-session-leave"]');
+    if (!(leave instanceof HTMLButtonElement)) {
+      throw new Error('Leave unchanged is not shown');
+    }
+    leave.click();
+    fixture.detectChanges();
+
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    expect(listTmuxSessions()).toContain(session);
+    expect(branchRow(fixture, 'feature/foo')).toBeInstanceOf(HTMLElement);
+    const remaining = oldSessionDialog(fixture);
+    if (!(remaining instanceof HTMLElement)) {
+      throw new Error('The other session left the question');
+    }
+    expect(oldSessionRow(remaining, other)).toBeInstanceOf(HTMLElement);
+    expect(remaining.textContent).not.toContain(session);
+  });
+
+  it('asks again when that repository is opened after a session was left unchanged', async () => {
+    const harbor = createRepo('git-manager-prefix-harbor-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    const atlas = createRepo('git-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
+    roots.push(harbor.root, atlas.root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    addRepository(harbor.repo, 'Harbor');
+    addRepository(atlas.repo, 'Atlas');
+    const session = `gm_${repoHash(harbor.repo)}_feature-foo_1`;
+    startUntaggedSession(session, harbor.repo);
+    fixture = await renderWorkspace(null, { liveRegistry: true });
+    chooseRepository(fixture, 'Harbor');
+
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+    const leave = oldSessionRow(dialog, session).querySelector('[data-testid="old-session-leave"]');
+    if (!(leave instanceof HTMLButtonElement)) {
+      throw new Error('Leave unchanged is not shown');
+    }
+    leave.click();
+    fixture.detectChanges();
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    expect(branchRow(fixture, 'feature/foo')).toBeInstanceOf(HTMLElement);
+
+    switchRepository(fixture, 'Atlas');
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+
+    switchRepository(fixture, 'Harbor');
+    const again = oldSessionDialog(fixture);
+    if (!(again instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown again');
+    }
+    expect(oldSessionRow(again, session)).toBeInstanceOf(HTMLElement);
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+  });
+
+  it('leaves a session running and does not ask when its old name matches no branch', async () => {
+    const repo = createRepo('git-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_retired_1`;
+    startUntaggedSession(session, repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    expect(sessionsForBranch(repo.repo, 'feature')).not.toContain(session);
+    expect(branchRow(fixture, 'feature')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('leaves a tmux session that is not the app running and out of the question', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+    startUntaggedSession('outside-kept', repo.repo);
+
+    fixture = await renderWorkspace(repo.repo);
+
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+    expect(dialog.textContent).not.toContain('outside-kept');
+    expect(oldSessionRow(dialog, session)).toBeInstanceOf(HTMLElement);
+    expect(hasSession('outside-kept')).toBe(true);
+    expect(recordedBranch('outside-kept')).toBe('');
+  });
+
+  it('leaves an old session for another repository until that repository is opened', async () => {
+    const harbor = createRepo('git-manager-prefix-harbor-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    const atlas = createRepo('git-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
+    roots.push(harbor.root, atlas.root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    addRepository(harbor.repo, 'Harbor');
+    addRepository(atlas.repo, 'Atlas');
+    const harborSession = `gm_${repoHash(harbor.repo)}_feature-foo_1`;
+    const atlasSession = `gm_${repoHash(atlas.repo)}_feature_1`;
+    startUntaggedSession(harborSession, harbor.repo);
+    startUntaggedSession(atlasSession, atlas.repo);
+    fixture = await renderWorkspace(null, { liveRegistry: true });
+
+    chooseRepository(fixture, 'Harbor');
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(harborSession)).toBe('feature/foo');
+    expect(listTmuxSessions()).toContain(harborSession);
+    expect(recordedBranch(atlasSession)).toBe('');
+    expect(hasSession(atlasSession)).toBe(true);
+
+    switchRepository(fixture, 'Atlas');
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(atlasSession)).toBe('feature');
+    expect(listTmuxSessions()).toContain(atlasSession);
+    expect(recordedBranch(harborSession)).toBe('feature/foo');
+    expect(hasSession(harborSession)).toBe(true);
+  });
+
+  it('leaves the remaining sessions unchanged when Escape closes the question', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const hash = repoHash(repo.repo);
+    const first = `gm_${hash}_feature-foo_1`;
+    const second = `gm_${hash}_feature-foo_2`;
+    startUntaggedSession(first, repo.repo);
+    startUntaggedSession(second, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    expect(oldSessionDialog(fixture)).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(first)).toBe('');
+    expect(recordedBranch(second)).toBe('');
+    expect(hasSession(first)).toBe(true);
+    expect(hasSession(second)).toBe(true);
+    expect(branchRow(fixture, 'feature/foo')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('leaves the remaining sessions unchanged when the question backdrop is clicked', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+
+    const panel = dialog.querySelector('.dialog-panel');
+    if (!(panel instanceof HTMLElement)) {
+      throw new Error('Old session question has no panel');
+    }
+    panel.click();
+    fixture.detectChanges();
+    expect(oldSessionDialog(fixture)).not.toBeNull();
+
+    dialog.click();
+    fixture.detectChanges();
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    expect(branchRow(fixture, 'feature/foo')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('does not ask again during the same open after a session is left unchanged', async () => {
+    const repo = createRepo('git-manager-prefix-', [
+      { name: 'feature/foo', folder: 'slash-foo' },
+      { name: 'feature-foo', folder: 'feature-foo' },
+    ]);
+    roots.push(repo.root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    addRepository(repo.repo, 'Billing');
+    const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
+    startUntaggedSession(session, repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+    const dialog = oldSessionDialog(fixture);
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('Old session question is not shown');
+    }
+    const leave = oldSessionRow(dialog, session).querySelector('[data-testid="old-session-leave"]');
+    if (!(leave instanceof HTMLButtonElement)) {
+      throw new Error('Leave unchanged is not shown');
+    }
+    leave.click();
+    fixture.detectChanges();
+    execFileSync('git', ['branch', 'topic'], { cwd: repo.repo, stdio: 'ignore' });
+
+    fixture.componentInstance.createBranchName.set('topic');
+    await fixture.componentInstance.createBranch();
+    fixture.detectChanges();
+
+    expect(oldSessionDialog(fixture)).toBeNull();
+    expect(recordedBranch(session)).toBe('');
+    expect(hasSession(session)).toBe(true);
+    expect(branchRow(fixture, 'topic')).toBeInstanceOf(HTMLElement);
   });
 
   it('keeps New, Split, and Kill on one branch off the other branch', async () => {

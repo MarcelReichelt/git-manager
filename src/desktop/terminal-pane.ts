@@ -48,6 +48,9 @@ export class TerminalPane implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    if (this.sessionName().length === 0) {
+      return;
+    }
     const term = new Terminal({
       cols: 80,
       rows: 24,

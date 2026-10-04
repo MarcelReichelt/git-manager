@@ -700,10 +700,4 @@ ul { margin: 0; padding: 0; list-style: none; }
   text-transform: none;
 }
 
-.terminal-pane {
-  background-color: #1e1e1e;
-  flex: 1;
-  min-height: 0;
-}
-
 [data-testid='workspace-error'] { color: var(--coral); }

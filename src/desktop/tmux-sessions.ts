@@ -48,26 +48,14 @@ export function appTmuxSessions(): string[] {
 }
 
 export function listTmuxSessions(): string[] {
-  try {
-    const output = execFileSync(tmuxBinary(), ['list-sessions', '-F', '#{session_name}'], {
-      encoding: 'utf8',
-      env: terminalEnvironment(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  } catch {
-    return [];
-  }
+  return listedTmuxSessions().map((session) => session.name);
 }
 
 export function branchSessionPrefix(repoPath: string, branch: string): string {
-  return `gm_${repositoryHash(repoPath)}_${branchSegment(branch)}_`;
+  return `gm_${repositoryHash(repoPath)}_${tmuxNameSegmentForBranch(branch)}_`;
 }
 
-function branchSegment(branch: string): string {
+function tmuxNameSegmentForBranch(branch: string): string {
   if (/^[A-Za-z0-9-]+$/.test(branch)) {
     return branch;
   }
@@ -139,7 +127,7 @@ type OldSession = {
 function untaggedOldSessions(repoPath: string): OldSession[] {
   const prefix = `gm_${repositoryHash(repoPath)}_`;
   const sessions: OldSession[] = [];
-  for (const session of listSessionsWithBranch()) {
+    for (const session of listedTmuxSessions()) {
     if (session.branch.length > 0 || !session.name.startsWith(prefix)) {
       continue;
     }
@@ -169,30 +157,42 @@ export function sessionName(repoPath: string, branch: string, index: number): st
 }
 
 export function sessionsForBranch(repoPath: string, branch: string): string[] {
-  const canonical = branchSessionPrefix(repoPath, branch);
-  const legacy = legacySessionPrefix(repoPath, branch);
-  const repositoryPrefix = `gm_${repositoryHash(repoPath)}_`;
-  return listSessionsWithBranch()
-    .filter((session) => belongsToBranch(session, branch, repositoryPrefix, canonical, legacy))
+  const prefixes = sessionPrefixes(repoPath, branch);
+  return listedTmuxSessions()
+    .filter((session) => belongsToBranch(session, branch, prefixes))
     .map((session) => session.name)
     .sort(
       (left, right) =>
-        (recognizedIndex(left, canonical, legacy) ?? 0) - (recognizedIndex(right, canonical, legacy) ?? 0),
+        (sessionIndexRecognizedForBranch(left, prefixes) ?? 0) -
+        (sessionIndexRecognizedForBranch(right, prefixes) ?? 0),
     );
 }
 
 export function nextSessionIndex(repoPath: string, branch: string, known: string[]): number {
-  const canonical = branchSessionPrefix(repoPath, branch);
-  const legacy = legacySessionPrefix(repoPath, branch);
+  const prefixes = sessionPrefixes(repoPath, branch);
   const names = new Set<string>([...known, ...sessionsForBranch(repoPath, branch)]);
   let highest = 0;
   for (const name of names) {
-    const index = recognizedIndex(name, canonical, legacy);
+    const index = sessionIndexRecognizedForBranch(name, prefixes);
     if (index !== undefined) {
       highest = Math.max(highest, index);
     }
   }
   return highest + 1;
+}
+
+interface SessionPrefixes {
+  canonical: string;
+  legacy: string;
+  repository: string;
+}
+
+function sessionPrefixes(repoPath: string, branch: string): SessionPrefixes {
+  return {
+    canonical: branchSessionPrefix(repoPath, branch),
+    legacy: legacySessionPrefix(repoPath, branch),
+    repository: `gm_${repositoryHash(repoPath)}_`,
+  };
 }
 
 export function createBranchSession(
@@ -262,7 +262,7 @@ type ListedSession = {
   branch: string;
 };
 
-function listSessionsWithBranch(): ListedSession[] {
+function listedTmuxSessions(): ListedSession[] {
   try {
     const output = execFileSync(tmuxBinary(), ['list-sessions', '-F', '#{session_name}|#{@gm_branch}'], {
       encoding: 'utf8',
@@ -287,21 +287,15 @@ function parseListedSession(line: string): ListedSession {
   return { name: line.slice(0, separator), branch: line.slice(separator + 1) };
 }
 
-function belongsToBranch(
-  session: ListedSession,
-  branch: string,
-  repositoryPrefix: string,
-  canonical: string,
-  legacy: string,
-): boolean {
+function belongsToBranch(session: ListedSession, branch: string, prefixes: SessionPrefixes): boolean {
   if (session.branch.length > 0) {
-    return session.branch === branch && session.name.startsWith(repositoryPrefix);
+    return session.branch === branch && session.name.startsWith(prefixes.repository);
   }
-  return recognizedIndex(session.name, canonical, legacy) !== undefined;
+  return sessionIndexRecognizedForBranch(session.name, prefixes) !== undefined;
 }
 
-function recognizedIndex(name: string, canonical: string, legacy: string): number | undefined {
-  return sessionIndex(canonical, name) ?? sessionIndex(legacy, name);
+function sessionIndexRecognizedForBranch(name: string, prefixes: SessionPrefixes): number | undefined {
+  return sessionIndex(prefixes.canonical, name) ?? sessionIndex(prefixes.legacy, name);
 }
 
 function sessionIndex(prefix: string, name: string): number | undefined {

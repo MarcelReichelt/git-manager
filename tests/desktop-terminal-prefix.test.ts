@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { addRepository } from '../src/registry';
+import { createRepository as createRepo, renderWorkspace, waitForTerminal as waitFor } from './desktop-terminal-harness';
 import {
   appTmuxSessions,
   createBranchSession,
@@ -50,56 +51,10 @@ function startUntaggedSession(name: string, cwd: string): void {
   });
 }
 
-function createRepo(
-  prefix: string,
-  branches: ReadonlyArray<{ name: string; folder: string }>,
-): { root: string; repo: string } {
-  const root = mkdtempSync(join(tmpdir(), prefix));
-  const repo = join(root, 'billing');
-  mkdirSync(repo);
-  execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
-  writeFileSync(join(repo, 'README'), 'hi\n');
-  execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
-  mkdirSync(join(repo, '.workspaces'));
-  for (const branch of branches) {
-    addWorktree(repo, branch.name, join(repo, '.workspaces', branch.folder));
-  }
-  return { root, repo };
-}
-
-function addWorktree(repo: string, branch: string, path: string): void {
-  execFileSync('git', ['branch', branch], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['worktree', 'add', path, branch], { cwd: repo, stdio: 'ignore' });
-}
-
 function writeSettings(root: string, settings: Record<string, string>): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, `${JSON.stringify(settings)}\n`);
   process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
-}
-
-async function renderWorkspace(
-  repo: string | null,
-  options?: { liveRegistry?: boolean },
-): Promise<ComponentFixture<WorkspaceComponent>> {
-  TestBed.resetTestingModule();
-  await TestBed.configureTestingModule({
-    imports: [WorkspaceComponent],
-  }).compileComponents();
-  const fixture = TestBed.createComponent(WorkspaceComponent);
-  if (repo !== null) {
-    fixture.componentRef.setInput('repositoryPath', repo);
-  }
-  if (options?.liveRegistry) {
-    fixture.componentRef.setInput('liveRegistry', true);
-  }
-  fixture.detectChanges();
-  await fixture.whenStable();
-  fixture.detectChanges();
-  return fixture;
 }
 
 function branchRow(fixture: ComponentFixture<WorkspaceComponent>, name: string): HTMLElement {
@@ -225,17 +180,6 @@ function oldSessionBranch(row: ParentNode, branch: string): HTMLButtonElement {
     throw new Error(`${branch} is not offered`);
   }
   return button;
-}
-
-async function waitFor(check: () => boolean): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < 8000) {
-    if (check()) {
-      return;
-    }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
-  }
-  throw new Error('timed out waiting for the terminal');
 }
 
 describe('branch tmux session prefix', () => {

@@ -2474,8 +2474,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   beginCommitsSplit(event: PointerEvent): void {
+    const stack = (event.currentTarget as HTMLElement | null)?.parentElement?.clientHeight ?? 0;
     this.beginSplit(event, 'y', this.changesPaneHeight(), (value) => {
-      this.changesPaneHeight.set(value);
+      this.changesPaneHeight.set(this.clampChangesDrag(value, stack));
       this.rememberChangesShare();
     });
   }
@@ -2562,6 +2563,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.terminalExpanded.set(true);
       this.ensureTerminal();
     }
+    this.fitDockedTerminal();
     this.applyChangesShare();
     this.persistArrangement();
   }
@@ -2581,15 +2583,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private rememberChangesShare(): void {
-    const content = this.stackContentHeight();
-    if (content > 0) {
-      this.changesShare.set(this.changesPaneHeight() / content);
+    const room = this.paneRoom();
+    if (room > 0) {
+      this.changesShare.set(this.changesPaneHeight() / room);
     }
   }
 
   private applyChangesShare(): void {
-    const content = this.stackContentHeight();
-    if (content <= 0) {
+    const room = this.paneRoom();
+    if (room <= 0) {
       return;
     }
     const share = this.changesShare();
@@ -2597,14 +2599,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.rememberChangesShare();
       return;
     }
-    let changesPx = share * content;
-    if (content >= headingMinHeight * 2) {
-      changesPx = Math.min(content - headingMinHeight, Math.max(headingMinHeight, changesPx));
+    let changesPx = Math.round(share * room);
+    if (room >= headingMinHeight * 2) {
+      changesPx = Math.min(room - headingMinHeight, Math.max(headingMinHeight, changesPx));
     }
     this.changesPaneHeight.set(changesPx);
   }
 
-  private stackContentHeight(): number {
+  private paneRoom(): number {
+    const stack = this.stackHeight();
+    if (stack <= 8) {
+      return 0;
+    }
+    return stack - 8;
+  }
+
+  private stackHeight(): number {
     if (this.terminalMaximized()) {
       return 0;
     }
@@ -2621,16 +2631,27 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return body - 8 - this.terminalRowHeight();
   }
 
+  private clampChangesDrag(value: number, stack: number): number {
+    if (stack < headingMinHeight * 2 + 8) {
+      return value;
+    }
+    return Math.min(stack - 8 - headingMinHeight, Math.max(headingMinHeight, value));
+  }
+
   private fitDockedTerminal(): void {
+    if (this.terminalMaximized() || !this.terminalExpanded()) {
+      return;
+    }
     const body = this.sheetBody()?.nativeElement.clientHeight ?? 0;
     if (body <= 0) {
       return;
     }
-    const fitted = body - 8 - headingMinHeight * 2;
-    const content = body - 8 - this.terminalRowHeight();
-    if (content < headingMinHeight * 2 && fitted >= 80) {
-      this.terminalRowHeight.set(fitted);
+    const roomForTerminal = body - 8 - (headingMinHeight * 2 + 8);
+    if (roomForTerminal >= 80 && this.arrangedTerminalRowHeight > roomForTerminal) {
+      this.terminalRowHeight.set(roomForTerminal);
+      return;
     }
+    this.terminalRowHeight.set(this.arrangedTerminalRowHeight);
   }
 
   private persistArrangement(): void {
@@ -2648,6 +2669,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.terminalMaximized.set(false);
       this.terminalExpanded.set(true);
       this.maximizedBodyHeight.set(null);
+      this.fitDockedTerminal();
+      this.applyChangesShare();
+      this.persistArrangement();
       return;
     }
     this.terminalMaximized.set(true);

@@ -270,14 +270,14 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
 }
 
 function readChangesShare(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value >= 1) {
+  if (typeof value !== 'number') {
     return null;
   }
   return value;
 }
 
 function readPixels(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
+  if (typeof value !== 'number') {
     return fallback;
   }
   return value;

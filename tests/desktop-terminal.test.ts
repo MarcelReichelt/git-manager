@@ -981,6 +981,26 @@ describe('branch terminal', () => {
     expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
+  it('saves the section as expanded when maximize is restored', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    clickCollapse(fixture);
+    clickControl(fixture, 'Maximize terminal');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalExpanded).toBe(false);
+
+    clickControl(fixture, 'Restore terminal');
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalExpanded).toBe(true);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalMaximized).toBeUndefined();
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+  });
+
   it('collapses the terminal row when the last terminal is killed', async () => {
     const repo = createRepo();
     root = repo.root;

@@ -83,7 +83,7 @@ describe('app settings', () => {
       '{"changesShare":1,"terminalRowHeight":"360","changesFileWidth":false,"commitFileWidth":null,"terminalExpanded":"false"}\n',
     );
 
-    expect(readAppSettings(env).changesShare).toBeNull();
+    expect(readAppSettings(env).changesShare).toBe(1);
     expect(readAppSettings(env).terminalRowHeight).toBe(240);
     expect(readAppSettings(env).changesFileWidth).toBe(240);
     expect(readAppSettings(env).commitFileWidth).toBe(240);

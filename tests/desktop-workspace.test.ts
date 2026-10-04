@@ -4156,6 +4156,23 @@ describe('desktop workspace', () => {
     expect(paneTrack(columns, 'gridTemplateRows')).toBe(312);
   });
 
+  it('keeps both headings visible when the changes pane is dragged on a short stack', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    const split = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
+    const stack = split.parentElement as HTMLElement;
+    Object.defineProperty(stack, 'clientHeight', { configurable: true, value: 120 });
+
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 2000 });
+    fixture.detectChanges();
+
+    expect(paneTrack(stack, 'gridTemplateRows')).toBe(68);
+  });
+
   it('remembers the changes and commits share and the docked terminal height', async () => {
     const repoPath = createEmptyRepository(roots);
     const settingsPath = join(repoPath, '..', 'app-settings.json');
@@ -4175,7 +4192,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
-      changesShare: 0.75,
+      changesShare: 300 / 392,
       terminalRowHeight: 320,
       changesFileWidth: 240,
       commitFileWidth: 240,
@@ -4195,7 +4212,7 @@ describe('desktop workspace', () => {
     expect(paneTrack(
       (again.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement).parentElement as HTMLElement,
       'gridTemplateRows',
-    )).toBe(240);
+    )).toBe(239);
     expect(terminalSectionHeight(againBody)).toBe(320);
     again.destroy();
   });
@@ -4272,7 +4289,7 @@ describe('desktop workspace', () => {
     expect(paneTrack(
       (fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement).parentElement as HTMLElement,
       'gridTemplateRows',
-    )).toBe(200);
+    )).toBe(196);
 
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 600 });
     doubleClickDivider(fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement);
@@ -4304,8 +4321,20 @@ describe('desktop workspace', () => {
     window.dispatchEvent(new Event('resize'));
     fixture.detectChanges();
 
-    expect(terminalSectionHeight(body)).toBe(152);
+    expect(terminalSectionHeight(body)).toBe(144);
     expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(44);
+
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    window.dispatchEvent(new Event('resize'));
+    fixture.detectChanges();
+
+    expect(terminalSectionHeight(body)).toBe(400);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(116);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(400);
+
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 248 });
+    window.dispatchEvent(new Event('resize'));
+    fixture.detectChanges();
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(400);
 
     doubleClickDivider(commitsSplit);
@@ -4349,21 +4378,21 @@ describe('desktop workspace', () => {
     dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: 120 });
     fixture.detectChanges();
 
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(240);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(239);
     expect(terminalSectionHeight(body)).toBe(320);
 
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 528 });
     window.dispatchEvent(new Event('resize'));
     fixture.detectChanges();
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(150);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(147);
 
     (fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]') as HTMLElement).click();
     fixture.detectChanges();
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(369);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(370);
 
     (fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]') as HTMLElement).click();
     fixture.detectChanges();
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(150);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(147);
     expect(terminalSectionHeight(body)).toBe(320);
 
     fixture.destroy();
@@ -4382,7 +4411,7 @@ describe('desktop workspace', () => {
     commitsSplit.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
 
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(200);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(196);
     fixture.destroy();
   });
 
@@ -4401,7 +4430,7 @@ describe('desktop workspace', () => {
     dragDivider(terminalSplit, { x: 400, y: 200 }, { x: 400, y: 160 });
     fixture.detectChanges();
 
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(116);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(108);
     fixture.destroy();
   });
 
@@ -4440,7 +4469,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(terminalSectionHeight(body)).toBe(600);
-    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(30);
+    expect(paneTrack(commitsSplit.parentElement as HTMLElement, 'gridTemplateRows')).toBe(24);
     fixture.destroy();
   });
 

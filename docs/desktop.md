@@ -78,7 +78,7 @@ Changing mode asks only when the mode you are leaving still has a running termin
 
 Switching to None hides the section. Keep leaves the terminals running, and they show again when you leave None and select that worktree. Switching repository ends the open workspace's in-app terminals. Tmux sessions keep running. In-app terminals exist only for the open workspace. Tmux sessions for another repository stay off this workspace's tab strip and appear when that repository is open. While the mode is Terminal, tmux sessions for the open repository still appear on the tab strip. They stay hidden while the mode is None.
 
-In Tmux mode, the session name starts with `gm_`, a short hash of the repository path, and the branch. That name is the tmux session, not the tab label. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
+In Tmux mode, the session name starts with `gm_`, a short hash of the repository path, and the branch, a slash in the branch stays in the session name, and a session created with the old sanitized prefix is still that branch's session. That name is the tmux session, not the tab label. `tmux list-sessions` shows the same sessions, and `tmux attach` opens one outside the window.
 
 App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
 

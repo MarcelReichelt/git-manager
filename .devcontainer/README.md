@@ -1,8 +1,8 @@
 # Dev Container
 
 Run and test `git-manager` in a clean **Linux** environment from Windows, so
-POSIX paths, `~/.local/bin`, and the native `better-sqlite3` build behave the
-same way they do for a Linux user.
+POSIX paths, `~/.local/bin`, and the native `better-sqlite3` and `node-pty`
+builds behave the same way they do for a Linux user.
 
 ## Prerequisites
 
@@ -15,8 +15,9 @@ same way they do for a Linux user.
 2. Run **Dev Containers: Reopen in Container** from the Command Palette
    (`F1`), or click the green prompt in the bottom-right.
 
-The first build installs the toolchain (Node 22, Yarn 4 via Corepack, git,
-build tools), then runs `yarn install` and `yarn build` automatically.
+The first build installs the toolchain (Node 22, git, and build tools), enables
+Corepack, then runs `yarn install` and `yarn build` automatically. Yarn 4.17.0
+is the vendored release in `.yarn/releases/`.
 
 ## Test the CLI
 
@@ -33,7 +34,8 @@ node dist/cli.js --help
 yarn link:global
 git-manager --help
 
-# Desktop window (needs a display; the branch terminal uses tmux)
+# Desktop window (needs a display). A new terminal is in-app.
+# App settings can choose tmux when tmux is on PATH.
 yarn desktop
 
 # Run the test suite

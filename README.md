@@ -6,12 +6,15 @@ Requires **Node.js 20** or later.
 
 ## Features
 
-- Desktop window: centered repository card, checked-out worktrees, diffs, commits, and a branch terminal
+- Desktop window: centered repository card, checked-out worktrees, diffs, commits, and a terminal section
+- A new terminal is in-app. App settings can choose a tmux session, or no terminal section
 - Registry of path and display name in `~/.config/git-manager/registry.db`
-- Worktree create in the workspaces or sibling layout, from the repository's own config
-- Merge into master or update from master, with squash, and worktree remove
+- Worktree create in the workspaces or sibling layout, from that repository's config, or the app default when the config sets no layout
+- A new name creates a local branch at the primary checkout's current commit. An existing local or remote branch is checked out
+- Merge into master or update from master, with squash, and worktree remove. The desktop branch menu can push a local-only branch
 - Create hooks: shell commands and TypeScript plugins, including abort
-- Repository settings for the checkout location and git remotes
+- Repository settings for the checkout location, the worktree mode, and git remotes
+- App settings for the default layout, the terminal mode, the shell command, the colors, the terminal font, and the IDE command
 
 ## Install
 
@@ -32,8 +35,8 @@ yarn desktop
 ```
 
 On minimal Linux (Alpine, slim images), you may need build tools for the
-`better-sqlite3` native dependency: `python3`, `make`, and `g++`. See
-[Troubleshooting](docs/troubleshooting.md#npm-install-fails).
+native dependencies `better-sqlite3` and `node-pty`: `python3`, `make`, and
+`g++`. See [Troubleshooting](docs/troubleshooting.md#npm-install-fails).
 
 ## Development
 
@@ -62,13 +65,13 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 | Guide | Topic |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, register, open the workspace |
-| [Desktop](docs/desktop.md) | Card, worktrees, diffs, commits, terminal, remotes |
+| [Desktop](docs/desktop.md) | Card, worktrees, diffs, commits, terminal, push, remotes, settings |
 | [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
 | [Configuration](docs/configuration.md) | Registry file and per-repo TOML |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
 | [Plugins](docs/plugins.md) | Create hooks and plugin modules |
 | [Use cases](docs/use-cases.md) | Create, merge, remove, copy, and hooks |
-| [Troubleshooting](docs/troubleshooting.md) | Install, create, merge, and registry errors |
+| [Troubleshooting](docs/troubleshooting.md) | Install, create, merge, push, and registry errors |
 
 ## License
 

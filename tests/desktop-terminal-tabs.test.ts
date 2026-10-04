@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -342,6 +342,37 @@ describe('terminal tabs', () => {
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([added]);
     expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')).toHaveLength(1);
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]')).toBeNull();
+  });
+
+  it('sets the two shells to half and half when their divider is double-clicked', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
+
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 2);
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]') as HTMLElement;
+    Object.defineProperty(split.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 200 });
+    split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 0, clientY: 0 }));
+    split.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 0 }));
+    split.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 100, clientY: 0 }));
+    fixture.detectChanges();
+
+    const columns = () =>
+      [...fixture!.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns()[0]?.style.flexGrow).toBe('0.8');
+
+    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const before = readFileSync(settingsPath, 'utf8');
+    split.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(columns().map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(before);
   });
 
   it('counts both terminals in a split tab and hides the count at zero', async () => {

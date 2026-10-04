@@ -1090,6 +1090,7 @@ button, input { font: inherit; color: inherit; }
               (pointerdown)="beginChangesSplit($event)"
               (pointermove)="moveSplit($event)"
               (pointerup)="endSplit($event)"
+              (dblclick)="equalizeContentColumns($event)"
             ></div>
             @if (showingCommit() && visibleCommitFiles().length > 0) {
               <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
@@ -1120,6 +1121,7 @@ button, input { font: inherit; color: inherit; }
                 (pointerdown)="beginCommitDetailSplit($event)"
                 (pointermove)="moveSplit($event)"
                 (pointerup)="endSplit($event)"
+                (dblclick)="equalizeContentColumns($event)"
               ></div>
             }
             @if (diffText()) {
@@ -1140,6 +1142,7 @@ button, input { font: inherit; color: inherit; }
                   (pointerdown)="beginTerminalSplit($event)"
                   (pointermove)="moveSplit($event)"
                   (pointerup)="endSplit($event)"
+                  (dblclick)="equalizeTerminalRow($event)"
                 ></div>
               }
               <div class="terminal-row" data-testid="terminal-row">
@@ -1270,6 +1273,7 @@ button, input { font: inherit; color: inherit; }
                               (pointerdown)="beginPaneSplit($event)"
                               (pointermove)="movePaneSplit($event)"
                               (pointerup)="endPaneSplit($event)"
+                              (dblclick)="equalizePaneSplit()"
                             ></div>
                           }
                         }
@@ -2385,12 +2389,35 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     }
   }
 
+  equalizePaneSplit(): void {
+    const tab = this.focusedTerminalTab();
+    if (!tab) {
+      return;
+    }
+    this.updateSelected((state) => ({
+      ...state,
+      tabs: state.tabs.map((item) => (item.id === tab.id ? { ...item, splitRatio: 0.5 } : item)),
+    }));
+  }
+
   controlWindow(action: WindowAction): void {
     requestWindowAction(action);
   }
 
   beginChangesSplit(event: PointerEvent): void {
     this.beginSplit(event, 'x', this.changesFileWidth(), (value) => this.changesFileWidth.set(value));
+  }
+
+  equalizeContentColumns(event: MouseEvent): void {
+    const columns = (event.currentTarget as HTMLElement | null)?.parentElement;
+    const width = columns?.clientWidth ?? 0;
+    if (this.showingCommit() && this.visibleCommitFiles().length > 0) {
+      const column = (width - 16) / 3;
+      this.changesFileWidth.set(column);
+      this.commitFileWidth.set(column);
+      return;
+    }
+    this.changesFileWidth.set((width - 8) / 2);
   }
 
   beginCommitsSplit(event: PointerEvent): void {
@@ -2416,6 +2443,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       0,
       true,
     );
+  }
+
+  equalizeTerminalRow(event: MouseEvent): void {
+    const body = (event.currentTarget as HTMLElement | null)?.parentElement;
+    const span = body?.clientHeight ?? 0;
+    const room = span - 8 - 80;
+    this.terminalRowHeight.set(clampSplit(span / 3, room >= 80 ? room : undefined));
   }
 
   terminalRowTracks(): string {

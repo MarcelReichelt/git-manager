@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { readAppSettings } from '../src/app-settings';
 import { addRepository } from '../src/registry';
+import { createRepository as createRepo, renderWorkspace, waitForTerminal as waitFor } from './desktop-terminal-harness';
 import {
   killTmuxSession,
   listTmuxSessions,
@@ -20,52 +21,8 @@ process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
 process.env.GIT_TERMINAL_PROMPT = '0';
 
-function createRepo(rootName: string): { root: string; repo: string } {
-  const root = mkdtempSync(join(tmpdir(), rootName));
-  const repo = join(root, 'billing');
-  mkdirSync(repo);
-  execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
-  writeFileSync(join(repo, 'README'), 'hi\n');
-  execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['branch', 'feature'], { cwd: repo, stdio: 'ignore' });
-  const worktree = join(repo, '.workspaces', 'feature');
-  mkdirSync(join(repo, '.workspaces'));
-  execFileSync('git', ['worktree', 'add', worktree, 'feature'], { cwd: repo, stdio: 'ignore' });
-  return { root, repo };
-}
-
 function worktreePath(repo: string): string {
   return join(repo, '.workspaces', 'feature');
-}
-
-async function renderWorkspace(
-  repo: string | null,
-  options?: { platform?: string; tmuxInstalled?: boolean; liveRegistry?: boolean },
-): Promise<ComponentFixture<WorkspaceComponent>> {
-  TestBed.resetTestingModule();
-  await TestBed.configureTestingModule({
-    imports: [WorkspaceComponent],
-  }).compileComponents();
-  const fixture = TestBed.createComponent(WorkspaceComponent);
-  if (repo !== null) {
-    fixture.componentRef.setInput('repositoryPath', repo);
-  }
-  if (options?.platform) {
-    fixture.componentRef.setInput('platform', options.platform);
-  }
-  if (options?.tmuxInstalled !== undefined) {
-    fixture.componentRef.setInput('tmuxInstalled', options.tmuxInstalled);
-  }
-  if (options?.liveRegistry) {
-    fixture.componentRef.setInput('liveRegistry', true);
-  }
-  fixture.detectChanges();
-  await fixture.whenStable();
-  fixture.detectChanges();
-  return fixture;
 }
 
 function writeSettings(root: string, settings: Record<string, string>): void {
@@ -306,17 +263,6 @@ function tmuxEnv(): NodeJS.ProcessEnv {
   delete env.TMUX;
   delete env.TMUX_PANE;
   return env;
-}
-
-async function waitFor(check: () => boolean, timeout = 8000): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < timeout) {
-    if (check()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error('timed out waiting for the terminal');
 }
 
 describe('terminal mode', () => {

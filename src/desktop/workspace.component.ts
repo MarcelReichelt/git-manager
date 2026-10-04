@@ -38,7 +38,6 @@ import {
   liveTerminal,
   modeHasRunningTerminals,
   startTerminal,
-  stopAllShells,
   stopModeSessions,
   stopShellTerminals,
   stopTerminal,
@@ -1826,7 +1825,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       clearInterval(this.commandPoll);
       this.commandPoll = null;
     }
-    stopAllShells();
+    stopShellTerminals(this.terminalsByBranch());
   }
 
   choose(name: string): void {

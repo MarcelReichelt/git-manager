@@ -397,9 +397,11 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    await waitFor(() => tabNames(fixture!).length === 1);
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
 
     const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    const gap = tab.querySelector('.terminal-tab-gap') as HTMLElement;
+    expect(getComputedStyle(gap).whiteSpace).toBe('pre');
     rightClick(tab);
     fixture.detectChanges();
 

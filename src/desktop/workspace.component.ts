@@ -1,5 +1,18 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, HostListener, inject, input, NgZone, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
+import {
+  AfterViewChecked,
+  Component,
+  computed,
+  ElementRef,
+  HostListener,
+  inject,
+  input,
+  NgZone,
+  OnDestroy,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
 import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
@@ -984,6 +997,7 @@ button, input { font: inherit; color: inherit; }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
+            @if (!terminalMaximized()) {
             <header class="branch-heading">
               <div class="branch-title">
                 <h2>
@@ -1011,7 +1025,9 @@ button, input { font: inherit; color: inherit; }
                 {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
               </p>
             </header>
-            <div class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
+            }
+            <div #sheetBody class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
+            @if (!terminalMaximized()) {
             <div class="sheet-columns" [style.grid-template-columns]="sheetColumns()">
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
@@ -1129,8 +1145,9 @@ button, input { font: inherit; color: inherit; }
             }
             }
             </div>
+            }
             @if (showTerminalRow()) {
-              @if (terminalExpanded()) {
+              @if (terminalExpanded() && !terminalMaximized()) {
                 <div
                   class="splitter"
                   role="separator"
@@ -1209,6 +1226,22 @@ button, input { font: inherit; color: inherit; }
                   >
                     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                       <path fill="currentColor" d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="terminal-icon"
+                    data-testid="terminal-maximize"
+                    [attr.title]="terminalMaximized() ? 'Restore terminal' : 'Maximize terminal'"
+                    [attr.aria-label]="terminalMaximized() ? 'Restore terminal' : 'Maximize terminal'"
+                    (click)="toggleTerminalMaximize()"
+                  >
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      @if (terminalMaximized()) {
+                        <path fill="currentColor" d="M5.25 2A1.75 1.75 0 0 0 3.5 3.75v.5a.75.75 0 0 1-1.5 0v-.5C2 2.231 3.231 1 4.75 1h.5a.75.75 0 0 1 0 1.5h-.5ZM2 6.25a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 2 6.25Zm0 3.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5a.75.75 0 0 1-.75-.75Zm.75 2.75a.75.75 0 0 0-1.5 0v.5c0 1.519 1.231 2.75 2.75 2.75h.5a.75.75 0 0 0 0-1.5h-.5a1.25 1.25 0 0 1-1.25-1.25v-.5ZM6.25 14a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1-.75-.75Zm4.5 0a.75.75 0 0 1 .75-.75h.5a1.25 1.25 0 0 0 1.25-1.25v-.5a.75.75 0 0 1 1.5 0v.5A2.75 2.75 0 0 1 11.75 15h-.5a.75.75 0 0 1-.75-.75Zm3.25-9.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75ZM14 6.25a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75Zm0 3.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75ZM8.75 2a.75.75 0 0 1 0-1.5h2A2.75 2.75 0 0 1 13.5 3.25v.5a.75.75 0 0 1-1.5 0v-.5c0-.69-.56-1.25-1.25-1.25h-2Z" />
+                      } @else {
+                        <path fill="currentColor" d="M1.75 10a.75.75 0 0 1 .75.75v2.5c0 .138.112.25.25.25h2.5a.75.75 0 0 1 0 1.5h-2.5A1.75 1.75 0 0 1 1 13.25v-2.5a.75.75 0 0 1 .75-.75Zm12.5 0a.75.75 0 0 1 .75.75v2.5A1.75 1.75 0 0 1 13.25 15h-2.5a.75.75 0 0 1 0-1.5h2.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 .75-.75ZM4.25 2a.25.25 0 0 0-.25.25v2.5a.75.75 0 0 1-1.5 0v-2.5C2.5 1.784 3.284 1 4.25 1h2.5a.75.75 0 0 1 0 1.5ZM10 1.75a.75.75 0 0 1 .75-.75h2.5c.966 0 1.75.784 1.75 1.75v2.5a.75.75 0 0 1-1.5 0v-2.5a.25.25 0 0 0-.25-.25h-2.5a.75.75 0 0 1-.75-.75Z" />
+                      }
                     </svg>
                   </button>
                   <button
@@ -1681,7 +1714,7 @@ button, input { font: inherit; color: inherit; }
     }
   `,
 })
-export class WorkspaceComponent implements OnInit, OnDestroy {
+export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewChecked {
   private readonly zone = inject(NgZone);
   private readonly repositorySettings = viewChild(RepositorySettings);
   readonly repositoryPath = input<string | null>(null);
@@ -1748,6 +1781,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly commitFileWidth = signal(240);
   readonly terminalRowHeight = signal(240);
   readonly terminalExpanded = signal(true);
+  readonly terminalMaximized = signal(false);
+  private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
+  private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
   private commandPoll: ReturnType<typeof setInterval> | null = null;
   private paneSplitDrag: {
@@ -1896,6 +1932,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.commandPoll = setInterval(() => {
       this.zone.run(() => this.refreshTerminalCommands());
     }, 250);
+  }
+
+  ngAfterViewChecked(): void {
+    this.captureMaximizedBody();
   }
 
   ngOnDestroy(): void {
@@ -2419,7 +2459,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   terminalRowTracks(): string {
-    if (!this.showTerminalRow()) {
+    if (!this.showTerminalRow() || this.terminalMaximized()) {
       return 'minmax(0, 1fr)';
     }
     if (!this.terminalExpanded()) {
@@ -2429,6 +2469,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   terminalBodyHeight(): number {
+    if (this.terminalMaximized()) {
+      const measured = this.maximizedBodyHeight();
+      if (measured !== null) {
+        return measured;
+      }
+    }
     return Math.max(1, this.terminalRowHeight() - terminalHeaderHeight);
   }
 
@@ -2442,12 +2488,40 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   toggleTerminalRow(): void {
-    if (this.terminalExpanded()) {
+    if (this.terminalMaximized() || this.terminalExpanded()) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
       return;
     }
     this.terminalExpanded.set(true);
     this.ensureTerminal();
+  }
+
+  toggleTerminalMaximize(): void {
+    if (this.terminalMaximized()) {
+      this.terminalMaximized.set(false);
+      this.terminalExpanded.set(true);
+      this.maximizedBodyHeight.set(null);
+      return;
+    }
+    this.terminalMaximized.set(true);
+    this.terminalExpanded.set(true);
+    this.captureMaximizedBody();
+  }
+
+  @HostListener('window:resize')
+  refreshMaximizedTerminal(): void {
+    this.captureMaximizedBody();
+  }
+
+  private captureMaximizedBody(): void {
+    if (!this.terminalMaximized()) {
+      return;
+    }
+    const measured = this.sheetBody()?.nativeElement.clientHeight ?? 0;
+    if (measured > terminalHeaderHeight) {
+      this.maximizedBodyHeight.set(measured - terminalHeaderHeight);
+    }
   }
 
   showTerminalRow(): boolean {
@@ -3072,6 +3146,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       this.adoptOpenSessions(branch);
     }
     if (mode !== 'none' && branch && this.terminalCount(branch) === 0) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }
@@ -3198,6 +3273,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
 
   private collapseIfEmpty(branch: string, state: WorktreeTerminalView): void {
     if (branch === this.selectedBranchName() && state.tabs.length === 0) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }
@@ -3245,6 +3321,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       this.terminalsByBranch.set(next);
     }
     if (collapse) {
+      this.terminalMaximized.set(false);
       this.terminalExpanded.set(false);
     }
   }

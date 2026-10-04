@@ -20,7 +20,9 @@ Switch repository is the pair of arrows beside the name. It opens the card over 
 
 ## Worktrees
 
-The sidebar heading is Worktrees. Each row is a branch `git worktree list` has checked out. The default branch is first when it has a checkout. A branch with no checkout is absent. Opening the repository prunes remote-tracking refs whose remote branch is gone.
+The sidebar heading is Worktrees. Each row is a branch `git worktree list` has checked out. The default branch is first when it has a checkout. A branch with no checkout is absent. Opening the repository, and switching to another registered repository, prunes remote-tracking refs whose remote branch is gone. Creating a worktree, removing one, and the branch actions list without pruning.
+
+Choosing a registered repository replaces the card, or the open workspace, with `Opening` and that display name until the worktree list is ready. Choosing the repository that is already open closes the switcher and leaves the workspace as it is. The create dialog opens immediately and shows `Loading branches` until its names are ready. Confirming it shows `Creating worktree` until the new row is in the list. Remove, Update from master, Merge into master, and Push keep the row, keep its branch name, and replace the counts with that action until the list is up to date. Merge does this after Confirm, and the dialog stays up until then. Opening a worktree shows `Loading` and the branch name across the content until its changes and commits are ready. The terminal section shows the tabs that worktree already has, and a new terminal starts with that load. When the terminal section is maximized, that loading text is on the row.
 
 The color beside the name is the status. Hovering it shows the title:
 
@@ -30,7 +32,7 @@ The color beside the name is the status. Hovering it shows the title:
 | Local and remote | The configured upstream ref exists |
 | Remote deleted | An upstream is configured and that ref is gone |
 
-A row also shows the changed-file count, and how many commits the branch is ahead and behind. Those counts use the upstream when it exists, and the default branch otherwise. A terminal count appears while terminals for that worktree are running, and it is hidden at zero. The count is the number of running terminals, so a tab with two terminals side by side counts as two.
+A row also shows the changed-file count, and how many commits the branch is ahead and behind. Those counts use the upstream when it exists, and the default branch otherwise. A terminal count appears while terminals for that worktree are running, and it is hidden at zero. The count is the number of running terminals, so a tab with two terminals side by side counts as two. It is refreshed with the worktree list and while the terminal poll runs.
 
 Click a row to open it. **···** opens the branch actions: Update from master, Merge into master, and Remove worktree. A local-only branch also offers Push. Push publishes that branch and sets the upstream. The remote is `origin` when it exists, and otherwise the first remote. When the repository has no remote, Push reports `No remote to push to`. Update from master merges `master` into that checkout. Merge into master opens a dialog with a Squash checkbox, and the primary checkout has to be on `master`. Remove worktree deletes the extra checkout and keeps the branch. The primary checkout stays.
 

@@ -156,9 +156,13 @@ export function sessionName(repoPath: string, branch: string, index: number): st
   return `${branchSessionPrefix(repoPath, branch)}${index}`;
 }
 
-export function sessionsForBranch(repoPath: string, branch: string): string[] {
+export function sessionsForBranch(
+  repoPath: string,
+  branch: string,
+  sessions: readonly TmuxSessionRecord[] = listedTmuxSessions(),
+): string[] {
   const prefixes = sessionPrefixes(repoPath, branch);
-  return listedTmuxSessions()
+  return sessions
     .filter((session) => belongsToBranch(session, branch, prefixes))
     .map((session) => session.name)
     .sort(
@@ -257,12 +261,12 @@ export function paneCommand(name: string): string {
   }
 }
 
-type ListedSession = {
+export type TmuxSessionRecord = {
   name: string;
   branch: string;
 };
 
-function listedTmuxSessions(): ListedSession[] {
+function listedTmuxSessions(): TmuxSessionRecord[] {
   try {
     const output = execFileSync(tmuxBinary(), ['list-sessions', '-F', '#{session_name}|#{@gm_branch}'], {
       encoding: 'utf8',
@@ -279,7 +283,11 @@ function listedTmuxSessions(): ListedSession[] {
   }
 }
 
-function parseListedSession(line: string): ListedSession {
+export function listTmuxSessionRecords(): TmuxSessionRecord[] {
+  return listedTmuxSessions();
+}
+
+function parseListedSession(line: string): TmuxSessionRecord {
   const separator = line.indexOf('|');
   if (separator < 0) {
     return { name: line, branch: '' };
@@ -287,7 +295,7 @@ function parseListedSession(line: string): ListedSession {
   return { name: line.slice(0, separator), branch: line.slice(separator + 1) };
 }
 
-function belongsToBranch(session: ListedSession, branch: string, prefixes: SessionPrefixes): boolean {
+function belongsToBranch(session: TmuxSessionRecord, branch: string, prefixes: SessionPrefixes): boolean {
   if (session.branch.length > 0) {
     return session.branch === branch && session.name.startsWith(prefixes.repository);
   }

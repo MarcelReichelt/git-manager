@@ -32,8 +32,18 @@ import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
-import { ShellPane } from './shell-pane';
-import { ensureShell, killAllShells, killShell, shellAlive, shellCommand as runningShellCommand } from './shell-host';
+import {
+  TerminalHost,
+  adoptedTmuxTerminal,
+  liveTerminal,
+  modeHasRunningTerminals,
+  startTerminal,
+  stopAllShells,
+  stopModeSessions,
+  stopShellTerminals,
+  stopTerminal,
+  terminalsForMode,
+} from './terminal-host';
 import {
   editableName,
   emptyTerminals,
@@ -53,17 +63,7 @@ import {
   type TerminalView,
   type WorktreeTerminalView,
 } from './terminal-tabs';
-import { TerminalPane } from './terminal-pane';
-import {
-  appTmuxSessions,
-  createBranchSession,
-  killTmuxSession,
-  nextSessionIndex,
-  paneCommand,
-  sessionsForBranch,
-  tmuxOnPath,
-  tmuxSessionAlive,
-} from './tmux-sessions';
+import { sessionsForBranch, tmuxOnPath } from './tmux-sessions';
 import {
   listRemoteBranchesWithoutWorktree,
   listWorktreeBranches,
@@ -204,7 +204,7 @@ const sampleCard: CardRepository[] = [
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [NgTemplateOutlet, TerminalPane, ShellPane, RepositorySettings],
+  imports: [NgTemplateOutlet, TerminalHost, RepositorySettings],
   styleUrl: './workspace-rail.css',
   host: {
     '[style.--forest]': 'sidebarColor()',
@@ -1225,38 +1225,16 @@ button, input { font: inherit; color: inherit; }
                 }
               </div>
               <ng-template #terminalHost let-terminal="terminal" let-tab="tab">
-                @if (terminal.host === 'shell') {
-                  <div
-                    class="terminal-pane"
-                    data-testid="terminal-pane"
-                    [attr.title]="terminalHostTitle(terminal.host)"
-                    [gmShell]="terminal.cwd"
-                    [shellId]="terminal.id"
-                    [background]="terminalBackground()"
-                    [foreground]="terminalForeground()"
-                    [fontFamily]="terminalFontFamily()"
-                    (shellEnded)="onTerminalEnded(terminal.id)"
-                    (contextmenu)="openPaneMenu($event, tab, terminal.id)"
-                    (pointerdown)="focusTerminal(tab.id, terminal.id)"
-                    [style.background-color]="terminalBackground()"
-                    [style.height.px]="terminalPaneHeight()"
-                  ></div>
-                } @else {
-                  <div
-                    class="terminal-pane"
-                    data-testid="terminal-pane"
-                    [attr.title]="terminalHostTitle(terminal.host)"
-                    [gmTerminal]="terminal.session"
-                    [background]="terminalBackground()"
-                    [foreground]="terminalForeground()"
-                    [fontFamily]="terminalFontFamily()"
-                    (sessionEnded)="onTerminalEnded(terminal.id)"
-                    (contextmenu)="openPaneMenu($event, tab, terminal.id)"
-                    (pointerdown)="focusTerminal(tab.id, terminal.id)"
-                    [style.background-color]="terminalBackground()"
-                    [style.height.px]="terminalPaneHeight()"
-                  ></div>
-                }
+                <gm-terminal-host
+                  [terminal]="terminal"
+                  [background]="terminalBackground()"
+                  [foreground]="terminalForeground()"
+                  [fontFamily]="terminalFontFamily()"
+                  [paneHeight]="terminalPaneHeight()"
+                  (terminalEnded)="onTerminalEnded(terminal.id)"
+                  (contextMenu)="openPaneMenu($event, tab, terminal.id)"
+                  (paneFocus)="focusTerminal(tab.id, terminal.id)"
+                />
               </ng-template>
             }
             </div>
@@ -1848,7 +1826,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       clearInterval(this.commandPoll);
       this.commandPoll = null;
     }
-    killAllShells();
+    stopAllShells();
   }
 
   choose(name: string): void {
@@ -2619,7 +2597,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       return;
     }
     const leaving = this.activeTerminalMode();
-    if (mode !== leaving && this.modeHasRunningTerminals(leaving)) {
+    if (mode !== leaving && modeHasRunningTerminals(leaving, this.terminalsByBranch())) {
       this.pendingTerminalMode.set(mode);
       this.syncTerminalModeRadios(event);
       return;
@@ -2948,30 +2926,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   private adoptTmuxSessions(repo: string, branch: string, cwd: string): WorktreeTerminalView {
     const sessions = sessionsForBranch(repo, branch);
     const tabs = sessions.map((session) =>
-      this.makeTab([
-        {
-          id: this.nextTerminalKey('terminal'),
-          host: 'tmux',
-          cwd,
-          session,
-          customName: '',
-          command: paneCommand(session),
-        },
-      ]),
+      this.makeTab([adoptedTmuxTerminal(this.nextTerminalKey('terminal'), cwd, session)]),
     );
     return { tabs, focusedTabId: tabs[0]?.id ?? '' };
   }
 
   private clearTerminals(): void {
-    for (const state of Object.values(this.terminalsByBranch())) {
-      for (const tab of state.tabs) {
-        for (const terminal of tab.terminals) {
-          if (terminal.host === 'shell') {
-            killShell(terminal.id);
-          }
-        }
-      }
-    }
+    stopShellTerminals(this.terminalsByBranch());
     this.worktreePath.set('');
     this.terminalsByBranch.set({});
     this.closeTerminalMenu();
@@ -2986,45 +2947,27 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       return null;
     }
     const id = this.nextTerminalKey('terminal');
-    if (this.activeTerminalMode() === 'terminal') {
-      try {
-        ensureShell(id, cwd, this.shellCommand());
-      } catch (error) {
-        this.workspaceError.set(errorText(error));
-        return null;
-      }
-      this.clearShellStartError();
-      return {
-        id,
-        host: 'shell',
-        cwd,
-        session: '',
-        customName: '',
-        command: runningShellCommand(id),
-      };
-    }
-    const known = [
-      ...sessionsForBranch(repo, branch),
-      ...(this.terminalsByBranch()[branch]?.tabs ?? []).flatMap((tab) =>
-        tab.terminals.map((terminal) => terminal.session),
-      ),
-    ];
-    let session: string;
+    const knownSessions = (this.terminalsByBranch()[branch]?.tabs ?? []).flatMap((tab) =>
+      tab.terminals.map((terminal) => terminal.session),
+    );
     try {
-      session = createBranchSession(repo, branch, cwd, nextSessionIndex(repo, branch, known));
+      const terminal = startTerminal({
+        id,
+        mode: this.activeTerminalMode(),
+        repo,
+        branch,
+        cwd,
+        shellCommand: this.shellCommand(),
+        knownSessions,
+      });
+      if (terminal) {
+        this.clearShellStartError();
+      }
+      return terminal;
     } catch (error) {
       this.workspaceError.set(errorText(error));
       return null;
     }
-    this.clearShellStartError();
-    return {
-      id,
-      host: 'tmux',
-      cwd,
-      session,
-      customName: '',
-      command: paneCommand(session),
-    };
   }
 
   private activeTerminalMode(): TerminalMode {
@@ -3033,20 +2976,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
       return 'terminal';
     }
     return saved;
-  }
-
-  private modeHasRunningTerminals(mode: TerminalMode): boolean {
-    if (mode === 'terminal') {
-      return Object.values(this.terminalsByBranch()).some((state) =>
-        state.tabs.some((tab) =>
-          tab.terminals.some((terminal) => terminal.host === 'shell' && shellAlive(terminal.id)),
-        ),
-      );
-    }
-    if (mode === 'tmux') {
-      return appTmuxSessions().length > 0;
-    }
-    return false;
   }
 
   private commitTerminalMode(mode: TerminalMode, kill: boolean): void {
@@ -3086,25 +3015,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (mode === 'none') {
       return;
     }
-    if (mode === 'tmux') {
-      for (const name of appTmuxSessions()) {
-        killTmuxSession(name);
-      }
-    }
-    const host = mode === 'terminal' ? 'shell' : 'tmux';
+    stopModeSessions(mode);
     const next: Record<string, WorktreeTerminalView> = {};
     for (const [branch, state] of Object.entries(this.terminalsByBranch())) {
-      const targets = state.tabs.flatMap((tab) =>
-        tab.terminals
-          .filter((terminal) => terminal.host === host)
-          .map((terminal) => ({ tabId: tab.id, terminal })),
-      );
       let current = state;
-      for (const target of targets) {
+      for (const target of terminalsForMode(mode, state)) {
         const result = withoutTerminal(current, target.tabId, target.terminal.id);
         current = result.state;
         if (result.removed.length > 0) {
-          this.stopTerminal(target.terminal);
+          stopTerminal(target.terminal);
         }
       }
       next[branch] = current;
@@ -3177,7 +3096,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     }
     const result = withoutTerminal(state, tabId, terminalId);
     this.storeBranch(branch, result.state);
-    this.stopTerminal(terminal);
+    stopTerminal(terminal);
     this.collapseIfEmpty(branch, result.state);
     this.closeTerminalMenu();
   }
@@ -3190,7 +3109,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     const result = withoutTab(state, tabId);
     this.storeBranch(branch, result.state);
     for (const terminal of result.removed) {
-      this.stopTerminal(terminal);
+      stopTerminal(terminal);
     }
     this.collapseIfEmpty(branch, result.state);
     this.closeTerminalMenu();
@@ -3200,14 +3119,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (branch === this.selectedBranchName() && state.tabs.length === 0) {
       this.terminalExpanded.set(false);
     }
-  }
-
-  private stopTerminal(terminal: TerminalView): void {
-    if (terminal.host === 'tmux') {
-      killTmuxSession(terminal.session);
-      return;
-    }
-    killShell(terminal.id);
   }
 
   private locateTerminal(terminalId: string): { branch: string; tabId: string } | null {
@@ -3233,11 +3144,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
           if (!latest || !branchHasTerminal(latest, terminal.id)) {
             continue;
           }
-          const live = this.liveTerminal(terminal);
+          const live = liveTerminal(terminal);
           if (!live.alive) {
             const result = withoutTerminal(latest, tab.id, terminal.id);
             next = { ...next, [branch]: result.state };
-            this.stopTerminal(terminal);
+            stopTerminal(terminal);
             if (branch === selected && result.state.tabs.length === 0) {
               collapse = true;
             }
@@ -3255,19 +3166,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (collapse) {
       this.terminalExpanded.set(false);
     }
-  }
-
-  private liveTerminal(terminal: TerminalView): { alive: boolean; command: string } {
-    if (terminal.host === 'tmux') {
-      if (!tmuxSessionAlive(terminal.session)) {
-        return { alive: false, command: '' };
-      }
-      return { alive: true, command: paneCommand(terminal.session) };
-    }
-    if (!shellAlive(terminal.id)) {
-      return { alive: false, command: '' };
-    }
-    return { alive: true, command: runningShellCommand(terminal.id) };
   }
 
   private closeTerminalMenu(): void {

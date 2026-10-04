@@ -3,6 +3,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { electronNativeAddons } from './src/desktop/electron-native-addons.cjs';
 
 const electronNativePackageNames = electronNativeAddons.map((addon) => addon.name);
+const runtimeExternals = [...electronNativePackageNames, 'koffi'];
 
 const nodeBuiltins = new Set([
   'assert',
@@ -29,7 +30,7 @@ function keepNodeBuiltinsExternal(): Plugin {
     enforce: 'pre',
     resolveId(id) {
       const bare = id.startsWith('node:') ? id.slice('node:'.length) : id;
-      if (nodeBuiltins.has(bare) || electronNativePackageNames.includes(id)) {
+      if (nodeBuiltins.has(bare) || runtimeExternals.includes(id)) {
         return { id, external: true };
       }
       return null;
@@ -91,7 +92,7 @@ export default defineConfig({
     outDir: '../../dist/desktop-app',
     emptyOutDir: true,
     rollupOptions: {
-      external: [...electronNativePackageNames],
+      external: [...runtimeExternals],
     },
   },
 });

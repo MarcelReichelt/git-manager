@@ -13,3 +13,5 @@ Run typechecking regularly, single test files regularly, and the full test suite
 Once done, use /code-review to review the work.
 
 Commit your work to the current branch.
+
+When the work came from an issue, comment on that issue and close it in the same turn. Follow "When the work lands" in `docs/agents/issue-tracker.md`.

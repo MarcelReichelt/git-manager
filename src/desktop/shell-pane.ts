@@ -10,8 +10,10 @@ import {
   output,
 } from '@angular/core';
 import { Terminal } from '@xterm/xterm';
-import { spawn, type IPty } from 'node-pty';
-import { terminalEnvironment } from './tmux-sessions';
+import '@xterm/xterm/css/xterm.css';
+import { applyTerminalAppearance } from './terminal-appearance';
+import { fitTerminalGrid, watchTerminalBox } from './terminal-fit';
+import { ensureShell, shellPty, subscribeShell, writeShell } from './shell-host';
 
 @Directive({
   selector: '[gmShell]',
@@ -19,21 +21,29 @@ import { terminalEnvironment } from './tmux-sessions';
 })
 export class ShellPane implements OnInit, OnDestroy {
   readonly cwd = input.required<string>({ alias: 'gmShell' });
+  readonly shellId = input.required<string>();
+  readonly background = input('#1e1e1e');
+  readonly foreground = input('#d4d4d4');
+  readonly fontFamily = input('UbuntuMono Nerd Font Mono, monospace');
   readonly shellEnded = output<void>();
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly zone = inject(NgZone);
   private term: Terminal | null = null;
-  private pty: IPty | null = null;
-  private currentCwd = '';
-  private generation = 0;
+  private attachedId = '';
+  private unsubscribe: (() => void) | null = null;
+  private stopWatchingSize: (() => void) | null = null;
 
   constructor() {
     afterRenderEffect(() => {
+      const id = this.shellId();
       const cwd = this.cwd();
-      if (!this.term || cwd === this.currentCwd) {
+      if (!this.term) {
         return;
       }
-      this.spawnShell(cwd);
+      this.attachShell(id, cwd);
+    });
+    afterRenderEffect(() => {
+      this.applyAppearance(this.background(), this.foreground(), this.fontFamily());
     });
   }
 
@@ -42,70 +52,65 @@ export class ShellPane implements OnInit, OnDestroy {
       cols: 80,
       rows: 24,
       theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
+        background: this.background(),
+        foreground: this.foreground(),
       },
-      fontFamily: 'monospace',
+      fontFamily: this.fontFamily(),
     });
     term.open(this.host.nativeElement);
     this.term = term;
     term.onData((data) => {
-      this.pty?.write(data);
+      writeShell(this.shellId(), data);
     });
-    this.spawnShell(this.cwd());
+    this.stopWatchingSize = watchTerminalBox(this.host.nativeElement, () => this.fitPane());
+    this.attachShell(this.shellId(), this.cwd());
   }
 
   ngOnDestroy(): void {
-    this.generation += 1;
-    this.stopShell();
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.attachedId = '';
+    this.stopWatchingSize?.();
+    this.stopWatchingSize = null;
     this.term?.dispose();
     this.term = null;
   }
 
-  private spawnShell(cwd: string): void {
+  private applyAppearance(background: string, foreground: string, fontFamily: string): void {
     const term = this.term;
     if (!term) {
       return;
     }
-    this.stopShell();
+    applyTerminalAppearance(term, background, foreground, fontFamily);
+  }
+
+  private attachShell(id: string, cwd: string): void {
+    const term = this.term;
+    if (!term || !id || id === this.attachedId) {
+      return;
+    }
+    this.unsubscribe?.();
+    this.unsubscribe = null;
     term.reset();
-    this.currentCwd = cwd;
-    const generation = ++this.generation;
-    const program = shellProgram();
-    const pty = spawn(program.file, program.args, {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 24,
-      cwd,
-      env: terminalEnvironment(),
-    });
-    this.pty = pty;
-    pty.onData((data) => {
-      term.write(data);
-    });
-    pty.onExit(() => {
-      if (generation !== this.generation) {
-        return;
-      }
-      this.zone.run(() => this.shellEnded.emit());
+    ensureShell(id, cwd);
+    this.attachedId = id;
+    this.unsubscribe = subscribeShell(id, {
+      onData: (data) => {
+        this.term?.write(data);
+      },
+      onExit: () => {
+        this.zone.run(() => this.shellEnded.emit());
+      },
     });
     term.focus();
+    this.fitPane();
   }
 
-  private stopShell(): void {
-    this.generation += 1;
-    try {
-      this.pty?.kill();
-    } catch {
-      // The shell already exited.
+  private fitPane(): void {
+    const term = this.term;
+    if (!term) {
+      return;
     }
-    this.pty = null;
+    fitTerminalGrid(this.host.nativeElement, term, shellPty(this.shellId()));
   }
-}
-
-function shellProgram(): { file: string; args: string[] } {
-  if (process.platform === 'win32') {
-    return { file: 'powershell.exe', args: ['-NoLogo'] };
-  }
-  return { file: '/bin/bash', args: ['--noprofile', '--norc', '-i'] };
 }

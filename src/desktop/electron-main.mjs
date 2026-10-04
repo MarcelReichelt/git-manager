@@ -1,5 +1,8 @@
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
+import { registerShellIpc } from './shell-main.mjs';
+
+registerShellIpc();
 
 ipcMain.handle('browse-for-folder', async (event) => {
   const parent = BrowserWindow.fromWebContents(event.sender);

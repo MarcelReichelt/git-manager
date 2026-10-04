@@ -16,6 +16,10 @@ export default defineConfig({
           exclude: [
             'tests/desktop-workspace.test.ts',
             'tests/desktop-terminal.test.ts',
+            'tests/desktop-terminal-colors.test.ts',
+            'tests/desktop-terminal-tabs.test.ts',
+            'tests/desktop-terminal-mode.test.ts',
+            'tests/desktop-terminal-prefix.test.ts',
             'tests/e2e/**',
             '**/node_modules/**',
             '**/dist/**',
@@ -35,7 +39,7 @@ export default defineConfig({
           // styleUrl is compiled to a CSS import. Vitest blanks those unless
           // CSS processing is enabled, which drops the rail stylesheet.
           css: {
-            include: [/workspace-rail\.css/],
+            include: [/workspace-rail\.css/, /xterm\.css/],
           },
           environment: 'jsdom',
           // The Angular plugin defaults this project to vmThreads, whose
@@ -43,7 +47,14 @@ export default defineConfig({
           pool: 'forks',
           maxWorkers: 1,
           fileParallelism: false,
-          include: ['tests/desktop-workspace.test.ts', 'tests/desktop-terminal.test.ts'],
+          include: [
+            'tests/desktop-workspace.test.ts',
+            'tests/desktop-terminal.test.ts',
+            'tests/desktop-terminal-colors.test.ts',
+            'tests/desktop-terminal-tabs.test.ts',
+            'tests/desktop-terminal-mode.test.ts',
+            'tests/desktop-terminal-prefix.test.ts',
+          ],
           setupFiles: ['src/desktop/test-setup.ts'],
           server: {
             deps: {

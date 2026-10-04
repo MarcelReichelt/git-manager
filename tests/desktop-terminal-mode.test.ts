@@ -49,7 +49,11 @@ function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string
 
 function tabNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
   const tabs = fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]');
-  return Array.from(tabs, (tab) => (tab as HTMLElement).textContent?.trim() ?? '');
+  return Array.from(tabs, (tab) => {
+    const label = (tab as HTMLElement).querySelector('[data-testid="terminal-tab-label"]');
+    const source = label instanceof HTMLElement ? label : (tab as HTMLElement);
+    return (source.textContent ?? '').replace(/\s+/g, ' ').trim();
+  });
 }
 
 function paneTitles(fixture: ComponentFixture<WorkspaceComponent>): string[] {
@@ -138,6 +142,9 @@ function clickModeAction(fixture: ComponentFixture<WorkspaceComponent>, action: 
 function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: string): void {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
   const button = buttons.find((candidate) => {
+    if (candidate.closest('[data-testid="terminal-tab"], [data-testid="terminal-pane-header"]') !== null) {
+      return false;
+    }
     const text = candidate.textContent?.trim() ?? '';
     return text === label || candidate.getAttribute('aria-label') === label || candidate.getAttribute('title') === label;
   });

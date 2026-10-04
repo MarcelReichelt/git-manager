@@ -47,7 +47,7 @@ import {
   editableName,
   emptyTerminals,
   mapTerminalCommand,
-  tabChipText as formatTabChip,
+  tabChipModel,
   terminalDisplayName as formatTerminalName,
   terminalHostTitle as formatHostTitle,
   terminalMenuActions,
@@ -1163,27 +1163,71 @@ button, input { font: inherit; color: inherit; }
                   }
                   <div class="terminal-tabs" role="tablist">
                     @for (tab of terminalTabs(); track tab.id; let index = $index) {
-                      @if (isRenamingTab(tab)) {
-                        <input
-                          data-testid="terminal-name-input"
-                          [value]="renameValue()"
-                          (input)="setRenameValue($event)"
-                          (keydown.enter)="commitRename($event)"
-                          (keydown.escape)="cancelRename($event)"
-                        />
-                      } @else {
+                      <div
+                        class="terminal-tab"
+                        role="tab"
+                        tabindex="0"
+                        data-testid="terminal-tab"
+                        [attr.aria-selected]="tab.id === focusedTerminalTab()?.id"
+                        [attr.title]="tabTooltip(tab)"
+                        [class.is-kill-visible]="isTabKillVisible(tab)"
+                        (mouseenter)="hoverTab(tab.id)"
+                        (mouseleave)="leaveTab(tab.id)"
+                        (click)="focusTab(tab.id)"
+                        (keydown)="onTabKeydown($event, tab.id)"
+                        (contextmenu)="openTerminalMenu($event, tab.id, null)"
+                      >
+                        @if (isRenamingTab(tab)) {
+                          <input
+                            data-testid="terminal-name-input"
+                            [value]="renameValue()"
+                            (click)="$event.stopPropagation()"
+                            (input)="setRenameValue($event)"
+                            (keydown.enter)="commitRename($event)"
+                            (keydown.escape)="cancelRename($event)"
+                          />
+                        } @else {
+                          @if (tabChip(index + 1, tab); as chip) {
+                            <span class="terminal-tab-label" data-testid="terminal-tab-label">
+                              <span class="terminal-tab-index" data-testid="terminal-tab-index">{{ chip.positionText }}</span>
+                              @if (chip.names; as names) {
+                                @for (name of names; track name.terminalId; let first = $first) {
+                                  @if (first) {
+                                    {{ ' ' }}
+                                  } @else {
+                                    <span class="terminal-tab-separator" data-testid="terminal-tab-separator">{{ ' · ' }}</span>
+                                  }
+                                  <span
+                                    class="terminal-tab-name"
+                                    data-testid="terminal-tab-name"
+                                    [attr.data-terminal-id]="name.terminalId"
+                                    [class.is-pointed]="pointedTerminalId() === name.terminalId"
+                                    (mouseenter)="pointTerminal(name.terminalId)"
+                                    (mouseleave)="clearPointedTerminal(name.terminalId)"
+                                    (click)="focusNamedTerminal($event, tab.id, name.terminalId)"
+                                    (contextmenu)="openTerminalMenu($event, tab.id, name.terminalId)"
+                                  >{{ name.text }}</span>
+                                }
+                              } @else if (chip.label; as label) {
+                                {{ ' ' }}
+                                <span class="terminal-tab-text">{{ label }}</span>
+                              }
+                            </span>
+                          }
+                        }
                         <button
                           type="button"
-                          role="tab"
-                          data-testid="terminal-tab"
-                          [attr.aria-selected]="tab.id === focusedTerminalTab()?.id"
-                          [attr.title]="tabTooltip(tab)"
-                          (click)="focusTab(tab.id)"
-                          (contextmenu)="openTerminalMenu($event, tab.id, null)"
+                          class="terminal-tab-kill"
+                          data-testid="terminal-tab-kill"
+                          title="Kill"
+                          aria-label="Kill"
+                          [attr.tabindex]="isTabKillVisible(tab) ? 0 : -1"
+                          [attr.aria-hidden]="isTabKillVisible(tab) ? null : true"
+                          (click)="killTabFromButton($event, tab.id)"
                         >
-                          {{ tabChipText(index + 1, tab) }}
+                          <ng-container [ngTemplateOutlet]="terminalKillIcon" />
                         </button>
-                      }
+                      </div>
                     }
                   </div>
                   <button
@@ -1241,6 +1285,9 @@ button, input { font: inherit; color: inherit; }
                               class="terminal-pane-header"
                               data-testid="terminal-pane-header"
                               [attr.title]="terminalHostTitle(terminal.host)"
+                              [class.is-kill-visible]="isPaneKillVisible(tab.id, terminal.id)"
+                              (mouseenter)="hoverPane(terminal.id)"
+                              (mouseleave)="leavePane(terminal.id)"
                               (contextmenu)="openTerminalMenu($event, tab.id, terminal.id)"
                             >
                               @if (isRenamingTerminal(tab.id, terminal.id)) {
@@ -1252,8 +1299,20 @@ button, input { font: inherit; color: inherit; }
                                   (keydown.escape)="cancelRename($event)"
                                 />
                               } @else {
-                                {{ terminalDisplayName(terminal) }}
+                                <span class="terminal-pane-name">{{ terminalDisplayName(terminal) }}</span>
                               }
+                              <button
+                                type="button"
+                                class="terminal-pane-kill"
+                                data-testid="terminal-pane-kill"
+                                title="Kill"
+                                aria-label="Kill"
+                                [attr.tabindex]="isPaneKillVisible(tab.id, terminal.id) ? 0 : -1"
+                                [attr.aria-hidden]="isPaneKillVisible(tab.id, terminal.id) ? null : true"
+                                (click)="killPaneFromButton($event, tab.id, terminal.id)"
+                              >
+                                <ng-container [ngTemplateOutlet]="terminalKillIcon" />
+                              </button>
                             </div>
                             <ng-container
                               [ngTemplateOutlet]="terminalHost"
@@ -1278,6 +1337,11 @@ button, input { font: inherit; color: inherit; }
                   }
                 }
               </div>
+              <ng-template #terminalKillIcon>
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
+                </svg>
+              </ng-template>
               <ng-template #terminalHost let-terminal="terminal" let-tab="tab">
                 <gm-terminal-host
                   [terminal]="terminal"
@@ -1740,7 +1804,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
   readonly renaming = signal<{ tabId: string; terminalId: string | null } | null>(null);
   readonly renameValue = signal('');
-  readonly tabChipText = formatTabChip;
+  readonly hoveredTabId = signal<string | null>(null);
+  readonly hoveredPaneId = signal<string | null>(null);
+  readonly pointedTerminalId = signal<string | null>(null);
+  readonly tabChip = tabChipModel;
   readonly terminalDisplayName = formatTerminalName;
   readonly terminalHostTitle = formatHostTitle;
   readonly changesFileWidth = signal(240);
@@ -2162,6 +2229,87 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
 
   focusTab(tabId: string): void {
     this.updateSelected((state) => ({ ...state, focusedTabId: tabId }));
+  }
+
+  onTabKeydown(event: KeyboardEvent, tabId: string): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    event.preventDefault();
+    this.focusTab(tabId);
+  }
+
+  focusNamedTerminal(event: MouseEvent, tabId: string, terminalId: string): void {
+    event.stopPropagation();
+    this.focusTerminal(tabId, terminalId);
+  }
+
+  hoverTab(tabId: string): void {
+    this.hoveredTabId.set(tabId);
+  }
+
+  leaveTab(tabId: string): void {
+    if (this.hoveredTabId() === tabId) {
+      this.hoveredTabId.set(null);
+    }
+  }
+
+  hoverPane(terminalId: string): void {
+    this.hoveredPaneId.set(terminalId);
+  }
+
+  leavePane(terminalId: string): void {
+    if (this.hoveredPaneId() === terminalId) {
+      this.hoveredPaneId.set(null);
+    }
+  }
+
+  pointTerminal(terminalId: string): void {
+    this.pointedTerminalId.set(terminalId);
+  }
+
+  clearPointedTerminal(terminalId: string): void {
+    if (this.pointedTerminalId() === terminalId) {
+      this.pointedTerminalId.set(null);
+    }
+  }
+
+  isTabKillVisible(tab: TerminalTabView): boolean {
+    return tab.id === this.focusedTerminalTab()?.id || this.hoveredTabId() === tab.id || this.isRenamingTab(tab);
+  }
+
+  isPaneKillVisible(tabId: string, terminalId: string): boolean {
+    return this.hoveredPaneId() === terminalId || this.isRenamingTerminal(tabId, terminalId);
+  }
+
+  killTabFromButton(event: MouseEvent, tabId: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return;
+    }
+    if (this.renaming()?.tabId === tabId) {
+      this.renaming.set(null);
+    }
+    this.removeTab(branch, tabId);
+  }
+
+  killPaneFromButton(event: MouseEvent, tabId: string, terminalId: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return;
+    }
+    const renaming = this.renaming();
+    if (renaming?.tabId === tabId && renaming.terminalId === terminalId) {
+      this.renaming.set(null);
+    }
+    this.removeTerminal(branch, tabId, terminalId);
   }
 
   focusTerminal(tabId: string, terminalId: string): void {

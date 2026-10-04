@@ -107,6 +107,17 @@ function dismissMenu(fixture: ComponentFixture<WorkspaceComponent>): void {
   fixture.detectChanges();
 }
 
+function paneTextarea(fixture: ComponentFixture<WorkspaceComponent>, terminalId: string): HTMLTextAreaElement {
+  const pane = fixture.nativeElement.querySelector(
+    `[data-testid="terminal-pane"][data-terminal-id="${terminalId}"]`,
+  );
+  const textarea = pane?.querySelector('textarea');
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    throw new Error(`Terminal ${terminalId} has no caret`);
+  }
+  return textarea;
+}
+
 function menuButtons(fixture: ComponentFixture<WorkspaceComponent>): HTMLButtonElement[] {
   const menu = fixture.nativeElement.querySelector('[data-testid="terminal-menu"]');
   if (!(menu instanceof HTMLElement)) {
@@ -740,6 +751,16 @@ describe('terminal tabs', () => {
     expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill']);
     dismissMenu(fixture);
 
+    const leftName = names()[0]!;
+    const rightName = names()[1]!;
+    leftName.click();
+    fixture.detectChanges();
+    expect(tab().getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(paneTextarea(fixture, leftName.getAttribute('data-terminal-id') ?? ''));
+    rightName.click();
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(paneTextarea(fixture, rightName.getAttribute('data-terminal-id') ?? ''));
+
     (tab().querySelector('[data-testid="terminal-tab-index"]') as HTMLElement).click();
     fixture.detectChanges();
     clickIcon(fixture, 'terminal-kill');
@@ -814,9 +835,11 @@ describe('terminal tabs', () => {
     ]);
     dismissMenu(fixture);
 
-    (tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]')[0] as HTMLElement).click();
+    const alpha = tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]')[0] as HTMLElement;
+    alpha.click();
     fixture.detectChanges();
     expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(paneTextarea(fixture, alpha.getAttribute('data-terminal-id') ?? ''));
     clickIcon(fixture, 'terminal-kill');
     expect(tabNames(fixture)[0]).toBe('1 beta');
     expect(paneHeaders(fixture)).toEqual([]);

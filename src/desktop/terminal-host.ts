@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, afterRenderEffect, computed, input, output, viewChild } from '@angular/core';
 import { type TerminalMode } from '../app-settings.js';
 import { ensureShell, killShell, shellAlive, shellCommand as runningShellCommand } from './shell-host';
 import { ShellPane } from './shell-pane';
@@ -218,6 +218,7 @@ function terminalHostActions(terminal: Pick<TerminalView, 'host' | 'id' | 'sessi
       (sessionEnded)="terminalEnded.emit()"
       (contextmenu)="contextMenu.emit($event)"
       (pointerdown)="paneFocus.emit()"
+      [attr.data-terminal-id]="terminal().id"
       [style.background-color]="background()"
       [style.height.px]="paneHeight()"
     ></div>
@@ -232,7 +233,20 @@ export class TerminalHost {
   readonly terminalEnded = output<void>();
   readonly contextMenu = output<MouseEvent>();
   readonly paneFocus = output<void>();
+  readonly active = input(false);
+  private readonly shellPane = viewChild(ShellPane);
+  private readonly terminalPane = viewChild(TerminalPane);
   readonly paneTitle = computed(() => terminalHostTitle(this.terminal().host));
+  constructor() {
+    afterRenderEffect(() => {
+      if (!this.active()) {
+        return;
+      }
+      this.shellPane()?.focus();
+      this.terminalPane()?.focus();
+    });
+  }
+
   readonly hostedPane = computed(() => {
     const terminal = this.terminal();
     if (terminal.host === 'shell') {

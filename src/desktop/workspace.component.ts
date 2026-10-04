@@ -1348,6 +1348,7 @@ button, input { font: inherit; color: inherit; }
                   [foreground]="terminalForeground()"
                   [fontFamily]="terminalFontFamily()"
                   [paneHeight]="terminalPaneHeight()"
+                  [active]="tab.focusedTerminalId === terminal.id"
                   (terminalEnded)="onTerminalEnded(terminal.id)"
                   (contextMenu)="openPaneMenu($event, tab, terminal.id)"
                   (paneFocus)="focusTerminal(tab.id, terminal.id)"

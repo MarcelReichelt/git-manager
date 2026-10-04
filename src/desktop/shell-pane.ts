@@ -69,6 +69,10 @@ export class ShellPane implements OnInit, OnDestroy {
     this.attachShell(this.shellId(), this.cwd());
   }
 
+  focus(): void {
+    this.term?.focus();
+  }
+
   ngOnDestroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;

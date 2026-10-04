@@ -17,6 +17,7 @@
     "../../tests/desktop-terminal-colors.test.ts",
     "../../tests/desktop-terminal-tabs.test.ts",
     "../../tests/desktop-terminal-mode.test.ts",
-    "../../tests/desktop-terminal-prefix.test.ts"
+    "../../tests/desktop-terminal-prefix.test.ts",
+    "../../tests/desktop-terminal-harness.ts"
   ]
 }

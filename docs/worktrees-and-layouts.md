@@ -30,7 +30,7 @@ A branch name that is not a legal directory name is sanitized by turning path se
 
 ## Create
 
-The branch already exists as a local branch, or on a remote. A local branch is checked out as it is. A branch that exists only as a remote-tracking ref is fetched from that remote first, then added with `--track` as a new local branch. `origin` is chosen when it has the branch, and also when no remote-tracking ref has the branch yet. When several remotes have it, `origin` wins. When `git fetch` fails, that error is printed. When the fetch leaves no remote-tracking ref, create fails with `Branch not found`.
+The name can be a local branch, a branch on a remote, or a new name. A local branch is checked out as it is. A branch that exists only as a remote-tracking ref is fetched from that remote first, then added with `--track` as a new local branch. `origin` is chosen when it has the branch, and also when no remote-tracking ref has the branch yet. When several remotes have it, `origin` wins. When that fetch finds the branch, it is checked out with `--track`. When the name is not a local branch and the remote reports that it has no such branch, or the repository has no remote, create adds a new local branch at the primary checkout's current commit. That branch has no upstream. When `git fetch` fails for another reason, that error is printed. When a known remote-tracking ref is gone after fetch, create fails with `Branch not found`.
 
 The primary checkout stays on its current branch. Configured files are copied into the new checkout after `git worktree add`. See [Configuration](configuration.md).
 

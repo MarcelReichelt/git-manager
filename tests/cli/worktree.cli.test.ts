@@ -550,4 +550,94 @@ describe('git-manager worktree create', () => {
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
     expect(existsSync(resolve(root, 'login'))).toBe(false);
   });
+
+  it('creates a local branch when the name is not on the remote', () => {
+    const root = makeTempDir('git-manager-new-local-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const remotePath = join(root, 'origin.git');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], {
+      cwd: remotePath,
+      stdio: 'ignore',
+    });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    writeFileSync(join(repoPath, 'local.txt'), 'only local\n');
+    git(repoPath, ['add', 'local.txt']);
+    git(repoPath, ['commit', '-m', 'local only']);
+    const head = git(repoPath, ['rev-parse', 'HEAD']);
+    const env = gitManagerEnv(registryPath);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(0);
+    expect(created.stderr).not.toContain('Command failed');
+    const checkout = resolve(repoPath, '.workspaces', 'test');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('test');
+    expect(git(checkout, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(() => git(checkout, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toThrow();
+  });
+
+  it('creates a new local branch with a slash in the name when there is no remote', () => {
+    const root = makeTempDir('git-manager-new-local-slash-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const head = git(repoPath, ['rev-parse', 'HEAD']);
+    const env = gitManagerEnv(registryPath);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitManager(['worktree', 'create', 'feature/foo', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'feature-foo');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('feature/foo');
+    expect(git(checkout, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
+
+  it('does not create a local branch when fetch fails for another reason', () => {
+    const root = makeTempDir('git-manager-fetch-unreadable-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['remote', 'add', 'origin', join(root, 'missing.git')]);
+    const env = gitManagerEnv(registryPath);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const branchesBefore = git(repoPath, ['branch', '--list']);
+
+    const created = runGitManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(1);
+    expect(created.stderr).toContain('does not appear to be a git repository');
+    expect(created.stderr).not.toContain('Command failed');
+    expect(git(repoPath, ['branch', '--list'])).toBe(branchesBefore);
+    expect(existsSync(join(repoPath, '.workspaces', 'test'))).toBe(false);
+  });
+
+  it('asks for a branch name when the name is empty', () => {
+    const root = makeTempDir('git-manager-empty-branch-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const env = gitManagerEnv(registryPath);
+    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const worktreesBefore = git(repoPath, ['worktree', 'list']);
+
+    const created = runGitManager(['worktree', 'create', ' ', '--repo', 'Harbor'], env);
+
+    expect(created.status).toBe(1);
+    expect(created.stderr).toContain('Enter a branch name');
+    expect(git(repoPath, ['worktree', 'list'])).toBe(worktreesBefore);
+  });
 });

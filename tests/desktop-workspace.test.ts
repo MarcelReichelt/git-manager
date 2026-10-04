@@ -2088,7 +2088,7 @@ describe('desktop workspace', () => {
     const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
     const note = dialog.querySelector('[data-testid="create-worktree-note"]');
     expect(note.textContent.trim()).toBe(
-      'A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
+      'A new name creates a local branch from the primary checkout, with no upstream. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout.',
     );
   });
 
@@ -2295,6 +2295,119 @@ describe('desktop workspace', () => {
     ).toEqual(['master', 'notes']);
   });
 
+  it('creates a local branch when the typed name is not on the remote', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const remotePath = join(repoPath, '..', 'origin.git');
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    writeFileSync(join(repoPath, 'local.txt'), 'only local\n');
+    git(repoPath, ['add', 'local.txt']);
+    git(repoPath, ['commit', '-m', 'local only']);
+    const head = git(repoPath, ['rev-parse', 'HEAD']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'test';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-testid="create-worktree-dialog"]') === null,
+    );
+
+    const checkout = join(repoPath, '.workspaces', 'test');
+    expect(existsSync(checkout)).toBe(true);
+    expect(git(checkout, ['branch', '--show-current'])).toBe('test');
+    expect(git(checkout, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+    expect(() => git(checkout, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toThrow();
+    const row = fixture.nativeElement.querySelector('[data-branch="test"]');
+    expect(row.getAttribute('data-status')).toBe('local-only');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('pushes a local-only branch from the branch menu and sets its upstream', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const remotePath = join(repoPath, '..', 'origin.git');
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'test';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-branch="test"]') !== null,
+    );
+
+    const row = fixture.nativeElement.querySelector('[data-branch="test"]');
+    expect(row.getAttribute('data-status')).toBe('local-only');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    expect(menu.querySelector('[data-testid="push-branch"]').textContent.trim()).toBe('Push');
+    menu.querySelector('[data-testid="push-branch"]').click();
+    fixture.detectChanges();
+
+    const checkout = join(repoPath, '.workspaces', 'test');
+    expect(git(checkout, ['rev-parse', '--abbrev-ref', '@{upstream}'])).toBe('origin/test');
+    expect(git(remotePath, ['rev-parse', '--verify', 'refs/heads/test'])).toMatch(/^[0-9a-f]{40}$/);
+    const updated = fixture.nativeElement.querySelector('[data-branch="test"]');
+    expect(updated.getAttribute('data-status')).toBe('local-and-remote');
+    expect(updated.querySelector('[data-testid="push-branch"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('reports that a local-only branch has no remote to push to', async () => {
+    const repoPath = createEmptyRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"]');
+    const field = dialog.querySelector('[data-testid="create-branch"]');
+    field.value = 'test';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-create-worktree"]').click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-branch="test"]') !== null,
+    );
+
+    const row = fixture.nativeElement.querySelector('[data-branch="test"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="push-branch"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent.trim()).toBe(
+      'No remote to push to',
+    );
+    expect(row.getAttribute('data-status')).toBe('local-only');
+    expect(git(join(repoPath, '.workspaces', 'test'), ['branch', '--show-current'])).toBe('test');
+  });
+
   it('opens a branch menu with merge actions and no squash control', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -2320,6 +2433,27 @@ describe('desktop workspace', () => {
     expect(remove.textContent.trim()).toBe('Remove worktree');
     expect(group.contains(remove)).toBe(false);
     expect(remove.parentElement).toBe(group.parentElement);
+    expect(menu.querySelector('[data-testid="push-branch"]')).toBeNull();
+  });
+
+  it('offers Push only on a local-only branch', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const tracked = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    tracked.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(tracked.querySelector('[data-testid="push-branch"]')).toBeNull();
+
+    const local = fixture.nativeElement.querySelector('[data-branch="wip"]');
+    local.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    const push = local.querySelector('[data-testid="push-branch"]');
+    expect(push.textContent.trim()).toBe('Push');
+    expect(local.querySelector('fieldset').contains(push)).toBe(false);
+    expect(push.parentElement).toBe(local.querySelector('[data-testid="hover-menu"]'));
+    expect(local.querySelector('[data-testid="remove-worktree"]')).not.toBeNull();
   });
 
   it('keeps branch actions closed while the pointer is only hovering the row', async () => {

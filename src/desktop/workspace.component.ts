@@ -46,6 +46,7 @@ import {
 import { copyText } from './copy-text';
 import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
+import { runAfterPaint } from './after-paint';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
 import {
@@ -82,15 +83,18 @@ import {
   ambiguousLegacySessions,
   claimUniqueLegacySessions,
   killTmuxSession,
+  listTmuxSessionRecords,
   rememberSessionBranch,
   sessionsForBranch,
   tmuxOnPath,
   type OldSessionChoice,
+  type TmuxSessionRecord,
 } from './tmux-sessions';
 import {
   listBranches,
   listRemoteBranchesWithoutWorktree,
   listWorktreeBranches,
+  pruneRemoteTrackingRefs,
   pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -281,6 +285,22 @@ button, input { font: inherit; color: inherit; }
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
   border-radius: 2px;
+}
+
+[data-testid='opening-repository'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22rem;
+  min-height: 5rem;
+  padding: 16px;
+  background-color: var(--paper);
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 2px;
+  color: var(--forest);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 [data-testid='repository-card'] h2 {
@@ -852,7 +872,8 @@ button, input { font: inherit; color: inherit; }
   gap: 8px;
 }
 
-[data-testid='card-error'] { color: var(--coral); }
+[data-testid='card-error'],
+[data-testid='open-repository-error'] { color: var(--coral); }
     `,
   ],
   template: `
@@ -866,6 +887,9 @@ button, input { font: inherit; color: inherit; }
         </div>
         @if (registryMode() && cardRepositories().length === 0) {
           <p data-testid="repositories-empty">A repository needs to be added.</p>
+        }
+        @if (openError(); as message) {
+          <p data-testid="open-repository-error">{{ message }}</p>
         }
         @for (repository of cardRepositories(); track repository.name + (repository.path ?? '')) {
           <button
@@ -883,7 +907,13 @@ button, input { font: inherit; color: inherit; }
       </section>
     </ng-template>
 
-    @if (repositoryPath() === null && selectedName() === null) {
+    @if (openingRepository(); as name) {
+      <div class="start-screen">
+        <section data-testid="opening-repository">
+          <h2>Opening {{ name }}</h2>
+        </section>
+      </div>
+    } @else if (repositoryPath() === null && selectedName() === null) {
       <div class="start-screen">
         <ng-container [ngTemplateOutlet]="repositoryCard" />
       </div>
@@ -945,6 +975,9 @@ button, input { font: inherit; color: inherit; }
                   </span>
                 }
                 <span class="branch-stats">
+                  @if (branchActivityLabel(branch.name); as label) {
+                    <span data-testid="branch-activity">{{ label }}</span>
+                  } @else {
                   <span>
                     <span
                       data-testid="changed-file-count"
@@ -956,6 +989,7 @@ button, input { font: inherit; color: inherit; }
                     ↑<span data-testid="ahead" [attr.aria-label]="branch.ahead + ' commits ahead'">{{ branch.ahead }}</span>
                     ↓<span data-testid="behind" [attr.aria-label]="branch.behind + ' commits behind'">{{ branch.behind }}</span>
                   </span>
+                  }
                 </span>
                 <button
                   type="button"
@@ -1018,7 +1052,9 @@ button, input { font: inherit; color: inherit; }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
           @if (selectedBranch(); as branch) {
-            @if (!terminalMaximized()) {
+            @if (contentLoading() && !terminalMaximized()) {
+              <p class="empty-sheet" data-testid="content-loading">Loading {{ branch.name }}</p>
+            } @else if (!terminalMaximized()) {
             <header class="branch-heading">
               <div class="branch-title">
                 <h2>
@@ -1048,7 +1084,7 @@ button, input { font: inherit; color: inherit; }
             </header>
             }
             <div #sheetBody class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
-            @if (!terminalMaximized()) {
+            @if (!contentLoading() && !terminalMaximized()) {
             <div class="sheet-columns" [style.grid-template-columns]="sheetColumns()">
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
@@ -1428,7 +1464,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (createDialogOpen()) {
       <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree" (click)="dismissCreateFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" [attr.aria-busy]="branchNamesLoading() || creatingWorktree() ? true : null" (click)="$event.stopPropagation()">
           <h2>Create worktree</h2>
           <label>
             New branch
@@ -1438,11 +1474,14 @@ button, input { font: inherit; color: inherit; }
               aria-autocomplete="list"
               aria-controls="create-branch-options"
               placeholder="New branch name"
+              [disabled]="branchNamesLoading()"
               [value]="createBranchName()"
               (input)="setCreateBranchName($event)"
             />
           </label>
-          @if (createBranchOptions().length > 0) {
+          @if (branchNamesLoading()) {
+            <p data-testid="loading-branches">Loading branches</p>
+          } @else if (createBranchOptions().length > 0) {
             <div class="existing-branches">
               <h3 id="existing-branches-heading" data-testid="existing-branches-heading">Existing branches</h3>
               <ul
@@ -1470,7 +1509,7 @@ button, input { font: inherit; color: inherit; }
             <p data-testid="workspace-error">{{ message }}</p>
           }
           <div class="dialog-actions">
-            <button type="button" data-testid="confirm-create-worktree" (click)="createBranch()">Create worktree</button>
+            <button type="button" data-testid="confirm-create-worktree" [disabled]="branchNamesLoading()" (click)="createBranch()">{{ creatingWorktree() ? 'Creating worktree' : 'Create worktree' }}</button>
             <button type="button" data-testid="cancel-create-worktree" (click)="cancelCreate()">Cancel</button>
           </div>
         </section>
@@ -1480,6 +1519,9 @@ button, input { font: inherit; color: inherit; }
       <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master" (click)="dismissMergeFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
           <h2>Merge into master</h2>
+          @if (branchActivity()?.label === 'Merging into master') {
+            <p data-testid="merge-activity">Merging into master</p>
+          }
           <label>
             Squash
             <input
@@ -1493,7 +1535,7 @@ button, input { font: inherit; color: inherit; }
             <p data-testid="workspace-error">{{ message }}</p>
           }
           <div class="dialog-actions">
-            <button type="button" data-testid="confirm-merge-into-master" (click)="confirmMerge()">Merge into master</button>
+            <button type="button" data-testid="confirm-merge-into-master" (click)="confirmMerge()">{{ branchActivity()?.label === 'Merging into master' ? 'Merging into master' : 'Merge into master' }}</button>
             <button type="button" data-testid="cancel-merge-into-master" (click)="cancelMerge()">Cancel</button>
           </div>
         </section>
@@ -1819,6 +1861,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly addName = signal('');
   readonly addNameTouched = signal(false);
   readonly cardError = signal<string | null>(null);
+  readonly openError = signal<string | null>(null);
+  readonly openingRepository = signal<string | null>(null);
+  readonly branchNamesLoading = signal(false);
+  readonly creatingWorktree = signal(false);
+  readonly contentLoading = signal(false);
+  readonly branchActivity = signal<{ branch: string; label: string } | null>(null);
+  readonly tmuxSessionRecords = signal<TmuxSessionRecord[]>([]);
   readonly overlayOpen = signal(false);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
@@ -2009,6 +2058,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.selectedCommit()?.diff ?? '';
   });
 
+  branchActivityLabel(name: string): string | null {
+    const activity = this.branchActivity();
+    if (activity?.branch === name) {
+      return activity.label;
+    }
+    if (this.contentLoading() && this.terminalMaximized() && this.selectedBranchName() === name) {
+      return `Loading ${name}`;
+    }
+    return null;
+  }
+
   statusLabel(status: BranchStatus): string {
     switch (status) {
       case 'local-only':
@@ -2025,6 +2085,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   ngOnInit(): void {
     if (this.registryMode()) {
       this.registered.set(listRepositories());
+    }
+    const path = this.effectivePath();
+    if (path !== null) {
+      pruneRemoteTrackingRefs(path);
     }
     this.refreshBranches();
     this.commandPoll = setInterval(() => {
@@ -2051,20 +2115,33 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   choose(name: string): void {
     const entry = this.cardRepositories().find((repository) => repository.name === name);
-    this.selectedName.set(name);
-    this.openedPath.set(entry?.path ?? null);
+    const path = entry?.path ?? null;
+    if (path !== null && this.effectivePath() === path) {
+      this.overlayOpen.set(false);
+      return;
+    }
+    if (path === null) {
+      this.finishChoose(name, null);
+      return;
+    }
     this.overlayOpen.set(false);
-    this.openBranch.set(null);
-    this.selectedBranchName.set(null);
-    this.selectedFilePath.set(null);
-    this.selectedCommitSubject.set(null);
-    this.loadedFiles.set([]);
-    this.loadedCommits.set([]);
-    this.loadedRecentCommits.set([]);
-    this.recentHistoryComplete.set(true);
-    this.loadedDiff.set(null);
-    this.clearTerminals();
-    this.refreshBranches();
+    this.openError.set(null);
+    this.openingRepository.set(name);
+    this.runWhenPainted(() => {
+      try {
+        pruneRemoteTrackingRefs(path);
+        this.finishChoose(name, path);
+        this.openingRepository.set(null);
+      } catch (error) {
+        this.openingRepository.set(null);
+        const message = errorText(error);
+        if (this.effectivePath() === null && this.selectedName() === null) {
+          this.openError.set(message);
+        } else {
+          this.workspaceError.set(message);
+        }
+      }
+    });
   }
 
   openAddDialog(): void {
@@ -2240,31 +2317,26 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     event?.stopPropagation();
     this.terminalMenu.set(null);
     this.renaming.set(null);
-    this.selectedBranchName.set(name);
-    this.selectedFilePath.set(null);
-    this.selectedCommitSubject.set(null);
-    this.loadedDiff.set(null);
-    this.loadedCommitFiles.set([]);
     const path = this.effectivePath();
     if (path === null) {
-      this.loadedFiles.set([]);
-      this.loadedCommits.set([]);
-      this.loadedRecentCommits.set([]);
-      this.recentHistoryComplete.set(true);
+      this.selectedBranchName.set(name);
+      this.clearLoadedBranch();
       return;
     }
-    this.loadedFiles.set(readChangedFiles(path, name));
-    if (this.branchIsDefault()) {
-      this.loadedCommits.set([]);
-      const page = readRecentCommits(path, name);
-      this.loadedRecentCommits.set(page);
-      this.recentHistoryComplete.set(page.length < recentCommitPageSize);
-    } else {
-      this.loadedRecentCommits.set([]);
-      this.recentHistoryComplete.set(true);
-      this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
-    }
-    this.openTerminals(name);
+    const previous = this.snapshotBranchView();
+    this.selectedBranchName.set(name);
+    this.clearLoadedBranch();
+    this.contentLoading.set(true);
+    this.runWhenPainted(() => {
+      try {
+        this.loadBranchContent(name);
+        this.contentLoading.set(false);
+      } catch (error) {
+        this.restoreBranchView(previous);
+        this.contentLoading.set(false);
+        this.workspaceError.set(errorText(error));
+      }
+    });
   }
 
   onRecentCommitsScroll(event: Event): void {
@@ -2299,7 +2371,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
       ) ?? [],
     );
-    const outside = sessionsForBranch(repo, name).filter((session) => !known.has(session)).length;
+    const outside = sessionsForBranch(repo, name, this.tmuxSessionRecords()).filter((session) => !known.has(session)).length;
     return remembered + outside;
   }
 
@@ -3262,7 +3334,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   updateBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => updateFromMaster(this.effectivePath() ?? '', name, false));
+    this.runBranchAction(name, 'Updating from master', () => updateFromMaster(this.effectivePath() ?? '', name, false), 'refresh-selected');
   }
 
   mergeBranch(name: string, event: Event): void {
@@ -3294,39 +3366,67 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!name) {
       return;
     }
-    this.runBranchAction(name, () => mergeIntoMaster(this.effectivePath() ?? '', name, this.mergeSquash()));
-    if (this.workspaceError() === null) {
-      this.mergeSquash.set(false);
-      this.mergeDialogBranch.set(null);
-    }
+    this.runBranchAction(
+      name,
+      'Merging into master',
+      () => mergeIntoMaster(this.effectivePath() ?? '', name, this.mergeSquash()),
+      'refresh-selected',
+      () => {
+        this.mergeSquash.set(false);
+        this.mergeDialogBranch.set(null);
+      },
+    );
   }
 
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => {
-      removeWorktree(this.effectivePath() ?? '', name);
-      if (this.openBranch() === name) {
-        this.openBranch.set(null);
-      }
-    });
+    this.runBranchAction(
+      name,
+      'Removing worktree',
+      () => {
+        removeWorktree(this.effectivePath() ?? '', name);
+        if (this.openBranch() === name) {
+          this.openBranch.set(null);
+        }
+      },
+      'remove',
+    );
   }
 
   publishBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(name, () => pushBranch(this.effectivePath() ?? '', name));
+    this.runBranchAction(name, 'Pushing', () => pushBranch(this.effectivePath() ?? '', name), 'refresh-selected');
   }
 
   openCreateDialog(): void {
     this.workspaceError.set(null);
+    this.creatingWorktree.set(false);
     this.createBranchName.set('');
     const path = this.effectivePath();
-    this.createBranchOptions.set(path === null ? [] : listRemoteBranchesWithoutWorktree(path));
     this.createDialogOpen.set(true);
+    if (path === null) {
+      this.branchNamesLoading.set(false);
+      this.createBranchOptions.set([]);
+      return;
+    }
+    this.createBranchOptions.set([]);
+    this.branchNamesLoading.set(true);
+    this.runWhenPainted(() => {
+      try {
+        this.createBranchOptions.set(listRemoteBranchesWithoutWorktree(path));
+        this.branchNamesLoading.set(false);
+      } catch (error) {
+        this.branchNamesLoading.set(false);
+        this.workspaceError.set(errorText(error));
+      }
+    });
   }
 
   cancelCreate(): void {
     this.workspaceError.set(null);
     this.createBranchName.set('');
+    this.branchNamesLoading.set(false);
+    this.creatingWorktree.set(false);
     this.createDialogOpen.set(false);
   }
 
@@ -3344,46 +3444,73 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.createBranchName.set(name);
   }
 
-  async createBranch(): Promise<void> {
+  createBranch(): Promise<void> {
     const repo = this.effectivePath();
-    if (!repo) {
-      return;
+    if (!repo || this.creatingWorktree() || this.branchNamesLoading()) {
+      return Promise.resolve();
+    }
+    if (this.createBranchName().trim() === '') {
+      this.workspaceError.set('Enter a branch name');
+      return Promise.resolve();
     }
     this.workspaceError.set(null);
-    try {
-      await createWorktree(repo, this.createBranchName());
-      this.zone.run(() => {
-        this.createDialogOpen.set(false);
-        this.createBranchName.set('');
-        this.refreshBranches();
+    const branchName = this.createBranchName();
+    this.creatingWorktree.set(true);
+    return new Promise((resolve) => {
+      this.runWhenPainted(() => {
+        void createWorktree(repo, branchName).then(
+          () => {
+            this.zone.run(() => {
+              this.refreshBranches();
+              this.createDialogOpen.set(false);
+              this.createBranchName.set('');
+              this.creatingWorktree.set(false);
+              resolve();
+            });
+          },
+          (error: unknown) => {
+            this.zone.run(() => {
+              this.creatingWorktree.set(false);
+              this.workspaceError.set(errorText(error));
+              resolve();
+            });
+          },
+        );
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.zone.run(() => {
-        this.workspaceError.set(message);
-      });
-    }
+    });
   }
 
-  private runBranchAction(name: string, action: () => void): void {
+  private runBranchAction(
+    name: string,
+    label: string,
+    action: () => void,
+    effect: 'remove' | 'refresh-selected',
+    onSuccess?: () => void,
+  ): void {
     if (!this.effectivePath()) {
       return;
     }
     this.workspaceError.set(null);
-    try {
-      action();
-      this.refreshAfterBranchChange(name);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.workspaceError.set(message);
-    }
-  }
-
-  private refreshAfterBranchChange(name: string): void {
-    this.refreshBranches();
-    if (this.selectedBranchName() === name) {
-      this.selectBranch(name);
-    }
+    const selected = this.selectedBranchName();
+    this.branchActivity.set({ branch: name, label });
+    this.runWhenPainted(() => {
+      try {
+        action();
+        this.refreshBranches();
+        if (effect === 'remove') {
+          if (selected === name) {
+            this.clearBranchSelection();
+          }
+        } else if (selected === name) {
+          this.loadBranchContent(name);
+        }
+        onSuccess?.();
+        this.branchActivity.set(null);
+      } catch (error) {
+        this.branchActivity.set(null);
+        this.workspaceError.set(errorText(error));
+      }
+    });
   }
 
   private ensureTerminal(): void {
@@ -3491,6 +3618,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const leaving = this.activeTerminalMode();
     if (kill) {
       this.killTerminalsOfMode(leaving);
+      this.rememberTmuxSessions();
     }
     saveTerminalMode(mode);
     this.terminalMode.set(mode);
@@ -3644,6 +3772,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private refreshTerminalCommands(): void {
+    this.rememberTmuxSessions();
     const current = this.terminalsByBranch();
     let next = current;
     let collapse = false;
@@ -3701,9 +3830,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (path === null) {
       return;
     }
-    this.claimOldSessions(path);
+    const rows = listBranches(path);
+    this.claimOldSessions(path, rows);
     this.realBranches.set(
-      listWorktreeBranches(path).map((branch) => ({
+      listWorktreeBranches(path, rows).map((branch) => ({
         name: branch.name,
         status: branch.status,
         changedFileCount: branch.changedFileCount,
@@ -3711,6 +3841,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         behind: branch.behind,
       })),
     );
+    this.rememberTmuxSessions();
   }
 
   keepOldSession(name: string, branch: string): void {
@@ -3741,14 +3872,108 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.oldSessionChoices.set([]);
   }
 
-  private claimOldSessions(path: string): void {
+  private finishChoose(name: string, path: string | null): void {
+    this.selectedName.set(name);
+    this.openedPath.set(path);
+    this.overlayOpen.set(false);
+    this.openBranch.set(null);
+    this.clearBranchSelection();
+    this.clearTerminals();
+    this.refreshBranches();
+  }
+
+  private runWhenPainted(work: () => void): void {
+    runAfterPaint(() => {
+      this.zone.run(work);
+    });
+  }
+
+  private clearBranchSelection(): void {
+    this.selectedBranchName.set(null);
+    this.clearLoadedBranch();
+    this.contentLoading.set(false);
+  }
+
+  private clearLoadedBranch(): void {
+    this.selectedFilePath.set(null);
+    this.selectedCommitSubject.set(null);
+    this.loadedDiff.set(null);
+    this.loadedCommitFiles.set([]);
+    this.loadedFiles.set([]);
+    this.loadedCommits.set([]);
+    this.loadedRecentCommits.set([]);
+    this.recentHistoryComplete.set(true);
+  }
+
+  private snapshotBranchView(): BranchViewSnapshot {
+    return {
+      name: this.selectedBranchName(),
+      filePath: this.selectedFilePath(),
+      commitSubject: this.selectedCommitSubject(),
+      files: this.loadedFiles(),
+      commits: this.loadedCommits(),
+      recentCommits: this.loadedRecentCommits(),
+      recentComplete: this.recentHistoryComplete(),
+      commitFiles: this.loadedCommitFiles(),
+      diff: this.loadedDiff(),
+    };
+  }
+
+  private restoreBranchView(snapshot: BranchViewSnapshot): void {
+    this.selectedBranchName.set(snapshot.name);
+    this.selectedFilePath.set(snapshot.filePath);
+    this.selectedCommitSubject.set(snapshot.commitSubject);
+    this.loadedFiles.set(snapshot.files);
+    this.loadedCommits.set(snapshot.commits);
+    this.loadedRecentCommits.set(snapshot.recentCommits);
+    this.recentHistoryComplete.set(snapshot.recentComplete);
+    this.loadedCommitFiles.set(snapshot.commitFiles);
+    this.loadedDiff.set(snapshot.diff);
+  }
+
+  private loadBranchContent(name: string): void {
+    const path = this.effectivePath();
+    if (!path) {
+      return;
+    }
+    this.selectedFilePath.set(null);
+    this.selectedCommitSubject.set(null);
+    this.loadedDiff.set(null);
+    this.loadedCommitFiles.set([]);
+    this.loadedFiles.set(readChangedFiles(path, name));
+    if (this.branchIsDefault()) {
+      this.loadedCommits.set([]);
+      const page = readRecentCommits(path, name);
+      this.loadedRecentCommits.set(page);
+      this.recentHistoryComplete.set(page.length < recentCommitPageSize);
+    } else {
+      this.loadedRecentCommits.set([]);
+      this.recentHistoryComplete.set(true);
+      this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+    }
+    this.openTerminals(name);
+  }
+
+  private rememberTmuxSessions(): void {
+    const next = listTmuxSessionRecords();
+    const current = this.tmuxSessionRecords();
+    if (
+      current.length === next.length &&
+      current.every(
+        (session, index) => session.name === next[index]?.name && session.branch === next[index]?.branch,
+      )
+    ) {
+      return;
+    }
+    this.tmuxSessionRecords.set(next);
+  }
+
+  private claimOldSessions(path: string, rows: readonly { name: string; status: BranchStatus }[]): void {
     if (path !== this.oldSessionRepo) {
       this.dismissedOldSessions.clear();
       this.oldSessionRepo = path;
     }
-    const branches = listBranches(path)
-      .filter((branch) => branch.status !== 'remote-only')
-      .map((branch) => branch.name);
+    const branches = rows.filter((branch) => branch.status !== 'remote-only').map((branch) => branch.name);
     claimUniqueLegacySessions(path, branches);
     this.oldSessionChoices.set(
       ambiguousLegacySessions(path, branches).filter((choice) => !this.dismissedOldSessions.has(choice.name)),
@@ -3815,6 +4040,18 @@ function readRepositoryName(repoPath: string): string {
 const terminalHeaderHeight = 36;
 const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
+
+interface BranchViewSnapshot {
+  name: string | null;
+  filePath: string | null;
+  commitSubject: string | null;
+  files: ChangedFile[];
+  commits: BranchCommit[];
+  recentCommits: BranchCommit[];
+  recentComplete: boolean;
+  commitFiles: ChangedFile[];
+  diff: string | null;
+}
 
 interface TerminalMenuState {
   tabId: string;

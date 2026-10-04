@@ -225,7 +225,7 @@ function changedFilesInWorktree(worktree: string): ChangedFile[] {
   return [...tracked, ...untrackedFiles(worktree)];
 }
 
-function pruneDeletedRemoteBranches(repoPath: string): void {
+export function pruneRemoteTrackingRefs(repoPath: string): void {
   for (const remote of configuredRemotes(repoPath)) {
     try {
       execFileSync('git', ['remote', 'prune', remote], {
@@ -241,7 +241,6 @@ function pruneDeletedRemoteBranches(repoPath: string): void {
 }
 
 export function listBranches(repoPath: string): BranchRow[] {
-  pruneDeletedRemoteBranches(repoPath);
   const fallbackBase = aheadBehindBase(repoPath);
   const localNames = gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
     .split('\n')
@@ -297,9 +296,9 @@ export function listBranches(repoPath: string): BranchRow[] {
   return pinDefaultBranch(rows, defaultBranchName(repoPath));
 }
 
-export function listWorktreeBranches(repoPath: string): BranchRow[] {
+export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
   const checkedOut = checkedOutBranches(repoPath);
-  return listBranches(repoPath).filter((branch) => checkedOut.has(branch.name));
+  return (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
 }
 
 export interface AvailableBranch {

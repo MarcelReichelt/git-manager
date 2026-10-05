@@ -1402,6 +1402,7 @@ describe('desktop workspace', () => {
     const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
     expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
     expect(getComputedStyle(quayTab).outline).toBe('2px solid #000000');
+    expect(getComputedStyle(quayTab).outlineOffset).toBe('-2px');
     expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
     expect(getComputedStyle(pierTab).outline).toBe('none');
 
@@ -1917,6 +1918,20 @@ describe('desktop workspace', () => {
       selectedPier.click();
       fixture.detectChanges();
       expect(scrolled[0]).toBe(selectedPier);
+
+      scrolled.length = 0;
+      fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+      fixture.detectChanges();
+      scrolled.length = 0;
+      const closeQuay = openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]');
+      if (!(closeQuay instanceof HTMLElement)) {
+        throw new Error('Close is not in the repository tab menu');
+      }
+      closeQuay.click();
+      fixture.detectChanges();
+      const pierAfterClose = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+      expect(pierAfterClose.getAttribute('aria-selected')).toBe('true');
+      expect(scrolled).toContain(pierAfterClose);
     } finally {
       HTMLElement.prototype.scrollIntoView = original;
     }

@@ -2054,7 +2054,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   });
   readonly registryMode = computed(() => this.liveRegistry() || liveQueryFlag());
   readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
-  readonly repositoryLocation = computed(() => this.effectivePath() ?? '');
   readonly cardRepositories = computed((): CardRepository[] => {
     if (!this.registryMode()) {
       return sampleCard;
@@ -2183,7 +2182,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const path = this.effectivePath();
     if (path !== null) {
-      this.appendRepositoryTab(path, this.workspaceTitle() ?? basename(path));
+      const name = this.workspaceTitle();
+      if (name !== null) {
+        this.appendRepositoryTab(path, name);
+      }
       pruneRemoteTrackingRefs(path);
       refreshRemoteHead(path);
     } else if (this.persistOpenTabs) {
@@ -2279,6 +2281,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.rememberOpenRepositoryTabs();
       return;
     }
+    this.tabToReveal = next.path;
     this.showKeptRepository(next);
     this.rememberOpenRepositoryTabs();
   }
@@ -2298,7 +2301,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.openRepository(tab.name, path);
   }
 
-  private openRepository(name: string, path: string): void {
+  private openRepository(name: string, path: string, whenOpenFails?: (path: string) => void): void {
     this.overlayOpen.set(false);
     this.openError.set(null);
     if (this.repositoryPath() === null && this.selectedName() === null) {
@@ -2312,6 +2315,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.openingRepository.set(null);
       } catch (error) {
         this.openingRepository.set(null);
+        if (whenOpenFails) {
+          whenOpenFails(path);
+          return;
+        }
         const message = errorText(error);
         if (this.effectivePath() === null && this.selectedName() === null) {
           this.openError.set(message);
@@ -4233,12 +4240,41 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       }
       this.appendRepositoryTab(path, repository.displayName);
     }
+    this.openRestoredRepository(saved.paths, remaining, selectedPath);
+  }
+
+  private openRestoredRepository(
+    savedPaths: readonly string[],
+    candidates: readonly string[],
+    selectedPath: string,
+  ): void {
     const selected = findRepository(selectedPath);
     if (!selected) {
+      this.skipRestoredRepository(savedPaths, candidates, selectedPath);
+      return;
+    }
+    this.openRepository(selected.displayName, selected.path, () => {
+      this.skipRestoredRepository(savedPaths, candidates, selectedPath);
+    });
+  }
+
+  private skipRestoredRepository(
+    savedPaths: readonly string[],
+    candidates: readonly string[],
+    failedPath: string,
+  ): void {
+    const remaining = candidates.filter((path) => path !== failedPath);
+    this.repositoryTabs.update((tabs) => tabs.filter((tab) => tab.path !== failedPath));
+    const next = restoredRepositoryPath(savedPaths, failedPath, remaining);
+    if (next === null) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.openingRepository.set(null);
+      this.overlayOpen.set(false);
       this.rememberOpenRepositoryTabs();
       return;
     }
-    this.openRepository(selected.displayName, selected.path);
+    this.openRestoredRepository(savedPaths, remaining, next);
   }
 
   private rememberOpenRepositoryTabs(): void {

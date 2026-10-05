@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addRepository, listRepositories, resolveRegistryPath } from '../src/registry.js';
+import { addRepository, listRepositories, renameRepository, resolveRegistryPath } from '../src/registry.js';
 
 describe('registry schema', () => {
   const roots: string[] = [];
@@ -100,6 +100,14 @@ describe('registry schema', () => {
       displayName: 'Atlas',
     });
     expect(listRepositories()).toEqual([{ path: resolve(repoPath), displayName: 'Atlas' }]);
+    expect(renameRepository(repoPath, '  North Atlas  ')).toEqual({
+      path: resolve(repoPath),
+      displayName: 'North Atlas',
+    });
+    expect(listRepositories()).toEqual([{ path: resolve(repoPath), displayName: 'North Atlas' }]);
+    expect(() => renameRepository(repoPath, '   ')).toThrow('Enter a display name');
+    expect(listRepositories()).toEqual([{ path: resolve(repoPath), displayName: 'North Atlas' }]);
+    expect(() => renameRepository(join(root, 'missing'), 'Missing')).toThrow('Repository is not registered');
   });
 
   it('reads GIT_MANAGER_REGISTRY_PATH from the running process when no env is passed', () => {

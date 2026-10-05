@@ -5,10 +5,12 @@ import TOML from '@iarna/toml';
 import { runtimeEnv } from './runtime-env.js';
 
 export type TerminalMode = 'none' | 'terminal' | 'tmux';
+export type SidebarText = 'white' | 'black';
 
 export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
   sidebarColor: string;
+  sidebarText: SidebarText;
   contentColor: string;
   terminalBackground: string;
   terminalForeground: string;
@@ -36,6 +38,11 @@ export interface CreateLayout {
   label: string;
   source: 'repository' | 'app';
   supported: boolean;
+}
+
+export interface RepositoryAppearance {
+  sidebarColor?: string;
+  sidebarText?: SidebarText;
 }
 
 export function resolveAppSettingsPath(env?: NodeJS.ProcessEnv): string {
@@ -83,6 +90,7 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
   return {
     defaultLayout: stored.defaultLayout === 'sibling' ? 'sibling' : 'workspaces',
     sidebarColor: typeof stored.sidebarColor === 'string' ? stored.sidebarColor : originalSidebarColor,
+    sidebarText: sidebarText(stored.sidebarText),
     contentColor: typeof stored.contentColor === 'string' ? stored.contentColor : originalContentColor,
     terminalBackground:
       typeof stored.terminalBackground === 'string' ? stored.terminalBackground : originalTerminalBackground,
@@ -130,6 +138,46 @@ export function saveSidebarColor(color: string, env?: NodeJS.ProcessEnv): void {
   const current = readSettingsObject(settingsPath);
   current.sidebarColor = color;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveSidebarText(text: SidebarText, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.sidebarText = text;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function readRepositoryAppearance(repoPath: string): RepositoryAppearance {
+  const appearance = repositoryAppearance(repoPath);
+  const result: RepositoryAppearance = {};
+  if (typeof appearance.sidebar_color === 'string') {
+    result.sidebarColor = appearance.sidebar_color;
+  }
+  if (appearance.sidebar_text === 'white' || appearance.sidebar_text === 'black') {
+    result.sidebarText = appearance.sidebar_text;
+  }
+  return result;
+}
+
+export function saveRepositorySidebarColor(repoPath: string, color: string): void {
+  writeRepositoryAppearance(repoPath, (appearance) => {
+    appearance.sidebar_color = color;
+  });
+}
+
+export function saveRepositorySidebarText(repoPath: string, text: SidebarText): void {
+  writeRepositoryAppearance(repoPath, (appearance) => {
+    appearance.sidebar_text = text;
+  });
+}
+
+export function clearRepositorySidebarColor(repoPath: string): void {
+  clearRepositoryAppearanceKey(repoPath, 'sidebar_color');
+}
+
+export function clearRepositorySidebarText(repoPath: string): void {
+  clearRepositoryAppearanceKey(repoPath, 'sidebar_text');
 }
 
 export function saveIdeCommand(command: string, env?: NodeJS.ProcessEnv): void {
@@ -218,9 +266,45 @@ export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
   current.sidebarColor = originalSidebarColor;
+  current.sidebarText = 'white';
   current.contentColor = originalContentColor;
   current.terminalBackground = originalTerminalBackground;
   current.terminalForeground = originalTerminalForeground;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export interface OpenRepositoryTabs {
+  paths: string[];
+  selectedPath: string | null;
+}
+
+export function readOpenRepositoryTabs(env?: NodeJS.ProcessEnv): OpenRepositoryTabs {
+  const stored = readSettingsObject(resolveAppSettingsPath(env));
+  return {
+    paths: readPathList(stored.openRepositoryPaths),
+    selectedPath: readStoredPath(stored.selectedRepositoryPath),
+  };
+}
+
+export function saveOpenRepositoryTabs(
+  paths: readonly string[],
+  selectedPath: string | null,
+  env?: NodeJS.ProcessEnv,
+): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  if (paths.length === 0) {
+    delete current.openRepositoryPaths;
+    delete current.selectedRepositoryPath;
+  } else {
+    current.openRepositoryPaths = [...paths];
+    if (selectedPath === null) {
+      delete current.selectedRepositoryPath;
+    } else {
+      current.selectedRepositoryPath = selectedPath;
+    }
+  }
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
@@ -250,6 +334,57 @@ function readRepositoryConfig(configPath: string): Record<string, unknown> {
   return parsed;
 }
 
+function sidebarText(value: unknown): SidebarText {
+  if (value === 'white' || value === 'black') {
+    return value;
+  }
+  return 'white';
+}
+
+function repositoryAppearance(repoPath: string): Record<string, unknown> {
+  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  if (!existsSync(configPath)) {
+    return {};
+  }
+  const parsed = readRepositoryConfig(configPath);
+  if (!isRecord(parsed.appearance)) {
+    return {};
+  }
+  return parsed.appearance;
+}
+
+function writeRepositoryAppearance(
+  repoPath: string,
+  update: (appearance: Record<string, unknown>) => void,
+): void {
+  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  mkdirSync(dirname(configPath), { recursive: true });
+  const current = readRepositoryConfig(configPath);
+  const appearance = isRecord(current.appearance) ? { ...current.appearance } : {};
+  update(appearance);
+  current.appearance = appearance;
+  writeFileSync(configPath, TOML.stringify(current as Parameters<typeof TOML.stringify>[0]));
+}
+
+function clearRepositoryAppearanceKey(repoPath: string, key: string): void {
+  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  if (!existsSync(configPath)) {
+    return;
+  }
+  const current = readRepositoryConfig(configPath);
+  if (!isRecord(current.appearance) || !Object.prototype.hasOwnProperty.call(current.appearance, key)) {
+    return;
+  }
+  const appearance = { ...current.appearance };
+  delete appearance[key];
+  if (Object.keys(appearance).length === 0) {
+    delete current.appearance;
+  } else {
+    current.appearance = appearance;
+  }
+  writeFileSync(configPath, TOML.stringify(current as Parameters<typeof TOML.stringify>[0]));
+}
+
 function readRepositoryLayoutMode(repoPath: string): string | undefined {
   const configPath = join(repoPath, '.git-manager', 'config.toml');
   if (!existsSync(configPath)) {
@@ -267,6 +402,20 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   return String(mode);
+}
+
+function readPathList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((path): path is string => typeof path === 'string');
+}
+
+function readStoredPath(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value;
 }
 
 function readChangesShare(value: unknown): number | null {

@@ -1,10 +1,11 @@
 import TOML from '@iarna/toml';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
+import { killTmuxSession, listTmuxSessions, sessionDirectory, sessionsForBranch } from '../src/desktop/tmux-sessions';
+import { waitForTerminal } from './desktop-terminal-harness';
 import { resetFolderBrowser, setFolderBrowser } from '../src/desktop/folder-browser';
 import { resetTextCopy, setTextCopy } from '../src/desktop/copy-text';
 import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
@@ -12,7 +13,7 @@ import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
-import { addRepository } from '../src/registry';
+import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
@@ -85,11 +86,13 @@ describe('desktop workspace', () => {
   }
 
   async function renderLive() {
-    const previousSearch = location.search;
-    history.replaceState(null, '', `${location.pathname}?live=1`);
-    restoreSearch = () => {
-      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
-    };
+    if (restoreSearch === undefined) {
+      const previousSearch = location.search;
+      history.replaceState(null, '', `${location.pathname}?live=1`);
+      restoreSearch = () => {
+        history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+      };
+    }
     return setupWorkspace();
   }
 
@@ -100,6 +103,66 @@ describe('desktop workspace', () => {
     return setupWorkspace((fixture) => {
       fixture.componentRef.setInput('repositoryPath', repoPath);
     });
+  }
+
+  function openRepositoryCard(fixture: ComponentFixture<WorkspaceComponent>): void {
+    const button = fixture.nativeElement.querySelector('[data-testid="open-repository-card"]');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error('Open repository is not shown');
+    }
+    button.click();
+    fixture.detectChanges();
+  }
+
+  function registerPair(): { pier: string; quay: string } {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    return { pier, quay };
+  }
+
+  async function openLiveRepository(fixture: ComponentFixture<WorkspaceComponent>, name: string): Promise<void> {
+    const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
+    const scope = overlay instanceof HTMLElement ? overlay : fixture.nativeElement;
+    const button = scope.querySelector(`[data-testid="repository"][data-name="${name}"]`);
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`${name} is not on the repository card`);
+    }
+    button.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  function openRepositoryTabMenu(fixture: ComponentFixture<WorkspaceComponent>, name: string): HTMLElement {
+    const tab = fixture.nativeElement.querySelector(`[data-testid="repository-tab"][data-name="${name}"]`);
+    if (!(tab instanceof HTMLElement)) {
+      throw new Error(`${name} has no repository tab`);
+    }
+    tab.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 16 }),
+    );
+    fixture.detectChanges();
+    const menu = fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]');
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error('The repository tab menu is not open');
+    }
+    return menu;
   }
 
   it('shows a centered repository card and no branch list on first start', async () => {
@@ -132,9 +195,9 @@ describe('desktop workspace', () => {
 
     const workspace = fixture.nativeElement.querySelector('[data-testid="workspace"]');
     expect(workspace).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
+    expect(branchNames(fixture)).toContain('origin/release');
   });
 
   it('switches from Harbor to Atlas through a centered repository overlay', async () => {
@@ -142,7 +205,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
 
     const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
@@ -160,9 +223,9 @@ describe('desktop workspace', () => {
     overlay.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Atlas',
-    );
+    expect(branchNames(fixture)).toContain('main');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
   });
 
@@ -171,7 +234,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
 
     const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
@@ -182,9 +245,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(branchNames(fixture)).toEqual([
       'feature/login',
       'wip',
@@ -199,7 +260,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
 
     const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
@@ -211,9 +272,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(branchNames(fixture)).toEqual([
       'feature/login',
       'wip',
@@ -228,16 +287,14 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(branchNames(fixture)).toEqual([
       'feature/login',
       'wip',
@@ -314,15 +371,14 @@ describe('desktop workspace', () => {
     setWindowChrome((action) => {
       actions.push(action);
     });
-    const fixture = await render();
-    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
-    fixture.detectChanges();
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
 
     const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
     const controls = [
-      bar.querySelector('[data-testid="repository-name"]'),
-      bar.querySelector('[data-testid="switch-repository"]'),
-      bar.querySelector('[data-testid="repository-settings"]'),
+      bar.querySelector('[data-testid="repository-tab"]'),
+      bar.querySelector('[data-testid="open-repository-card"]'),
+      fixture.nativeElement.querySelector('p.branch-label [data-testid="repository-settings"]'),
       bar.querySelector('[data-testid="app-settings"]'),
       bar.querySelector('[data-testid="window-minimize"]'),
       bar.querySelector('[data-testid="window-maximize"]'),
@@ -371,7 +427,7 @@ describe('desktop workspace', () => {
 
     start.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     start.detectChanges();
-    start.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(start);
     start.detectChanges();
 
     const overlayCard = start.nativeElement.querySelector(
@@ -428,7 +484,17 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
-    expect(labels).toEqual(['Workspaces', 'Sibling', 'None', 'Terminal', 'Tmux', 'IDE command', 'Font family']);
+    expect(labels).toEqual([
+      'Workspaces',
+      'Sibling',
+      'None',
+      'Terminal',
+      'Tmux',
+      'IDE command',
+      'Font family',
+      'White',
+      'Black',
+    ]);
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
     expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
@@ -868,6 +934,7 @@ describe('desktop workspace', () => {
     expect(readAppSettings()).toEqual({
       defaultLayout: 'workspaces',
       sidebarColor: '#123456',
+      sidebarText: 'white',
       contentColor: '#abcdef',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -914,6 +981,7 @@ describe('desktop workspace', () => {
     expect(readAppSettings()).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -928,6 +996,665 @@ describe('desktop workspace', () => {
       terminalExpanded: true,
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
+  });
+
+  it('offers white or black sidebar text and reset restores white on the worktrees region', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const white = dialog.querySelector('[data-testid="sidebar-text-white"]');
+    const black = dialog.querySelector('[data-testid="sidebar-text-black"]');
+    expect(white).toBeInstanceOf(HTMLInputElement);
+    expect(black).toBeInstanceOf(HTMLInputElement);
+    expect(white.type).toBe('radio');
+    expect(black.type).toBe('radio');
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(white.closest('label').textContent).toContain('White');
+    expect(black.closest('label').textContent).toContain('Black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    black.click();
+    fixture.detectChanges();
+
+    expect(black.checked).toBe(true);
+    expect(white.checked).toBe(false);
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    const selected = fixture.nativeElement.querySelector('.branch-row.is-selected');
+    expect(getComputedStyle(selected).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(selected).color).toBe('rgb(26, 60, 43)');
+
+    white.click();
+    fixture.detectChanges();
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    black.click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="reset-colors"]').click();
+    fixture.detectChanges();
+
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(readAppSettings().sidebarColor).toBe('#1a3c2b');
+    expect(readAppSettings().contentColor).toBe('#f7f7f5');
+    expect(readAppSettings().terminalBackground).toBe('#1e1e1e');
+    expect(readAppSettings().terminalForeground).toBe('#d4d4d4');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+  });
+
+  it('offers the same sidebar color controls and white or black sidebar text in repository settings', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const appDialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const appSwatches = [...appDialog.querySelectorAll('[data-testid="sidebar-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    const appCustom = appDialog.querySelector('[data-testid="sidebar-color"]');
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const repoSwatches = [...dialog.querySelectorAll('[data-testid="repository-sidebar-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    const custom = dialog.querySelector('[data-testid="repository-sidebar-color"]');
+    const white = dialog.querySelector('[data-testid="repository-sidebar-text-white"]');
+    const black = dialog.querySelector('[data-testid="repository-sidebar-text-black"]');
+
+    expect(repoSwatches).toEqual(appSwatches);
+    expect(repoSwatches).toContain('#1a3c2b');
+    expect(repoSwatches).toContain('#065f46');
+    expect(custom).toBeInstanceOf(HTMLInputElement);
+    expect(custom.type).toBe('color');
+    expect(custom.getAttribute('aria-label')).toBe('Custom sidebar color');
+    expect(custom.value).toBe('#1a3c2b');
+    expect(dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').classList.contains('is-selected')).toBe(
+      true,
+    );
+    expect(white).toBeInstanceOf(HTMLInputElement);
+    expect(black).toBeInstanceOf(HTMLInputElement);
+    expect(white.type).toBe('radio');
+    expect(black.type).toBe('radio');
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(dialog.querySelector('[data-testid="use-app-sidebar-color"]').textContent.trim()).toBe('Use app settings');
+    expect(dialog.querySelector('[data-testid="use-app-sidebar-text"]').textContent.trim()).toBe('Use app settings');
+    expect(dialog.querySelector('[data-testid="content-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="terminal-background-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="terminal-foreground-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
+    expect(appCustom.getAttribute('aria-label')).toBe('Custom sidebar color');
+  });
+
+  it('stores a repository sidebar color and sidebar text even when they match app settings and paints the worktrees region', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      appearance: { sidebar_color: '#1a3c2b', sidebar_text: 'white' },
+    });
+    expect(readAppSettings().sidebarColor).toBe('#1a3c2b');
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#123456');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-black"]').click();
+    fixture.detectChanges();
+
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      appearance: { sidebar_color: '#123456', sidebar_text: 'black' },
+    });
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    const selected = fixture.nativeElement.querySelector('.branch-row.is-selected');
+    expect(getComputedStyle(selected).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(selected).color).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(247, 247, 245)',
+    );
+  });
+
+  it('uses app settings on the worktrees region until a repository sets its own sidebar', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await renderRepository(repoPath);
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    dialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+    pickColor(dialog.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="terminal-background-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(readAppSettings().contentColor).toBe('#abcdef');
+    expect(readAppSettings().terminalBackground).toBe('#065f46');
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+  });
+
+  it('keeps a repository sidebar when app settings change and clears one choice with Use app settings', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      ['[layout]', 'mode = "sibling"', '', '[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join(
+        '\n',
+      ),
+    );
+
+    const fixture = await renderRepository(repoPath);
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const appDialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    appDialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    appDialog.querySelector('[data-testid="sidebar-text-white"]').click();
+    fixture.detectChanges();
+    pickColor(appDialog.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('white');
+
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+    dialog.querySelector('[data-testid="use-app-sidebar-color"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { mode: 'sibling' },
+      appearance: { sidebar_text: 'black' },
+    });
+
+    dialog.querySelector('[data-testid="use-app-sidebar-text"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { mode: 'sibling' },
+    });
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+  });
+
+  it('paints each open repository from its own sidebar or from app settings, including a repository with no path', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('paints every repository tab with that repository sidebar color and sidebar text', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(quayTab.getAttribute('aria-selected')).toBe('true');
+    expect(pierTab.getAttribute('aria-selected')).toBe('false');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('frames the selected repository tab in its sidebar text color', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #000000');
+    expect(getComputedStyle(quayTab).outlineOffset).toBe('-2px');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).outline).toBe('none');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+  });
+
+  it('paints the window bar from the selected workspace sidebar color and sidebar text', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(bar).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="app-settings"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-maximize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-close"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(bar).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe(
+      'rgb(255, 255, 255)',
+    );
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-close"]')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+  });
+
+  it('updates a repository tab as soon as that repository sidebar color or sidebar text changes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#abcdef');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(pierTab.getAttribute('aria-selected')).toBe('true');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+  });
+
+  it('follows a later app settings change for a sidebar choice the repository has not stored', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(pier, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_text = "white"', ''].join('\n'),
+    );
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#1a3c2b"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    dialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).outline).toBe('none');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #000000');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe(
+      'rgb(255, 255, 255)',
+    );
+  });
+
+  it('follows app settings when the open repository has no path for its own sidebar', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#065f46","sidebarText":"black"}\n');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
   });
 
   it('names the app default layout on the create dialog for sample Harbor', async () => {
@@ -1070,34 +1797,43 @@ describe('desktop workspace', () => {
     expect(existsSync(join(root, 'notes'))).toBe(false);
   });
 
-  it('puts the repository name and switcher in the top bar and leaves room for settings', async () => {
+  it('shows the app icon, one repository tab, and + in the top bar', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);
 
     const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
     const aside = fixture.nativeElement.querySelector('aside');
-    const name = bar.querySelector('[data-testid="repository-name"]');
-    const switcher = bar.querySelector('[data-testid="switch-repository"]');
-    const settings = bar.querySelector('[data-testid="repository-settings"]');
+    const mark = bar.querySelector('[data-testid="app-mark"]');
+    const tabs = bar.querySelector('[data-testid="repository-tabs"]');
+    const tab = tabs.querySelector('[data-testid="repository-tab"]');
+    const open = tabs.querySelector('[data-testid="open-repository-card"]');
+    const appSettings = bar.querySelector('[data-testid="app-settings"]');
     const minimize = bar.querySelector('[data-testid="window-minimize"]');
+    const worktrees = aside.querySelector('p.branch-label');
+    const repositorySettings = worktrees.querySelector('[data-testid="repository-settings"]');
 
-    expect(name.textContent.trim()).toBe('harbor');
-    expect(aside.querySelector('[data-testid="repository-name"]')).toBeNull();
-    expect(aside.querySelector('[data-testid="switch-repository"]')).toBeNull();
+    expect(bar.querySelector('[data-testid="repository-name"]')).toBeNull();
+    expect(bar.querySelector('[data-testid="switch-repository"]')).toBeNull();
+    expect(bar.querySelector('[data-testid="repository-settings"]')).toBeNull();
     expect(aside.querySelector('.repo-path')).toBeNull();
     expect(aside.contains(minimize)).toBe(false);
     expect(getComputedStyle(bar).justifyContent).toBe('space-between');
-    expect(name.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(switcher.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(settings.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(switcher.getAttribute('aria-label')).toBe('Switch repository');
-    expect(switcher.querySelector('svg')).not.toBeNull();
-    const mark = bar.querySelector('[data-testid="app-mark"]');
-    expect(mark.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(bar.querySelector('[data-testid="repository-settings-slot"]')).toBeNull();
+    expect(tabs.querySelectorAll('[data-testid="repository-tab"]')).toHaveLength(1);
+    expect(tab.getAttribute('data-name')).toBe('harbor');
+    expect(tab.getAttribute('data-path')).toBe(repoPath);
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(tab.textContent.trim()).toBe('harbor');
+    expect(mark.compareDocumentPosition(tab) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(tab.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(open.compareDocumentPosition(appSettings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(appSettings.compareDocumentPosition(minimize) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(bar.querySelector('.window-controls').contains(appSettings)).toBe(true);
+    expect(bar.querySelector('.window-controls').contains(minimize)).toBe(true);
+    expect(worktrees.querySelector('span').textContent.trim()).toBe('Worktrees');
+    expect(worktrees.querySelector('span').compareDocumentPosition(repositorySettings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
 
-    switcher.click();
+    open.click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
@@ -1110,9 +1846,11 @@ describe('desktop workspace', () => {
 
     const title = fixture.nativeElement.querySelector('.window-title');
     const mark = title.querySelector('[data-testid="app-mark"]');
-    const name = title.querySelector('[data-testid="repository-name"]');
+    const name = title.querySelector('[data-testid="repository-tabs"]');
 
-    expect(getComputedStyle(title).paddingLeft).toBe('12px');
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const spaceAboveIcon = (parseFloat(getComputedStyle(bar).height) - parseFloat(mark.getAttribute('height') ?? '0')) / 2;
+    expect(getComputedStyle(title).paddingLeft).toBe(`${spaceAboveIcon}px`);
     expect(title.firstElementChild).toBe(mark);
     expect(mark.tagName).toBe('svg');
     expect(mark.closest('button')).toBeNull();
@@ -1124,19 +1862,207 @@ describe('desktop workspace', () => {
     expect(mark.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it('draws repository switching as opposing horizontal arrows', async () => {
-    const fixture = await render();
-    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+  it('ellipsizes a repository tab and shows the full display name as its tooltip', async () => {
+    const repoPath = createEmptyRepository(roots);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    const displayName = 'North Harbor Warehouse and Dry Dock';
+    addRepository(repoPath, displayName);
+    const fixture = await renderRepository(repoPath);
+    const tab = fixture.nativeElement.querySelector('[data-testid="repository-tab"]');
+    const style = getComputedStyle(tab);
+
+    expect(tab.getAttribute('data-name')).toBe(displayName);
+    expect(tab.getAttribute('title')).toBe(displayName);
+    expect(tab.textContent.trim()).toBe(displayName);
+    expect(style.maxWidth).toBe('160px');
+    expect(style.overflowX).toBe('hidden');
+    expect(style.textOverflow).toBe('ellipsis');
+    expect(style.whiteSpace).toBe('nowrap');
+  });
+
+  it('scrolls repository tabs together with + and scrolls the selected tab into view', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const scrolled: Element[] = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
+      scrolled.push(this);
+    };
+    const fixture = await renderLive();
+    try {
+      fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+      fixture.detectChanges();
+      const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+      expect(scrolled).toContain(pierTab);
+
+      openRepositoryCard(fixture);
+      fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+      fixture.detectChanges();
+
+      const tabs = fixture.nativeElement.querySelector('[data-testid="repository-tabs"]');
+      const quayTab = tabs.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+      const open = tabs.querySelector('[data-testid="open-repository-card"]');
+      expect(tabs.contains(pierTab)).toBe(true);
+      expect(tabs.contains(quayTab)).toBe(true);
+      expect(tabs.contains(open)).toBe(true);
+      expect(['auto', 'scroll']).toContain(getComputedStyle(tabs).overflowX);
+      expect(scrolled).toContain(quayTab);
+
+      scrolled.length = 0;
+      const selectedPier = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+      selectedPier.click();
+      fixture.detectChanges();
+      expect(scrolled[0]).toBe(selectedPier);
+
+      scrolled.length = 0;
+      fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+      fixture.detectChanges();
+      scrolled.length = 0;
+      const closeQuay = openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]');
+      if (!(closeQuay instanceof HTMLElement)) {
+        throw new Error('Close is not in the repository tab menu');
+      }
+      closeQuay.click();
+      fixture.detectChanges();
+      const pierAfterClose = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+      expect(pierAfterClose.getAttribute('aria-selected')).toBe('true');
+      expect(scrolled).toContain(pierAfterClose);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('appends a repository tab when a registered repository is opened and does not reorder it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const alpha = join(root, 'a-alpha');
+    const beta = join(root, 'b-beta');
+    const gamma = join(root, 'c-gamma');
+    initGitRepo(alpha);
+    initGitRepo(beta);
+    initGitRepo(gamma);
+    writeFileSync(join(alpha, 'README.md'), '# alpha\n');
+    writeFileSync(join(beta, 'README.md'), '# beta\n');
+    writeFileSync(join(gamma, 'README.md'), '# gamma\n');
+    git(alpha, ['add', '.']);
+    git(alpha, ['commit', '-m', 'init']);
+    git(beta, ['add', '.']);
+    git(beta, ['commit', '-m', 'init']);
+    git(gamma, ['add', '.']);
+    git(gamma, ['commit', '-m', 'init']);
+    mkdirSync(join(alpha, '.workspaces'));
+    git(alpha, ['branch', 'feature']);
+    git(alpha, ['worktree', 'add', join(alpha, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(gamma, 'Gamma');
+    addRepository(alpha, 'Alpha');
+    addRepository(beta, 'Beta');
+
+    const fixture = await renderLive();
+    const startNames = [...fixture.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(startNames).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Alpha"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    const offered = [...fixture.nativeElement.querySelectorAll('[data-testid="switching-overlay"] [data-testid="repository"]')].map(
+      (element) => element.getAttribute('data-name'),
+    );
+    expect(offered).toEqual(['Beta', 'Gamma']);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Gamma"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
 
-    const button = fixture.nativeElement.querySelector('[data-testid="switch-repository"]');
-    const paths = [...button.querySelectorAll('path')].map((path) => path.getAttribute('d'));
+    const names = () =>
+      [...fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')].map((element) =>
+        element.getAttribute('data-name'),
+      );
+    expect(names()).toEqual(['Alpha', 'Gamma']);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Gamma"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
 
-    expect(getComputedStyle(button).color).toBe('rgb(255, 255, 255)');
-    expect(paths).toEqual([
-      'M1.25 3.15H8.7V1.55L14.75 4.35 8.7 7.15V5.55H1.25Z',
-      'M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z',
-    ]);
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Alpha"]').click();
+    fixture.detectChanges();
+
+    expect(names()).toEqual(['Alpha', 'Gamma']);
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"][data-name="Alpha"]')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Alpha"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+  });
+
+  it('keeps Add repository on the card when every registered repository already has a tab', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    const fixture = await renderLive();
+    expect(fixture.nativeElement.querySelector('[data-testid="repositories-empty"]')).toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    openRepositoryCard(fixture);
+    const card = fixture.nativeElement.querySelector('[data-testid="switching-overlay"] [data-testid="repository-card"]');
+    expect(card.querySelector('h2').textContent.trim()).toBe('Repositories');
+    expect(card.querySelector('[data-testid="add-repository"]')).not.toBeNull();
+    expect(card.querySelector('[data-testid="repository"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repositories-empty"]')).toBeNull();
+  });
+
+  it('registers a repository from an open card without opening it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    setFolderBrowser(async () => quay);
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]');
+    dialog.querySelector('[data-testid="browse-repository-folder"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const nameField = dialog.querySelector('[data-testid="add-repository-name"]');
+    nameField.value = 'Quay';
+    nameField.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="confirm-add-repository"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="add-repository-dialog"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+    const offered = [...fixture.nativeElement.querySelectorAll('[data-testid="switching-overlay"] [data-testid="repository"]')].map(
+      (element) => element.getAttribute('data-name'),
+    );
+    expect(offered).toEqual(['Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
   });
 
   it('uses the app mark as the window icon', () => {
@@ -1149,26 +2075,21 @@ describe('desktop workspace', () => {
     expect(png.readUInt32BE(20)).toBe(512);
   });
 
-  it('shows the repository location on the name and copies that location when the name is clicked', async () => {
+  it('copies the repository location from repository settings', async () => {
     const copied: string[] = [];
     setTextCopy((text) => {
       copied.push(text);
     });
 
-    const sample = await render();
-    sample.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
-    sample.detectChanges();
-    const harbor = sample.nativeElement.querySelector('[data-testid="repository-name"]');
-    expect(harbor.getAttribute('title')).toBe('');
-    harbor.click();
-    expect(copied).toEqual(['']);
-
-    const repoPath = createRewriteRepository(roots);
+    const repoPath = createEmptyRepository(roots);
     const opened = await renderRepository(repoPath);
-    const name = opened.nativeElement.querySelector('[data-testid="repository-name"]');
-    expect(name.getAttribute('title')).toBe(repoPath);
-    name.click();
-    expect(copied).toEqual(['', repoPath]);
+    expect(opened.nativeElement.querySelector('[data-testid="window-bar"] [data-testid="repository-name"]')).toBeNull();
+    opened.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    opened.detectChanges();
+    const location = opened.nativeElement.querySelector('[data-testid="repository-location"]');
+    expect(location.getAttribute('title')).toBe('Copy location');
+    location.click();
+    expect(copied).toEqual([repoPath]);
   });
 
   it('copies the branch name when that name in the content is clicked', async () => {
@@ -1209,24 +2130,23 @@ describe('desktop workspace', () => {
     expect(copied).toEqual(['feature/login']);
   });
 
-  it('opens repository settings from an icon button beside the repository name', async () => {
+  it('opens repository settings from the right of the Worktrees row', async () => {
     const repoPath = createEmptyRepository(roots);
     const fixture = await renderRepository(repoPath);
 
     expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
 
     const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
-    const aside = fixture.nativeElement.querySelector('aside');
-    const name = bar.querySelector('[data-testid="repository-name"]');
-    const settings = bar.querySelector('[data-testid="repository-settings"]');
+    const label = fixture.nativeElement.querySelector('p.branch-label');
+    const settings = label.querySelector('[data-testid="repository-settings"]');
 
     expect(settings).not.toBeNull();
     expect(settings.tagName).toBe('BUTTON');
     expect(settings.getAttribute('aria-label')).toBe('Repository settings');
     expect(settings.querySelector('svg')).not.toBeNull();
-    expect(aside.querySelector('[data-testid="repository-settings"]')).toBeNull();
-    expect(bar.querySelector('[data-testid="repository-settings-slot"]')).toBeNull();
-    expect(name.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(bar.querySelector('[data-testid="repository-settings"]')).toBeNull();
+    expect(label.querySelector('span').textContent.trim()).toBe('Worktrees');
+    expect(label.querySelector('span').compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
     settings.click();
     fixture.detectChanges();
@@ -1234,6 +2154,7 @@ describe('desktop workspace', () => {
     const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-label')).toBe('Repository settings');
+    expect(fixture.nativeElement.querySelector('aside')?.contains(dialog)).toBe(false);
     expect(dialog.querySelector('h2').textContent.trim()).toBe('Repository settings');
     const panel = dialog.querySelector('.dialog-panel');
     const panelStyle = getComputedStyle(panel);
@@ -1244,6 +2165,44 @@ describe('desktop workspace', () => {
     dialog.querySelector('[data-testid="close-repository-settings"]').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
+  });
+
+  it('renames a repository from its settings and updates that repository tab', async () => {
+    const { pier, quay } = registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const name = dialog.querySelector('[data-testid="repository-display-name"]');
+    expect(name.value).toBe('Quay');
+    name.value = 'North Quay';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const renamed = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-path="' + quay + '"]');
+    expect(renamed.getAttribute('data-name')).toBe('North Quay');
+    expect(renamed.getAttribute('title')).toBe('North Quay');
+    expect(renamed.textContent.trim()).toBe('North Quay');
+    expect(renamed.getAttribute('aria-selected')).toBe('false');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(findRepository(quay)?.displayName).toBe('North Quay');
+    expect(findRepository(pier)?.displayName).toBe('Pier');
+
+    name.value = '   ';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="display-name-error"]').textContent.trim()).toBe('Enter a display name');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]')).not.toBeNull();
+    expect(findRepository(quay)?.displayName).toBe('North Quay');
   });
 
   it('centers the repository and app settings icons', async () => {
@@ -1312,7 +2271,7 @@ describe('desktop workspace', () => {
     expect(dialog.querySelector('[data-testid="repository-location"]').textContent).toBe(pier);
   });
 
-  it('copies the repository location from settings and still copies it from the name', async () => {
+  it('copies the repository location from settings', async () => {
     const copied: string[] = [];
     setTextCopy((text) => {
       copied.push(text);
@@ -1346,9 +2305,8 @@ describe('desktop workspace', () => {
     expect(hoverShowsIcon).toBe(true);
 
     location.click();
-    const name = fixture.nativeElement.querySelector('[data-testid="repository-name"]');
-    name.click();
-    expect(copied).toEqual([repoPath, repoPath]);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
+    expect(copied).toEqual([repoPath]);
   });
 
   it('shows the app default worktree mode in repository settings without writing a config', async () => {
@@ -1621,6 +2579,9 @@ describe('desktop workspace', () => {
     expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual([
       'worktree-mode-workspaces',
       'worktree-mode-sibling',
+      'repository-sidebar-color',
+      'repository-sidebar-text-white',
+      'repository-sidebar-text-black',
       'remote-url',
     ]);
     const remoteUrl = settingsInputs.find((input) => input.getAttribute('data-testid') === 'remote-url');
@@ -2606,9 +3567,7 @@ describe('desktop workspace', () => {
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
     expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(branchNames(fixture)).toEqual([
       'feature/login',
       'wip',
@@ -2623,7 +3582,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
     row.querySelector('[data-testid="branch-menu"]').click();
@@ -2638,9 +3597,7 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
     expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('block');
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain(
-      'Harbor',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]')).toBeNull();
     expect(branchNames(fixture)).toEqual([
       'feature/login',
       'wip',
@@ -2942,8 +3899,11 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-card"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-name')).toBe(
       'harbor',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(
+      repoPath,
     );
 
     const rewrite = fixture.nativeElement.querySelector(
@@ -3231,8 +4191,11 @@ describe('desktop workspace', () => {
 
     const fixture = await renderRepository(repoPath);
 
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent.trim()).toBe(
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-name')).toBe(
       'Harbor',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(
+      repoPath,
     );
   });
 
@@ -3779,6 +4742,9 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).toBeNull();
     expect(card.querySelector('[data-testid="repository"][data-name="Harbor"]')).toBeNull();
     expect(card.querySelector('[data-testid="repository"][data-name="Atlas"]')).toBeNull();
+    expect(card.querySelector('[data-testid="repositories-empty"]').textContent.trim()).toBe(
+      'A repository needs to be added.',
+    );
   });
 
   it('lists registered repositories on the card and opens that repository', async () => {
@@ -3816,7 +4782,9 @@ describe('desktop workspace', () => {
     );
     expect(rows).toContain('dock');
     expect(rows).not.toContain('feature/login');
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('data-path')).toBe(
+      pier,
+    );
   });
 
   it('adds a repository from the centered card', async () => {
@@ -4098,7 +5066,7 @@ describe('desktop workspace', () => {
     sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
     expectScrollingRegionsInset(sheet);
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
     fixture.nativeElement
       .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
@@ -4169,7 +5137,7 @@ describe('desktop workspace', () => {
     expect(Number.parseFloat(branchStyle.flexGrow)).toBeGreaterThan(0);
     expect(branchCommits.closest('[data-testid="commits"]')).not.toBeNull();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
     fixture.nativeElement
       .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
@@ -4450,11 +5418,11 @@ describe('desktop workspace', () => {
       commitFileWidth: 320,
     });
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Atlas"]').click();
     fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
     fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -4878,7 +5846,9 @@ describe('desktop workspace', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
-      expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('data-path')).toBe(
+        pier,
+      );
     } finally {
       held.release();
     }
@@ -4905,10 +5875,12 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     expect(hasRef(pier, 'refs/remotes/origin/stale')).toBe(false);
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('data-path')).toBe(
+      pier,
+    );
   });
 
-  it('closes the switcher when the open repository is chosen again', async () => {
+  it('leaves the selected branch in place when the open repository tab is clicked', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
@@ -4924,11 +5896,13 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    openRepositoryCard(fixture);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Pier"]'),
+    ).toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="close-repository-switcher"]').click();
     fixture.detectChanges();
-    fixture.nativeElement
-      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Pier"]')
-      .click();
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
@@ -4937,6 +5911,133 @@ describe('desktop workspace', () => {
     expect(
       fixture.nativeElement.querySelector('.branch-row.is-selected').getAttribute('data-branch'),
     ).toBe('master');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')).toHaveLength(1);
+  });
+
+  it('keeps the open workspace visible while another repository opens', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const held = holdPaint();
+    try {
+      openRepositoryCard(fixture);
+      fixture.detectChanges();
+      fixture.nativeElement
+        .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Quay"]')
+        .click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+        'true',
+      );
+      expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+        'feature',
+      );
+      expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+
+      held.release();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+        'true',
+      );
+      expect(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).not.toBeNull();
+      const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')].map((element) =>
+        element.getAttribute('data-name'),
+      );
+      expect(tabs).toEqual(['Pier', 'Quay']);
+      openRepositoryCard(fixture);
+      const names = [
+        ...fixture.nativeElement.querySelectorAll(
+          '[data-testid="switching-overlay"] [data-testid="repository"]',
+        ),
+      ].map((element) => element.getAttribute('data-name'));
+      expect(names).toEqual([]);
+    } finally {
+      held.release();
+    }
+  });
+
+  it('shows the same selected branch when an earlier repository is opened again', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    openRepositoryCard(fixture);
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Quay"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'master',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('master');
   });
 
   it('shows Loading branches before the create dialog lists names', async () => {
@@ -5123,6 +6224,560 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="content-sheet"]').textContent).toContain(
       'Select a branch',
     );
+  });
+
+  it('opens Repository settings and Close from a repository tab and shows no close icon', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    const tab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    expect(tab.querySelector('svg, [aria-label="Close"]')).toBeNull();
+    expect(tab.textContent.trim()).toBe('Pier');
+
+    const menuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 20,
+      clientY: 12,
+    });
+    tab.dispatchEvent(menuEvent);
+    fixture.detectChanges();
+
+    expect(menuEvent.defaultPrevented).toBe(true);
+    const menu = fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu.getAttribute('role')).toBe('menu');
+    const labels = [...menu.querySelectorAll('button')].map((button) => button.textContent.trim());
+    expect(labels).toEqual(['Repository settings', 'Close']);
+    expect(menu.querySelector('[data-testid="repository-tab-settings"]').textContent.trim()).toBe(
+      'Repository settings',
+    );
+    expect(menu.querySelector('[data-testid="repository-tab-close"]').textContent.trim()).toBe('Close');
+    expect(tab.querySelector('[data-testid="repository-tab-close"]')).toBeNull();
+  });
+
+  it('opens repository settings for the clicked tab and leaves the selected workspace in place', async () => {
+    const { pier, quay } = registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const menu = openRepositoryTabMenu(fixture, 'Pier');
+    menu.querySelector('[data-testid="repository-tab-settings"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('master');
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="repository-location"]').textContent).toBe(pier);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+
+    dialog.querySelector('[data-testid="worktree-mode-sibling"]').click();
+    fixture.detectChanges();
+    pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#123456');
+    fixture.detectChanges();
+
+    expect(readFileSync(join(pier, '.git-manager', 'config.toml'), 'utf8')).toContain('mode = "sibling"');
+    expect(readFileSync(join(pier, '.git-manager', 'config.toml'), 'utf8')).toContain('sidebar_color = "#123456"');
+    expect(existsSync(join(quay, '.git-manager', 'config.toml'))).toBe(false);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+  });
+
+  it('opens the selected repository from the Worktrees row after a tab menu has used another repository', async () => {
+    const { pier, quay } = registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] [data-testid="repository-location"]').textContent,
+    ).toBe(quay);
+    fixture.nativeElement.querySelector('[data-testid="close-repository-settings"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-settings"]').click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] [data-testid="repository-location"]').textContent,
+    ).toBe(pier);
+    fixture.nativeElement.querySelector('[data-testid="close-repository-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] [data-testid="repository-location"]').textContent,
+    ).toBe(quay);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+  });
+
+  it('selects the repository to the right, or the one to the left when the closed tab was last', async () => {
+    registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(repositoryTabNames(fixture)).toEqual(['Pier']);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(repositoryTabNames(fixture)).toEqual(['Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('master');
+  });
+
+  it('leaves the selection in place when a repository tab that is not selected is closed', async () => {
+    registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(repositoryTabNames(fixture)).toEqual(['Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    openRepositoryCard(fixture);
+    const offered = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="switching-overlay"] [data-testid="repository"]'),
+    ].map((element) => element.getAttribute('data-name'));
+    expect(offered).toEqual(['Pier']);
+  });
+
+  it('shows the start screen when the last repository tab is closed', async () => {
+    const { pier } = registerPair();
+    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="start-screen"], .start-screen')).not.toBeNull();
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual(['Pier', 'Quay']);
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    if (existsSync(settingsPath)) {
+      expect(readFileSync(settingsPath, 'utf8')).not.toContain(pier);
+    }
+  });
+
+  it('selects a repository tab without copying its location', async () => {
+    const { pier } = registerPair();
+    const copied: string[] = [];
+    setTextCopy((text) => {
+      copied.push(text);
+    });
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    expect(copied).toEqual([]);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-location"]').click();
+
+    expect(copied).toEqual([pier]);
+  });
+
+  it('closes the repository tab menu on Escape before the repository card and on a click outside', async () => {
+    registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    openRepositoryTabMenu(fixture, 'Pier');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]')).not.toBeNull();
+
+    openRepositoryTabMenu(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-testid="branch-list"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]')).toBeNull();
+    expect(repositoryTabNames(fixture)).toEqual(['Pier']);
+  });
+
+  it('ends the closed repository tab in-app terminal and leaves the selected repository terminal running', async () => {
+    const { pier, quay } = registerPair();
+    const feature = join(pier, '.workspaces', 'feature');
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    await waitForTerminal(() => shellProcessesIn(feature).length >= 1);
+    const pierShells = shellProcessesIn(feature);
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    await waitForTerminal(() => shellProcessesIn(quay).length >= 1);
+    const quayShells = shellProcessesIn(quay);
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(repositoryTabNames(fixture)).toEqual(['Quay']);
+    await waitForTerminal(() => pierShells.every((pid) => !processAlive(pid)));
+    expect(quayShells.every((pid) => processAlive(pid))).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+    await waitForTerminal(() => quayShells.every((pid) => !processAlive(pid)));
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('ends the closed repository tab tmux session and leaves the other repository session running', async () => {
+    const { pier, quay } = registerPair();
+    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    if (!settingsPath) {
+      throw new Error('App settings path is not set');
+    }
+    writeFileSync(settingsPath, `${JSON.stringify({ terminalMode: 'tmux' })}\n`);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    await waitForTerminal(() => sessionsForBranch(pier, 'feature').length === 1);
+    const pierSession = sessionsForBranch(pier, 'feature')[0] ?? '';
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    await waitForTerminal(() => sessionsForBranch(quay, 'master').length === 1);
+    const quaySession = sessionsForBranch(quay, 'master')[0] ?? '';
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(sessionsForBranch(pier, 'feature')).toEqual([]);
+    expect(sessionsForBranch(quay, 'master')).toEqual([quaySession]);
+    expect(pierSession.length).toBeGreaterThan(0);
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]').click();
+    fixture.detectChanges();
+
+    expect(sessionsForBranch(quay, 'master')).toEqual([]);
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('reopens the repository tabs in the same order with the same one selected', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    writeFileSync(join(dock, 'README.md'), '# dock\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    git(dock, ['add', '.']);
+    git(dock, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    first.nativeElement.querySelector('[data-branch="feature"]').click();
+    first.detectChanges();
+    await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
+    submitTerminalCommand(first.nativeElement, 'echo pier-before-quit');
+    await waitForTerminal(() => terminalPaneText(first).includes('pier-before-quit'));
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    first.nativeElement.querySelector('[data-branch="master"]').click();
+    first.detectChanges();
+    await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
+    submitTerminalCommand(first.nativeElement, 'echo quay-before-quit');
+    await waitForTerminal(() => terminalPaneText(first).includes('quay-before-quit'));
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    expect(repositoryTabNames(first)).toEqual(['Pier', 'Quay', 'Dock']);
+    expect(first.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+
+    first.destroy();
+    addRepository(quay, 'North Quay');
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(repositoryTabNames(again)).toEqual(['Pier', 'North Quay', 'Dock']);
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]').textContent.trim()).toBe(
+      'North Quay',
+    );
+    expect(
+      again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]').getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(again.nativeElement.querySelector('.branch-row.is-selected')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="content-sheet"]').textContent).toContain('Select a branch');
+    expect(again.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(again.nativeElement.textContent).not.toContain('quay-before-quit');
+    expect(again.nativeElement.textContent).not.toContain('pier-before-quit');
+
+    again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    again.detectChanges();
+    await again.whenStable();
+    again.detectChanges();
+
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(again.nativeElement.querySelector('.branch-row.is-selected')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(again.nativeElement.textContent).not.toContain('pier-before-quit');
+  });
+
+  it('skips a repository that is no longer registered and selects the next tab, or the previous one', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    expect(repositoryTabNames(first)).toEqual(['Pier', 'Quay', 'Dock']);
+    first.destroy();
+
+    unregisterRepository(quay);
+    const withoutQuay = await renderLive();
+
+    expect(repositoryTabNames(withoutQuay)).toEqual(['Pier', 'Dock']);
+    expect(withoutQuay.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Dock"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(withoutQuay.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    withoutQuay.destroy();
+
+    unregisterRepository(dock);
+    const withoutDock = await renderLive();
+
+    expect(repositoryTabNames(withoutDock)).toEqual(['Pier']);
+    expect(withoutDock.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(withoutDock.nativeElement.querySelector('[data-testid="start-screen"]')).toBeNull();
+    expect(withoutDock.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+  });
+
+  it('skips a repository tab whose path is no longer a git repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    first.destroy();
+
+    rmSync(join(dock, '.git'), { recursive: true, force: true });
+    const again = await renderLive();
+
+    expect(repositoryTabNames(again)).toEqual(['Pier', 'Quay']);
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(again.nativeElement.querySelector('[data-testid="repository"][data-name="Dock"]')).toBeNull();
+  });
+
+  it('shows the start screen when every remembered repository tab is skipped', async () => {
+    const { pier, quay } = registerPair();
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    first.destroy();
+
+    unregisterRepository(pier);
+    unregisterRepository(quay);
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(again.nativeElement.querySelector('.start-screen')).not.toBeNull();
+    const names = [...again.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual([]);
+    again.destroy();
+
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const later = await renderLive();
+
+    expect(later.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(later.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect([...later.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) => element.getAttribute('data-name'))).toEqual([
+      'Pier',
+      'Quay',
+    ]);
+  });
+
+  it('shows the start screen on the next launch after the last repository tab is closed', async () => {
+    registerPair();
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryTabMenu(first, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    first.detectChanges();
+    openRepositoryTabMenu(first, 'Quay').querySelector('[data-testid="repository-tab-close"]').click();
+    first.detectChanges();
+    expect(first.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    first.destroy();
+
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(again.nativeElement.querySelector('.start-screen')).not.toBeNull();
+    expect([...again.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) => element.getAttribute('data-name'))).toEqual([
+      'Pier',
+      'Quay',
+    ]);
   });
 
   it('leaves a stale remote-tracking ref in place when a worktree is removed', async () => {
@@ -5566,6 +7221,77 @@ function holdPaint(): { release(): void } {
       }
     },
   };
+}
+
+function terminalPaneText(fixture: { nativeElement: HTMLElement }): string {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')]
+    .map((pane) => pane.textContent ?? '')
+    .join('\n');
+}
+
+function submitTerminalCommand(root: HTMLElement, command: string): void {
+  const textarea = root.querySelector('.terminal-pane textarea');
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    throw new Error('The terminal pane is not accepting input');
+  }
+  textarea.focus();
+  for (const char of command) {
+    const keyCode = char === ' ' ? 32 : char === '-' ? 189 : char.toUpperCase().charCodeAt(0);
+    textarea.dispatchEvent(terminalKeyEvent('keydown', char, keyCode));
+  }
+  textarea.dispatchEvent(terminalKeyEvent('keydown', 'Enter', 13));
+}
+
+function terminalKeyEvent(type: string, key: string, keyCode: number): KeyboardEvent {
+  const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+  Object.defineProperty(event, 'which', { get: () => keyCode });
+  return event;
+}
+
+function repositoryTabNames(fixture: { nativeElement: HTMLElement }): string[] {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')].map(
+    (element) => element.getAttribute('data-name') ?? '',
+  );
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shellProcessesIn(cwd: string): number[] {
+  const wanted = realpathSync(cwd);
+  const found: number[] = [];
+  let entries: string[] = [];
+  try {
+    entries = readdirSync('/proc');
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) {
+      continue;
+    }
+    try {
+      if (realpathSync(readlinkSync(join('/proc', entry, 'cwd'))) !== wanted) {
+        continue;
+      }
+      const command = readFileSync(join('/proc', entry, 'cmdline')).toString().split('\0')[0] ?? '';
+      const name = command.split('/').pop() ?? '';
+      if (name !== 'bash' && name !== 'sh' && name !== 'zsh' && name !== 'fish') {
+        continue;
+      }
+      found.push(Number(entry));
+    } catch {
+      // The process exited while it was being read.
+    }
+  }
+  return found;
 }
 
 function remoteUrlValue(root: ParentNode): string {

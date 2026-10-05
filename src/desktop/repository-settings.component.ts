@@ -1,10 +1,18 @@
-import { Component, computed, input, signal } from '@angular/core';
+import { Component, TemplateRef, computed, input, output, signal, viewChild } from '@angular/core';
 import {
+  clearRepositorySidebarColor,
+  clearRepositorySidebarText,
   createLayoutForRepository,
   formatCreateLayout,
   readAppSettings,
+  readRepositoryAppearance,
   saveRepositoryLayoutMode,
+  saveRepositorySidebarColor,
+  saveRepositorySidebarText,
+  type SidebarText,
 } from '../app-settings.js';
+import { sidebarSwatches } from './color-swatches';
+import { findRepository, renameRepository } from '../registry.js';
 import {
   addRemote,
   changeRemote,
@@ -41,7 +49,7 @@ button, input { font: inherit; color: inherit; }
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: white;
+  color: inherit;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
@@ -72,7 +80,9 @@ button, input { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 22rem;
+  width: 28rem;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
   padding: 16px;
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -91,7 +101,8 @@ button, input { font: inherit; color: inherit; }
 
 [data-testid='repository-settings-dialog'] label,
 [data-testid='remotes-heading'],
-[data-testid='worktree-mode-heading'] {
+[data-testid='worktree-mode-heading'],
+[data-testid='repository-sidebar-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -103,7 +114,8 @@ button, input { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-[data-testid='repository-settings-dialog'] label.worktree-mode {
+[data-testid='repository-settings-dialog'] label.worktree-mode,
+[data-testid='repository-settings-dialog'] label.sidebar-text {
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -113,8 +125,63 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='remotes-heading'],
-[data-testid='worktree-mode-heading'] {
+[data-testid='worktree-mode-heading'],
+[data-testid='repository-sidebar-heading'] {
   margin-top: 8px;
+}
+
+[data-testid='repository-settings-dialog'] .color-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches,
+[data-testid='repository-settings-dialog'] .sidebar-text-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-testid='repository-settings-dialog'] .sidebar-text-choices {
+  gap: 16px;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches button.is-selected {
+  outline: 2px solid var(--grid);
+  outline-offset: 2px;
+}
+
+[data-testid='repository-settings-dialog'] .custom-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+[data-testid='repository-settings-dialog'] input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  background-color: var(--paper);
+  cursor: pointer;
 }
 
 .remotes-header {
@@ -163,6 +230,29 @@ button, input { font: inherit; color: inherit; }
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+[data-testid='repository-display-name'] {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='display-name-error'] {
+  margin: 0;
+  color: var(--coral);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 [data-testid='copy-location-icon'] {
@@ -238,7 +328,7 @@ button, input { font: inherit; color: inherit; }
   }
 }
 
-[data-testid='repository-settings-dialog'] input:not([type='radio']),
+[data-testid='repository-settings-dialog'] input:not([type='radio']):not([type='color']),
 [data-testid='open-add-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
@@ -251,7 +341,7 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='repository-settings-dialog'] input:not([type='radio']) {
+[data-testid='repository-settings-dialog'] input:not([type='radio']):not([type='color']) {
   width: 100%;
   height: 36px;
   padding: 0 8px;
@@ -374,6 +464,7 @@ button, input { font: inherit; color: inherit; }
         <path fill="currentColor" d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.162.346.353.677.573.989.02.03.085.076.195.046l1.102-.303c.56-.153 1.113-.008 1.53.27.161.107.328.204.501.29.447.222.85.629.997 1.189l.289 1.105c.029.109.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.029.175-.016.195-.045.22-.313.411-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.989c-.02-.03-.085-.076-.195-.046l-1.102.303c-.56.153-1.113.008-1.53-.27a4.44 4.44 0 0 0-.501-.29c-.447-.222-.85-.629-.997-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3.001.001A1.5 1.5 0 0 0 9.5 8Z" />
       </svg>
     </button>
+    <ng-template #settingsDialog>
     @if (settingsOpen()) {
       <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings" (click)="dismissSettingsFromBackdrop($event)">
         <section class="dialog-panel" (click)="$event.stopPropagation()">
@@ -382,6 +473,15 @@ button, input { font: inherit; color: inherit; }
             Location
             <button type="button" data-testid="repository-location" title="Copy location" (click)="copyLocation()">{{ repositoryLocation() }}<svg data-testid="copy-location-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" /><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" /></svg></button>
           </label>
+          @if (canRename()) {
+            <label>
+              Display name
+              <input data-testid="repository-display-name" [value]="displayName()" (input)="setDisplayName($event)" />
+            </label>
+            @if (displayNameError(); as message) {
+              <p data-testid="display-name-error">{{ message }}</p>
+            }
+          }
           <h3 data-testid="worktree-mode-heading">Worktree mode</h3>
           <p data-testid="worktree-mode-source">{{ createLayoutLine() }}</p>
           <label class="worktree-mode">
@@ -406,6 +506,61 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
+          <h3 data-testid="repository-sidebar-heading">Sidebar</h3>
+          <div class="color-choice">
+            <span>Color</span>
+            <div class="color-swatches">
+              @for (swatch of sidebarColorSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="repository-sidebar-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(shownSidebarColor(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseRepositorySidebarColor(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="repository-sidebar-color"
+                  aria-label="Custom sidebar color"
+                  [value]="shownSidebarColor()"
+                  (input)="chooseRepositorySidebarColorFromInput($event)"
+                  (change)="chooseRepositorySidebarColorFromInput($event)"
+                />
+              </span>
+            </div>
+            <button type="button" data-testid="use-app-sidebar-color" (click)="useAppSidebarColor()">Use app settings</button>
+          </div>
+          <div class="color-choice">
+            <span>Text</span>
+            <div class="sidebar-text-choices">
+              <label class="sidebar-text">
+                <input
+                  type="radio"
+                  name="repository-sidebar-text"
+                  data-testid="repository-sidebar-text-white"
+                  [checked]="shownSidebarText() === 'white'"
+                  (click)="chooseRepositorySidebarText('white', $event)"
+                />
+                White
+              </label>
+              <label class="sidebar-text">
+                <input
+                  type="radio"
+                  name="repository-sidebar-text"
+                  data-testid="repository-sidebar-text-black"
+                  [checked]="shownSidebarText() === 'black'"
+                  (click)="chooseRepositorySidebarText('black', $event)"
+                />
+                Black
+              </label>
+            </div>
+            <button type="button" data-testid="use-app-sidebar-text" (click)="useAppSidebarText()">Use app settings</button>
+          </div>
           <div class="remotes-header">
             <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
             <button type="button" data-testid="open-add-remote" aria-label="Add remote" (click)="openAddRemote()">+</button>
@@ -488,11 +643,22 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    </ng-template>
   `,
 })
 export class RepositorySettings {
+  readonly settingsDialog = viewChild<TemplateRef<unknown>>('settingsDialog');
   readonly repositoryPath = input<string | null>(null);
-  readonly repositoryLocation = computed(() => this.repositoryPath() ?? '');
+  readonly appearanceChanged = output<void>();
+  readonly displayNameChanged = output<{ path: string; displayName: string }>();
+  readonly sidebarColorSwatches = sidebarSwatches;
+  private readonly explicitPath = signal<string | null>(null);
+  readonly displayName = signal('');
+  readonly displayNameError = signal<string | null>(null);
+  readonly canRename = computed(() => this.activeRepositoryPath() !== null);
+  readonly repositoryLocation = computed(() => this.activeRepositoryPath() ?? '');
+  private readonly ownSidebarColor = signal<string | null>(null);
+  private readonly ownSidebarText = signal<SidebarText | null>(null);
   readonly settingsOpen = signal(false);
   readonly remotes = signal<RepositoryRemote[]>([]);
   readonly addRemoteOpen = signal(false);
@@ -523,11 +689,11 @@ export class RepositorySettings {
   }
 
   createLayoutLine(): string {
-    return formatCreateLayout(this.repositoryPath());
+    return formatCreateLayout(this.activeRepositoryPath());
   }
 
   repositoryWorktreeMode(): 'workspaces' | 'sibling' | null {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       return readAppSettings().defaultLayout;
     }
@@ -539,7 +705,7 @@ export class RepositorySettings {
   }
 
   chooseRepositoryLayout(mode: 'workspaces' | 'sibling', event: Event): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       this.keepWorktreeModeRadios(event);
       return;
@@ -547,19 +713,120 @@ export class RepositorySettings {
     saveRepositoryLayoutMode(path, mode);
   }
 
+  shownSidebarColor(): string {
+    return this.ownSidebarColor() ?? readAppSettings().sidebarColor;
+  }
+
+  shownSidebarText(): SidebarText {
+    return this.ownSidebarText() ?? readAppSettings().sidebarText;
+  }
+
+  isSelectedColor(current: string, swatch: string): boolean {
+    return current.toLowerCase() === swatch.toLowerCase();
+  }
+
+  chooseRepositorySidebarColor(color: string): void {
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      return;
+    }
+    saveRepositorySidebarColor(path, color);
+    this.ownSidebarColor.set(color);
+    this.appearanceChanged.emit();
+  }
+
+  chooseRepositorySidebarColorFromInput(event: Event): void {
+    this.chooseRepositorySidebarColor(inputValue(event));
+  }
+
+  chooseRepositorySidebarText(text: SidebarText, event: Event): void {
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      this.keepSidebarTextRadios(event);
+      return;
+    }
+    saveRepositorySidebarText(path, text);
+    this.ownSidebarText.set(text);
+    this.appearanceChanged.emit();
+  }
+
+  useAppSidebarColor(): void {
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      return;
+    }
+    clearRepositorySidebarColor(path);
+    this.ownSidebarColor.set(null);
+    this.appearanceChanged.emit();
+  }
+
+  useAppSidebarText(): void {
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      return;
+    }
+    clearRepositorySidebarText(path);
+    this.ownSidebarText.set(null);
+    this.appearanceChanged.emit();
+  }
+
   openSettings(): void {
-    this.settingsError.set(null);
-    this.cancelAddRemote();
-    this.cancelChangeRemote();
-    this.loadRemotes();
-    this.settingsOpen.set(true);
+    this.explicitPath.set(null);
+    this.presentSettings();
+  }
+
+  openForPath(path: string): void {
+    this.explicitPath.set(path);
+    this.presentSettings();
   }
 
   closeSettings(): void {
     this.settingsError.set(null);
     this.cancelAddRemote();
     this.cancelChangeRemote();
+    this.explicitPath.set(null);
     this.settingsOpen.set(false);
+  }
+
+  setDisplayName(event: Event): void {
+    const name = inputValue(event);
+    this.displayName.set(name);
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (trimmed === '') {
+      this.displayNameError.set('Enter a display name');
+      return;
+    }
+    try {
+      renameRepository(path, trimmed);
+      this.displayNameError.set(null);
+      this.displayNameChanged.emit({ path, displayName: trimmed });
+    } catch (error) {
+      this.displayNameError.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private presentSettings(): void {
+    this.settingsError.set(null);
+    this.displayNameError.set(null);
+    this.cancelAddRemote();
+    this.cancelChangeRemote();
+    this.loadDisplayName();
+    this.loadAppearance();
+    this.loadRemotes();
+    this.settingsOpen.set(true);
+  }
+
+  private loadDisplayName(): void {
+    const path = this.activeRepositoryPath();
+    this.displayName.set(path === null ? '' : findRepository(path)?.displayName ?? '');
+  }
+
+  private activeRepositoryPath(): string | null {
+    return this.explicitPath() ?? this.repositoryPath();
   }
 
   dismissSettingsFromBackdrop(event: Event): void {
@@ -620,7 +887,7 @@ export class RepositorySettings {
 
   confirmChangeRemote(): void {
     const currentName = this.editingRemote();
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!currentName || !path) {
       return;
     }
@@ -638,7 +905,7 @@ export class RepositorySettings {
 
   confirmRemoveRemote(): void {
     const name = this.editingRemote();
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!name || !path) {
       return;
     }
@@ -653,7 +920,7 @@ export class RepositorySettings {
   }
 
   confirmAddRemote(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!path) {
       return;
     }
@@ -682,8 +949,37 @@ export class RepositorySettings {
     }
   }
 
+  private loadAppearance(): void {
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      this.ownSidebarColor.set(null);
+      this.ownSidebarText.set(null);
+      return;
+    }
+    const appearance = readRepositoryAppearance(path);
+    this.ownSidebarColor.set(appearance.sidebarColor ?? null);
+    this.ownSidebarText.set(appearance.sidebarText ?? null);
+  }
+
+  private keepSidebarTextRadios(event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const selected = this.shownSidebarText();
+    const dialog = input.closest('[data-testid="repository-settings-dialog"]');
+    if (!(dialog instanceof HTMLElement)) {
+      return;
+    }
+    for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="repository-sidebar-text"]')) {
+      radio.checked =
+        radio.getAttribute('data-testid') ===
+        (selected === 'black' ? 'repository-sidebar-text-black' : 'repository-sidebar-text-white');
+    }
+  }
+
   private loadRemotes(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!path) {
       this.remotes.set([]);
       return;

@@ -128,9 +128,15 @@ function chooseRepository(fixture: ComponentFixture<WorkspaceComponent>, name: s
 }
 
 function switchRepository(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
-  const button = fixture.nativeElement.querySelector('[data-testid="switch-repository"]');
+  const tab = fixture.nativeElement.querySelector(`[data-testid="repository-tab"][data-name="${name}"]`);
+  if (tab instanceof HTMLButtonElement) {
+    tab.click();
+    fixture.detectChanges();
+    return;
+  }
+  const button = fixture.nativeElement.querySelector('[data-testid="open-repository-card"]');
   if (!(button instanceof HTMLButtonElement)) {
-    throw new Error('Switch repository is not shown');
+    throw new Error('Open repository is not shown');
   }
   button.click();
   fixture.detectChanges();

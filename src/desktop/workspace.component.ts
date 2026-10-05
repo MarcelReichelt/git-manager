@@ -16,23 +16,34 @@ import {
 } from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
-import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
+import {
+  addRepository,
+  findRepository,
+  listRepositories,
+  type RegisteredRepository,
+} from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import {
   formatCreateLayout,
   readAppSettings,
+  readOpenRepositoryTabs,
+  readRepositoryAppearance,
+  resolveAppSettingsPath,
   resetAppColors,
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveOpenRepositoryTabs,
   saveShellCommand,
   saveSidebarColor,
+  saveSidebarText,
   saveTerminalBackground,
   saveTerminalFont,
   saveTerminalForeground,
   saveTerminalMode,
   type AppSettings,
+  type SidebarText,
   type TerminalMode,
 } from '../app-settings.js';
 import { pushBranch } from '../push.js';
@@ -225,6 +236,11 @@ interface CardRepository {
   path: string | null;
 }
 
+interface RepositoryTab {
+  path: string;
+  name: string;
+}
+
 const sampleCard: CardRepository[] = [
   { name: 'Harbor', path: null },
   { name: 'Atlas', path: null },
@@ -236,8 +252,9 @@ const sampleCard: CardRepository[] = [
   imports: [NgTemplateOutlet, TerminalHost, RepositorySettings],
   styleUrl: './workspace-rail.css',
   host: {
-    '[style.--forest]': 'sidebarColor()',
+    '[style.--forest]': 'paintedSidebarColor()',
     '[style.--paper]': 'contentColor()',
+    '[style.--sidebar-text]': 'paintedSidebarTextColor()',
   },
   styles: [
     `
@@ -245,6 +262,7 @@ const sampleCard: CardRepository[] = [
   --paper: #f7f7f5;
   --surface: #ffffff;
   --forest: #1a3c2b;
+  --sidebar-text: #ffffff;
   --grid: #3a3a38;
   --coral: #ff8c69;
   display: block;
@@ -693,11 +711,16 @@ button, input { font: inherit; color: inherit; }
   gap: 6px;
 }
 
-.color-swatches {
+.color-swatches,
+.sidebar-text-choices {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.sidebar-text-choices {
+  gap: 16px;
 }
 
 .color-swatches button {
@@ -886,7 +909,7 @@ button, input { font: inherit; color: inherit; }
             <button type="button" data-testid="add-repository" aria-label="Add repository" (click)="openAddDialog()">+</button>
           }
         </div>
-        @if (registryMode() && cardRepositories().length === 0) {
+        @if (registryMode() && registered().length === 0) {
           <p data-testid="repositories-empty">A repository needs to be added.</p>
         }
         @if (openError(); as message) {
@@ -930,14 +953,26 @@ button, input { font: inherit; color: inherit; }
               <circle cx="5.2" cy="12" r="1.6" fill="#ffffff" />
               <circle cx="11.4" cy="8" r="1.6" fill="#ffffff" />
             </svg>
-            <h1 data-testid="repository-name" [attr.title]="repositoryLocation()" (click)="copyLocation()">{{ workspaceTitle() }}</h1>
-            <button type="button" data-testid="switch-repository" aria-label="Switch repository" (click)="openSwitch()">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M1.25 3.15H8.7V1.55L14.75 4.35 8.7 7.15V5.55H1.25Z" />
-                <path fill="currentColor" d="M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z" />
-              </svg>
-            </button>
-            <gm-repository-settings [repositoryPath]="effectivePath()"></gm-repository-settings>
+            <div data-testid="repository-tabs">
+              @for (tab of repositoryTabs(); track tab.path) {
+                <button
+                  type="button"
+                  data-testid="repository-tab"
+                  [attr.data-name]="tab.name"
+                  [attr.data-path]="tab.path"
+                  [attr.title]="tab.name"
+                  [attr.aria-selected]="effectivePath() === tab.path"
+                  [style.background-color]="repositoryTabSidebarColor(tab.path)"
+                  [style.color]="repositoryTabSidebarTextColor(tab.path)"
+                  [style.outline]="repositoryTabFrame(tab.path)"
+                  (click)="selectRepositoryTab(tab.path, $event)"
+                  (contextmenu)="openRepositoryTabMenu($event, tab.path)"
+                >
+                  {{ tab.name }}
+                </button>
+              }
+              <button type="button" data-testid="open-repository-card" aria-label="Open repository" (click)="openSwitch()">+</button>
+            </div>
           </div>
           <div class="window-controls">
             <button type="button" data-testid="app-settings" aria-label="App settings" (click)="openAppSettings()">
@@ -951,7 +986,14 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
-          <p class="branch-label"><span>Worktrees</span></p>
+          <p class="branch-label">
+            <span>Worktrees</span>
+            <gm-repository-settings
+              [repositoryPath]="effectivePath()"
+              (appearanceChanged)="applyOpenRepositoryAppearance()"
+              (displayNameChanged)="renameOpenRepository($event)"
+            ></gm-repository-settings>
+          </p>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
               <li
@@ -1661,6 +1703,31 @@ button, input { font: inherit; color: inherit; }
             </div>
           </div>
           <div class="color-choice">
+            <span>Sidebar text</span>
+            <div class="sidebar-text-choices">
+              <label>
+                <input
+                  type="radio"
+                  name="sidebar-text"
+                  data-testid="sidebar-text-white"
+                  [checked]="sidebarText() === 'white'"
+                  (click)="chooseSidebarText('white')"
+                />
+                White
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="sidebar-text"
+                  data-testid="sidebar-text-black"
+                  [checked]="sidebarText() === 'black'"
+                  (click)="chooseSidebarText('black')"
+                />
+                Black
+              </label>
+            </div>
+          </div>
+          <div class="color-choice">
             <span>Content</span>
             <div class="color-swatches">
               @for (swatch of contentColorSwatches; track swatch.color) {
@@ -1815,6 +1882,22 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (repositoryTabMenu(); as menu) {
+      <div
+        class="repository-tab-menu"
+        data-testid="repository-tab-menu"
+        role="menu"
+        [style.left.px]="menu.x"
+        [style.top.px]="menu.y"
+      >
+        <button type="button" role="menuitem" data-testid="repository-tab-settings" (click)="openRepositoryTabSettings()">
+          Repository settings
+        </button>
+        <button type="button" role="menuitem" data-testid="repository-tab-close" (click)="closeRepositoryTab(menu.path)">
+          Close
+        </button>
+      </div>
+    }
     @if (terminalMenu(); as menu) {
       @if (menuActions(); as actions) {
         <div
@@ -1845,6 +1928,9 @@ button, input { font: inherit; color: inherit; }
         </div>
       }
     }
+    @if (repositorySettings()?.settingsDialog(); as settingsDialog) {
+      <ng-container [ngTemplateOutlet]="settingsDialog" />
+    }
   `,
 })
 export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, AfterViewChecked {
@@ -1870,6 +1956,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly branchActivity = signal<{ branch: string; label: string } | null>(null);
   readonly tmuxSessionRecords = signal<TmuxSessionRecord[]>([]);
   readonly overlayOpen = signal(false);
+  readonly repositoryTabs = signal<RepositoryTab[]>([]);
+  private tabToReveal: string | null = null;
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
   readonly selectedFilePath = signal<string | null>(null);
@@ -1888,6 +1977,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly terminalBackgroundSwatches = terminalBackgroundSwatchList;
   readonly terminalForegroundSwatches = terminalForegroundSwatchList;
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
+  readonly sidebarText = signal<SidebarText>(readAppSettings().sidebarText);
+  readonly paintedSidebarColor = signal(readAppSettings().sidebarColor);
+  readonly paintedSidebarText = signal<SidebarText>(readAppSettings().sidebarText);
+  readonly paintedSidebarTextColor = computed(() => (this.paintedSidebarText() === 'black' ? '#000000' : '#ffffff'));
   readonly contentColor = signal(readAppSettings().contentColor);
   readonly ideCommand = signal(readAppSettings().ideCommand);
   readonly terminalMode = signal<TerminalMode>(readAppSettings().terminalMode);
@@ -1898,6 +1991,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly oldSessionChoices = signal<OldSessionChoice[]>([]);
   private dismissedOldSessions = new Set<string>();
   private oldSessionRepo: string | null = null;
+  private readonly repositoryWorkspaces = new Map<string, RepositoryWorkspace>();
+  private readonly appSettingsEnv: NodeJS.ProcessEnv = {
+    GIT_MANAGER_APP_SETTINGS_PATH: resolveAppSettingsPath(),
+  };
+  private persistOpenTabs = false;
   readonly terminalFont = signal(readAppSettings().terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
   readonly terminalBackground = signal(readAppSettings().terminalBackground);
@@ -1911,6 +2009,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly worktreePath = signal('');
   readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
+  readonly repositoryTabMenu = signal<{ path: string; x: number; y: number } | null>(null);
   readonly renaming = signal<{ tabId: string; terminalId: string | null } | null>(null);
   readonly renameValue = signal('');
   readonly hoveredTabId = signal<string | null>(null);
@@ -1964,15 +2063,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   });
   readonly registryMode = computed(() => this.liveRegistry() || liveQueryFlag());
   readonly effectivePath = computed(() => this.repositoryPath() ?? this.openedPath());
-  readonly repositoryLocation = computed(() => this.effectivePath() ?? '');
   readonly cardRepositories = computed((): CardRepository[] => {
     if (!this.registryMode()) {
       return sampleCard;
     }
-    return this.registered().map((repository) => ({
-      name: repository.displayName,
-      path: repository.path,
-    }));
+    const openPaths = new Set(this.repositoryTabs().map((tab) => tab.path));
+    return this.registered()
+      .filter((repository) => !openPaths.has(repository.path))
+      .map((repository) => ({
+        name: repository.displayName,
+        path: repository.path,
+      }));
   });
   readonly workspaceTitle = computed(() => {
     const path = this.effectivePath();
@@ -2084,15 +2185,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   ngOnInit(): void {
+    this.persistOpenTabs = this.registryMode() && this.repositoryPath() === null;
     if (this.registryMode()) {
       this.registered.set(listRepositories());
     }
     const path = this.effectivePath();
     if (path !== null) {
+      const name = this.workspaceTitle();
+      if (name !== null) {
+        this.appendRepositoryTab(path, name);
+      }
       pruneRemoteTrackingRefs(path);
       refreshRemoteHead(path);
+    } else if (this.persistOpenTabs) {
+      this.restoreOpenRepositoryTabs();
     }
     this.refreshBranches();
+    this.applyOpenRepositoryAppearance();
     this.commandPoll = setInterval(() => {
       this.zone.run(() => this.refreshTerminalCommands());
     }, 250);
@@ -2105,14 +2214,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   ngAfterViewChecked(): void {
     this.captureMaximizedBody();
+    this.revealPendingTab();
   }
 
   ngOnDestroy(): void {
+    this.rememberOpenRepositoryTabs();
     if (this.commandPoll !== null) {
       clearInterval(this.commandPoll);
       this.commandPoll = null;
     }
     stopShellTerminals(this.terminalsByBranch());
+    for (const workspace of this.repositoryWorkspaces.values()) {
+      stopShellTerminals(workspace.terminalsByBranch);
+    }
   }
 
   choose(name: string): void {
@@ -2126,9 +2240,105 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.finishChoose(name, null);
       return;
     }
+    this.openRepository(name, path);
+  }
+
+  openRepositoryTabMenu(event: MouseEvent, path: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.repositoryTabMenu.set({
+      path,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  openRepositoryTabSettings(): void {
+    const menu = this.repositoryTabMenu();
+    if (!menu) {
+      return;
+    }
+    this.repositoryTabMenu.set(null);
+    this.repositorySettings()?.openForPath(menu.path);
+  }
+
+  closeRepositoryTab(path: string): void {
+    this.repositoryTabMenu.set(null);
+    const tabs = this.repositoryTabs();
+    const index = tabs.findIndex((tab) => tab.path === path);
+    if (index < 0) {
+      return;
+    }
+    this.endRepositoryTerminals(path);
+    this.repositoryWorkspaces.delete(path);
+    const remaining = tabs.filter((tab) => tab.path !== path);
+    this.repositoryTabs.set(remaining);
+    if (this.effectivePath() !== path) {
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    const next = remaining[index] ?? remaining[index - 1];
+    if (!next) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.overlayOpen.set(false);
+      this.openBranch.set(null);
+      this.openingRepository.set(null);
+      this.clearBranchSelection();
+      this.clearTerminals();
+      this.applyOpenRepositoryAppearance();
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    this.tabToReveal = next.path;
+    this.showKeptRepository(next);
+    this.rememberOpenRepositoryTabs();
+  }
+
+  selectRepositoryTab(path: string, event: Event): void {
+    const current = event.currentTarget;
+    if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') {
+      current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (this.effectivePath() === path) {
+      return;
+    }
+    const tab = this.repositoryTabs().find((item) => item.path === path);
+    if (!tab) {
+      return;
+    }
+    if (this.repositoryWorkspaces.has(path)) {
+      this.activateKeptRepository(tab);
+      return;
+    }
+    this.openRepository(tab.name, path);
+  }
+
+  private activateKeptRepository(tab: RepositoryTab): void {
+    this.rememberWorkspace(this.effectivePath());
+    this.tabToReveal = tab.path;
+    this.showKeptRepository(tab);
+    this.rememberOpenRepositoryTabs();
+  }
+
+  private rememberWorkspace(path: string | null): void {
+    if (path === null) {
+      return;
+    }
+    this.repositoryWorkspaces.set(path, {
+      view: this.snapshotBranchView(),
+      terminalsByBranch: this.terminalsByBranch(),
+      worktreePath: this.worktreePath(),
+      branches: this.realBranches(),
+    });
+  }
+
+  private openRepository(name: string, path: string, whenOpenFails?: (path: string) => void): void {
     this.overlayOpen.set(false);
     this.openError.set(null);
-    this.openingRepository.set(name);
+    if (this.repositoryPath() === null && this.selectedName() === null) {
+      this.openingRepository.set(name);
+    }
     this.runWhenPainted(() => {
       try {
         pruneRemoteTrackingRefs(path);
@@ -2137,6 +2347,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.openingRepository.set(null);
       } catch (error) {
         this.openingRepository.set(null);
+        if (whenOpenFails) {
+          whenOpenFails(path);
+          return;
+        }
         const message = errorText(error);
         if (this.effectivePath() === null && this.selectedName() === null) {
           this.openError.set(message);
@@ -2145,6 +2359,39 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         }
       }
     });
+  }
+
+  private appendRepositoryTab(path: string, name: string): void {
+    if (this.repositoryTabs().some((tab) => tab.path === path)) {
+      return;
+    }
+    this.repositoryTabs.update((tabs) => [...tabs, { path, name }]);
+    this.tabToReveal = path;
+  }
+
+  private revealPendingTab(): void {
+    const path = this.tabToReveal;
+    if (path === null) {
+      return;
+    }
+    const tab = this.repositoryTabElement(path);
+    if (tab === null) {
+      return;
+    }
+    this.tabToReveal = null;
+    if (typeof tab.scrollIntoView === 'function') {
+      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  private repositoryTabElement(path: string): HTMLElement | null {
+    const tabs = this.hostElement.nativeElement.querySelectorAll('[data-testid="repository-tab"]');
+    for (const tab of tabs) {
+      if (tab instanceof HTMLElement && tab.getAttribute('data-path') === path) {
+        return tab;
+      }
+    }
+    return null;
   }
 
   openAddDialog(): void {
@@ -3036,16 +3283,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const element = target instanceof Element ? target : null;
     if (
       element?.closest(
-        '[data-testid="repository-name"], [data-testid="switch-repository"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
       )
     ) {
       return;
     }
     requestWindowAction('drag');
-  }
-
-  copyLocation(): void {
-    copyText(this.repositoryLocation());
   }
 
   copyBranchName(name: string): void {
@@ -3069,6 +3312,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   @HostListener('document:click', ['$event'])
   closeBranchMenuOutside(event: Event): void {
     this.closeTerminalMenuOnClick(event);
+    this.closeRepositoryTabMenuOnClick(event);
     const name = this.openBranch();
     if (name === null) {
       return;
@@ -3113,6 +3357,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (this.createDialogOpen()) {
       this.cancelCreate();
+      return;
+    }
+    if (this.repositoryTabMenu() !== null) {
+      this.repositoryTabMenu.set(null);
       return;
     }
     if (this.overlayOpen()) {
@@ -3290,9 +3538,58 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return current.toLowerCase() === swatch.toLowerCase();
   }
 
+  chooseSidebarText(text: SidebarText): void {
+    saveSidebarText(text);
+    this.sidebarText.set(text);
+    this.applyOpenRepositoryAppearance();
+  }
+
+  renameOpenRepository(change: { path: string; displayName: string }): void {
+    this.registered.set(listRepositories());
+    this.repositoryTabs.update((tabs) =>
+      tabs.map((tab) => (tab.path === change.path ? { ...tab, name: change.displayName } : tab)),
+    );
+    if (this.effectivePath() === change.path) {
+      this.selectedName.set(change.displayName);
+    }
+  }
+
+  applyOpenRepositoryAppearance(): void {
+    const settings = readAppSettings();
+    const path = this.effectivePath();
+    const own = path === null ? {} : readRepositoryAppearance(path);
+    this.paintedSidebarColor.set(own.sidebarColor ?? settings.sidebarColor);
+    this.paintedSidebarText.set(own.sidebarText ?? settings.sidebarText);
+  }
+
+  repositoryTabSidebarColor(path: string): string {
+    return this.repositoryTabAppearance(path).sidebarColor;
+  }
+
+  repositoryTabSidebarTextColor(path: string): string {
+    return this.repositoryTabAppearance(path).sidebarText === 'black' ? '#000000' : '#ffffff';
+  }
+
+  repositoryTabFrame(path: string): string {
+    if (this.effectivePath() !== path) {
+      return 'none';
+    }
+    return `2px solid ${this.repositoryTabSidebarTextColor(path)}`;
+  }
+
+  private repositoryTabAppearance(path: string): { sidebarColor: string; sidebarText: SidebarText } {
+    const settings = readAppSettings();
+    const own = readRepositoryAppearance(path);
+    return {
+      sidebarColor: own.sidebarColor ?? settings.sidebarColor,
+      sidebarText: own.sidebarText ?? settings.sidebarText,
+    };
+  }
+
   private applySidebarColor(color: string): void {
     saveSidebarColor(color);
     this.sidebarColor.set(color);
+    this.applyOpenRepositoryAppearance();
   }
 
   private applyContentColor(color: string): void {
@@ -3314,9 +3611,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     resetAppColors();
     const settings = readAppSettings();
     this.sidebarColor.set(settings.sidebarColor);
+    this.sidebarText.set(settings.sidebarText);
     this.contentColor.set(settings.contentColor);
     this.terminalBackground.set(settings.terminalBackground);
     this.terminalForeground.set(settings.terminalForeground);
+    this.applyOpenRepositoryAppearance();
   }
 
   createLayoutLine(): string {
@@ -3571,7 +3870,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private clearTerminals(): void {
-    stopShellTerminals(this.terminalsByBranch());
     this.worktreePath.set('');
     this.terminalsByBranch.set({});
     this.closeTerminalMenu();
@@ -3816,6 +4114,66 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.terminalMenu.set(null);
   }
 
+  private endRepositoryTerminals(path: string): void {
+    if (this.effectivePath() === path) {
+      stopShellTerminals(this.terminalsByBranch());
+      this.killWorkspaceTmuxSessions(this.terminalsByBranch());
+    }
+    const saved = this.repositoryWorkspaces.get(path);
+    if (saved) {
+      stopShellTerminals(saved.terminalsByBranch);
+      this.killWorkspaceTmuxSessions(saved.terminalsByBranch);
+    }
+  }
+
+  private killWorkspaceTmuxSessions(branches: Record<string, WorktreeTerminalView>): void {
+    for (const state of Object.values(branches)) {
+      for (const tab of state.tabs) {
+        for (const terminal of tab.terminals) {
+          if (terminal.host === 'tmux' && terminal.session !== '') {
+            killTmuxSession(terminal.session);
+          }
+        }
+      }
+    }
+  }
+
+  private showKeptRepository(tab: RepositoryTab): void {
+    this.selectedName.set(tab.name);
+    this.openedPath.set(tab.path);
+    this.overlayOpen.set(false);
+    this.openBranch.set(null);
+    const saved = this.repositoryWorkspaces.get(tab.path);
+    if (saved) {
+      this.restoreBranchView(saved.view);
+      this.contentLoading.set(false);
+      this.terminalsByBranch.set(saved.terminalsByBranch);
+      this.worktreePath.set(saved.worktreePath);
+      this.realBranches.set(saved.branches);
+      this.claimOldSessions(tab.path, saved.branches);
+      this.rememberTmuxSessions();
+      this.closeTerminalMenu();
+      this.renaming.set(null);
+    } else {
+      this.clearBranchSelection();
+      this.clearTerminals();
+      this.refreshBranches();
+    }
+    this.applyOpenRepositoryAppearance();
+  }
+
+  private closeRepositoryTabMenuOnClick(event: Event): void {
+    if (this.repositoryTabMenu() === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (element?.closest('[data-testid="repository-tab-menu"]')) {
+      return;
+    }
+    this.repositoryTabMenu.set(null);
+  }
+
   private closeTerminalMenuOnClick(event: Event): void {
     if (this.terminalMenu() === null) {
       return;
@@ -3876,13 +4234,98 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private finishChoose(name: string, path: string | null): void {
+    const leaving = this.effectivePath();
+    if (leaving !== null && leaving !== path) {
+      this.rememberWorkspace(leaving);
+    }
     this.selectedName.set(name);
     this.openedPath.set(path);
     this.overlayOpen.set(false);
     this.openBranch.set(null);
-    this.clearBranchSelection();
-    this.clearTerminals();
+    const saved = path === null ? undefined : this.repositoryWorkspaces.get(path);
+    if (saved) {
+      this.restoreBranchView(saved.view);
+      this.contentLoading.set(false);
+      this.terminalsByBranch.set(saved.terminalsByBranch);
+      this.worktreePath.set(saved.worktreePath);
+      this.closeTerminalMenu();
+      this.renaming.set(null);
+    } else {
+      this.clearBranchSelection();
+      this.clearTerminals();
+    }
     this.refreshBranches();
+    this.applyOpenRepositoryAppearance();
+    if (path !== null) {
+      this.appendRepositoryTab(path, name);
+    }
+    this.rememberOpenRepositoryTabs();
+  }
+
+  private restoreOpenRepositoryTabs(): void {
+    const saved = readOpenRepositoryTabs(this.appSettingsEnv);
+    if (saved.paths.length === 0) {
+      return;
+    }
+    const registered = new Set(listRepositories().map((repository) => repository.path));
+    const remaining = saved.paths.filter((path) => registered.has(path) && gitRepositoryOpens(path));
+    const selectedPath = restoredRepositoryPath(saved.paths, saved.selectedPath, remaining);
+    if (selectedPath === null) {
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    for (const path of remaining) {
+      const repository = findRepository(path);
+      if (!repository) {
+        continue;
+      }
+      this.appendRepositoryTab(path, repository.displayName);
+    }
+    this.openRestoredRepository(saved.paths, remaining, selectedPath);
+  }
+
+  private openRestoredRepository(
+    savedPaths: readonly string[],
+    candidates: readonly string[],
+    selectedPath: string,
+  ): void {
+    const selected = findRepository(selectedPath);
+    if (!selected) {
+      this.skipRestoredRepository(savedPaths, candidates, selectedPath);
+      return;
+    }
+    this.openRepository(selected.displayName, selected.path, () => {
+      this.skipRestoredRepository(savedPaths, candidates, selectedPath);
+    });
+  }
+
+  private skipRestoredRepository(
+    savedPaths: readonly string[],
+    candidates: readonly string[],
+    failedPath: string,
+  ): void {
+    const remaining = candidates.filter((path) => path !== failedPath);
+    this.repositoryTabs.update((tabs) => tabs.filter((tab) => tab.path !== failedPath));
+    const next = restoredRepositoryPath(savedPaths, failedPath, remaining);
+    if (next === null) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.openingRepository.set(null);
+      this.overlayOpen.set(false);
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    this.openRestoredRepository(savedPaths, remaining, next);
+  }
+
+  private rememberOpenRepositoryTabs(): void {
+    if (!this.persistOpenTabs) {
+      return;
+    }
+    const paths = this.repositoryTabs().map((tab) => tab.path);
+    const opened = this.openedPath();
+    const selectedPath = opened !== null && paths.includes(opened) ? opened : null;
+    saveOpenRepositoryTabs(paths, selectedPath, this.appSettingsEnv);
   }
 
   private runWhenPainted(work: () => void): void {
@@ -3984,6 +4427,47 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 }
 
+function restoredRepositoryPath(
+  savedPaths: readonly string[],
+  selectedPath: string | null,
+  remaining: readonly string[],
+): string | null {
+  if (remaining.length === 0) {
+    return null;
+  }
+  if (selectedPath !== null && remaining.includes(selectedPath)) {
+    return selectedPath;
+  }
+  const selectedIndex = selectedPath === null ? -1 : savedPaths.indexOf(selectedPath);
+  if (selectedIndex < 0) {
+    return remaining[0] ?? null;
+  }
+  for (let index = selectedIndex + 1; index < savedPaths.length; index += 1) {
+    const path = savedPaths[index];
+    if (path !== undefined && remaining.includes(path)) {
+      return path;
+    }
+  }
+  for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+    const path = savedPaths[index];
+    if (path !== undefined && remaining.includes(path)) {
+      return path;
+    }
+  }
+  return null;
+}
+
+function gitRepositoryOpens(path: string): boolean {
+  try {
+    execFileSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function liveQueryFlag(): boolean {
   if (typeof location === 'undefined') {
     return false;
@@ -4043,6 +4527,13 @@ function readRepositoryName(repoPath: string): string {
 const terminalHeaderHeight = 36;
 const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
+
+interface RepositoryWorkspace {
+  view: BranchViewSnapshot;
+  terminalsByBranch: Record<string, WorktreeTerminalView>;
+  worktreePath: string;
+  branches: SampleBranch[];
+}
 
 interface BranchViewSnapshot {
   name: string | null;

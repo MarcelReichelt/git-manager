@@ -30,7 +30,7 @@ commands = ["yarn"]
 
 Order on create:
 
-1. Fetch, when the branch exists only on a remote.
+1. Fetch, when the name is not a local branch and a remote can be asked. A missing remote branch still continues as a new local branch.
 2. Pre-create commands, then each plugin's `preWorktreeCreate`.
 3. `git worktree add`, then the files in `[copy].files`.
 4. Post-create commands, then each plugin's `postWorktreeCreate`.

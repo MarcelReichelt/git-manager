@@ -1,0 +1,73 @@
+appId: dev.mreichelt.git-manager
+productName: git-manager
+copyright: Copyright © 2026 Murakai
+directories:
+  output: release
+extraMetadata:
+  main: src/desktop/electron-main.mjs
+  author: Murakai
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+files:
+  - package.json
+  - LICENSE
+  - dist/desktop-app/**/*
+  - src/desktop/electron-main.mjs
+  - src/desktop/electron-preload.cjs
+  - src/desktop/install-electron-natives.cjs
+  - src/desktop/shell-main.mjs
+  - src/desktop/shell-channels.cjs
+  - src/desktop/shell-host.ts
+  - src/desktop/tmux-sessions.ts
+  - src/desktop/windows-foreground.ts
+  - src/runtime-env.ts
+  - src/desktop/app-icon.png
+  - native/electron/**/*
+  - node_modules/better-sqlite3/**/*
+  - node_modules/bindings/**/*
+  - node_modules/file-uri-to-path/**/*
+  - node_modules/node-pty/**/*
+  - node_modules/koffi/**/*
+  - node_modules/@koromix/**/*
+  - node_modules/jiti/**/*
+  - "!**/{.DS_Store,.git}"
+  - "!**/*.{md,map}"
+asarUnpack:
+  - native/electron/**/*
+  - node_modules/better-sqlite3/**/*
+  - node_modules/node-pty/**/*
+  - node_modules/koffi/**/*
+  - node_modules/@koromix/**/*
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  icon: src/desktop/app-icon.png
+  synopsis: Desktop workspace for one registered git repository
+win:
+  target:
+    - nsis
+    - portable
+  icon: src/desktop/app-icon.png
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  icon: src/desktop/app-icon.png
+appImage:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+deb:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${os}-${arch}-setup.${ext}
+portable:
+  artifactName: ${productName}-${version}-${os}-${arch}-portable.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}

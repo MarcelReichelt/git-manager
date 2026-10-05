@@ -1,6 +1,7 @@
 node_modules/
 native/
 dist/
+release/
 *.log
 .DS_Store
 package-lock.json

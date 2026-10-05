@@ -41,6 +41,20 @@ The build needs
 the same `python3`, `make`, and `g++` packages, plus network access to the
 Electron headers.
 
+### Desktop installer
+
+`yarn pack:desktop` runs that Electron rebuild, builds the window, and writes
+the installer for this operating system to `release/`. Linux produces an
+AppImage and a deb. Windows produces a setup exe and a portable exe. macOS
+produces a dmg and a zip. The packaged app still needs git on `PATH`.
+
+On Linux the pack launches the unpacked app once. That needs `xvfb-run` and
+the usual Electron libraries (GTK, NSS, and a sound library). Set
+`GIT_MANAGER_SKIP_DESKTOP_SMOKE=1` to pack without launching. A failed launch
+prints `desktop-smoke-timeout` or the native-module error. Rebuild with the
+same command after installing the missing library; the Electron binaries in
+`native/electron/` are reused while the Electron version is unchanged.
+
 ## Unknown command
 
 `add`, `list`, `unregister`, `worktree`, and `merge` are the commands. `clone`, `push`, `pull`, `doctor`, `setup`, `ui`, and `repo` exit with `unknown command`.

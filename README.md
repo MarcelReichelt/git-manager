@@ -31,6 +31,11 @@ Open the desktop window from a checkout:
 yarn desktop
 ```
 
+Desktop installers are separate from the npm CLI. `yarn pack:desktop` builds
+the package for the machine it runs on: a Linux AppImage and deb, a Windows
+setup exe and portable exe, or a macOS dmg and zip. See
+[Desktop installers](docs/getting-started.md#desktop-installers).
+
 On minimal Linux (Alpine, slim images), you may need build tools for the
 `better-sqlite3` native dependency: `python3`, `make`, and `g++`. See
 [Troubleshooting](docs/troubleshooting.md#npm-install-fails).

@@ -1,8 +1,11 @@
+import { createRequire } from 'node:module';
 import { app, ipcMain } from 'electron';
 import { createJiti } from 'jiti';
 import channels from './shell-channels.cjs';
 
 const { shellChannels } = channels;
+
+createRequire(import.meta.url)('./install-electron-natives.cjs').installElectronNatives();
 
 const jiti = createJiti(import.meta.url);
 const shellHost = jiti('./shell-host.ts');

@@ -5,6 +5,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -34,6 +35,7 @@ function moduleVersion(name) {
 }
 
 const stamp = {
+  layout: 2,
   electron: electronVersion,
   platform: process.platform,
   arch: process.arch,
@@ -41,6 +43,22 @@ const stamp = {
     electronNativeAddons.map((mod) => [mod.name, moduleVersion(mod.name)]),
   ),
 };
+
+function requiredBinaries() {
+  const required = electronNativeAddons.map((mod) => mod.binary);
+  if (process.platform === 'win32') {
+    required.push(
+      'conpty.node',
+      'conpty_console_list.node',
+      join('conpty', 'conpty.dll'),
+      join('conpty', 'OpenConsole.exe'),
+    );
+  }
+  if (process.platform === 'darwin') {
+    required.push('spawn-helper');
+  }
+  return required;
+}
 
 function stampMatches() {
   if (!existsSync(stampPath)) {
@@ -50,7 +68,53 @@ function stampMatches() {
   if (JSON.stringify(current) !== JSON.stringify(stamp)) {
     return false;
   }
-  return electronNativeAddons.every((mod) => existsSync(join(outDir, mod.binary)));
+  return requiredBinaries().every((file) => existsSync(join(outDir, file)));
+}
+
+function keepReleaseFile(name) {
+  return (
+    name.endsWith('.node') ||
+    name === 'spawn-helper' ||
+    name.endsWith('.dll') ||
+    name.endsWith('.exe')
+  );
+}
+
+function copyReleaseBinaries(releaseDir) {
+  if (!existsSync(releaseDir)) {
+    return;
+  }
+  for (const entry of readdirSync(releaseDir, { withFileTypes: true })) {
+    const source = join(releaseDir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'conpty') {
+        cpSync(source, join(outDir, entry.name), { recursive: true });
+      }
+      continue;
+    }
+    if (keepReleaseFile(entry.name)) {
+      copyFileSync(source, join(outDir, entry.name));
+    }
+  }
+}
+
+function ensureWindowsConpty(moduleDir, releaseDir) {
+  if (process.platform !== 'win32' || existsSync(join(releaseDir, 'conpty', 'conpty.dll'))) {
+    return;
+  }
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  const conptyRoot = join(moduleDir, 'third_party', 'conpty');
+  const versionFolder = readdirSync(conptyRoot)[0];
+  if (!versionFolder) {
+    console.error('node-pty is missing third_party/conpty.');
+    process.exit(1);
+  }
+  const sourceDir = join(conptyRoot, versionFolder, `win10-${arch}`);
+  const destDir = join(releaseDir, 'conpty');
+  mkdirSync(destDir, { recursive: true });
+  for (const file of ['conpty.dll', 'OpenConsole.exe']) {
+    copyFileSync(join(sourceDir, file), join(destDir, file));
+  }
 }
 
 if (stampMatches()) {
@@ -84,7 +148,8 @@ for (const mod of electronNativeAddons) {
       ],
       { cwd: moduleDir, stdio: 'inherit' },
     );
-    const built = join(buildDir, 'Release', mod.binary);
+    const releaseDir = join(buildDir, 'Release');
+    const built = join(releaseDir, mod.binary);
     if (result.error) {
       console.error(result.error.message);
       status = 1;
@@ -94,7 +159,10 @@ for (const mod of electronNativeAddons) {
       console.error(`Electron rebuild did not produce ${built}`);
       status = 1;
     } else {
-      copyFileSync(built, join(outDir, mod.binary));
+      if (mod.name === 'node-pty') {
+        ensureWindowsConpty(moduleDir, releaseDir);
+      }
+      copyReleaseBinaries(releaseDir);
     }
   } finally {
     rmSync(buildDir, { recursive: true, force: true });
@@ -107,6 +175,12 @@ for (const mod of electronNativeAddons) {
   if (status !== 0) {
     process.exit(status);
   }
+}
+
+const missing = requiredBinaries().filter((file) => !existsSync(join(outDir, file)));
+if (missing.length > 0) {
+  console.error(`Electron rebuild did not produce ${missing.join(', ')}`);
+  process.exit(1);
 }
 
 writeFileSync(stampPath, `${JSON.stringify(stamp, null, 2)}\n`);

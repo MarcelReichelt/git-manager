@@ -72,6 +72,45 @@ function createWindow() {
   window.loadFile(join(import.meta.dirname, '../../dist/desktop-app/index.html'), {
     query: { live: '1' },
   });
+  watchDesktopSmoke(window);
+  return window;
+}
+
+function watchDesktopSmoke(window) {
+  if (process.env.GIT_MANAGER_DESKTOP_SMOKE !== '1') {
+    return;
+  }
+  const timer = setTimeout(() => {
+    console.error('desktop-smoke-timeout');
+    app.exit(1);
+  }, 20000);
+  window.webContents.on('did-fail-load', () => {
+    console.error('desktop-smoke-load-failed');
+    clearTimeout(timer);
+    app.exit(1);
+  });
+  window.webContents.on('did-finish-load', () => {
+    const page = join(import.meta.dirname, '../../dist/desktop-app/index.html');
+    const source = `
+      const req = require('node:module').createRequire(${JSON.stringify(page)});
+      req('better-sqlite3');
+      req('node-pty');
+      req('koffi');
+      'desktop-smoke-ok';
+    `;
+    window.webContents
+      .executeJavaScript(source)
+      .then((result) => {
+        console.log(result);
+        clearTimeout(timer);
+        app.exit(0);
+      })
+      .catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        clearTimeout(timer);
+        app.exit(1);
+      });
+  });
 }
 
 app.whenReady().then(() => {

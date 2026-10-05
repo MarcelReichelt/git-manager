@@ -1922,6 +1922,9 @@ button, input { font: inherit; color: inherit; }
         </div>
       }
     }
+    @if (repositorySettings()?.settingsDialog(); as settingsDialog) {
+      <ng-container [ngTemplateOutlet]="settingsDialog" />
+    }
   `,
 })
 export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, AfterViewChecked {
@@ -2298,7 +2301,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!tab) {
       return;
     }
+    if (this.repositoryWorkspaces.has(path)) {
+      this.activateKeptRepository(tab);
+      return;
+    }
     this.openRepository(tab.name, path);
+  }
+
+  private activateKeptRepository(tab: RepositoryTab): void {
+    this.rememberWorkspace(this.effectivePath());
+    this.tabToReveal = tab.path;
+    this.showKeptRepository(tab);
+    this.rememberOpenRepositoryTabs();
+  }
+
+  private rememberWorkspace(path: string | null): void {
+    if (path === null) {
+      return;
+    }
+    this.repositoryWorkspaces.set(path, {
+      view: this.snapshotBranchView(),
+      terminalsByBranch: this.terminalsByBranch(),
+      worktreePath: this.worktreePath(),
+      branches: this.realBranches(),
+    });
   }
 
   private openRepository(name: string, path: string, whenOpenFails?: (path: string) => void): void {
@@ -4107,13 +4133,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      this.realBranches.set(saved.branches);
+      this.claimOldSessions(tab.path, saved.branches);
+      this.rememberTmuxSessions();
       this.closeTerminalMenu();
       this.renaming.set(null);
     } else {
       this.clearBranchSelection();
       this.clearTerminals();
+      this.refreshBranches();
     }
-    this.refreshBranches();
     this.applyOpenRepositoryAppearance();
   }
 
@@ -4191,11 +4220,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private finishChoose(name: string, path: string | null): void {
     const leaving = this.effectivePath();
     if (leaving !== null && leaving !== path) {
-      this.repositoryWorkspaces.set(leaving, {
-        view: this.snapshotBranchView(),
-        terminalsByBranch: this.terminalsByBranch(),
-        worktreePath: this.worktreePath(),
-      });
+      this.rememberWorkspace(leaving);
     }
     this.selectedName.set(name);
     this.openedPath.set(path);
@@ -4491,6 +4516,7 @@ interface RepositoryWorkspace {
   view: BranchViewSnapshot;
   terminalsByBranch: Record<string, WorktreeTerminalView>;
   worktreePath: string;
+  branches: SampleBranch[];
 }
 
 interface BranchViewSnapshot {

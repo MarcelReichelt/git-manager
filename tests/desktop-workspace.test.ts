@@ -2152,6 +2152,7 @@ describe('desktop workspace', () => {
     const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-label')).toBe('Repository settings');
+    expect(fixture.nativeElement.querySelector('aside')?.contains(dialog)).toBe(false);
     expect(dialog.querySelector('h2').textContent.trim()).toBe('Repository settings');
     const panel = dialog.querySelector('.dialog-panel');
     const panelStyle = getComputedStyle(panel);
@@ -5978,6 +5979,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
       'true',
     );

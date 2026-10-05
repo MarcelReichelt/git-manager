@@ -1,11 +1,13 @@
 appId: dev.mreichelt.git-manager
 productName: git-manager
+executableName: git-manager
 copyright: Copyright © 2026 Murakai
 directories:
   output: release
 extraMetadata:
   main: src/desktop/electron-main.mjs
   author: Murakai
+  desktopName: git-manager.desktop
 npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
@@ -33,6 +35,12 @@ files:
   - node_modules/jiti/**/*
   - "!**/{.DS_Store,.git}"
   - "!**/*.{md,map}"
+  # The window bundle already contains the Angular app. The installer keeps
+  # the native modules and jiti, and leaves the CLI and the build tools out.
+  - "!**/node_modules/better-sqlite3/{deps,src}/**"
+  - "!**/node_modules/node-pty/{deps,src,third_party,prebuilds}/**"
+  - "!**/node_modules/{@analogjs,@angular,@angular-devkit,@babel,@esbuild,@inquirer,@lmdb,@parcel,@rolldown,@rollup,@types,@xterm}/**"
+  - "!**/node_modules/{@iarna,@msgpackr-extract,@napi-rs,@oxc-parser,app-builder-lib,caniuse-lite,colorjs.io,commander,electron,electron-builder,es-toolkit,esbuild,execa,ink,jsdom,lightningcss,lightningcss-linux-x64-gnu,lmdb,lodash,node-gyp,react,react-dom,rolldown,rollup,rxjs,sass,sass-embedded,sass-embedded-linux-musl-x64,sass-embedded-linux-x64,scheduler,simple-git,typescript,vite,zone.js,zod}/**"
 asarUnpack:
   - native/electron/**/*
   - node_modules/better-sqlite3/**/*
@@ -43,6 +51,9 @@ linux:
   target:
     - AppImage
     - deb
+  executableName: git-manager
+  syncDesktopName: true
+  maintainer: MarcelReichelt <marcelreichelt91@gmail.com>
   category: Development
   icon: src/desktop/app-icon.png
   synopsis: Desktop workspace for one registered git repository

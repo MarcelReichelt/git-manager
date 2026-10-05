@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { registerShellIpc } from './shell-main.mjs';
 
+app.setName('git-manager');
 registerShellIpc();
 
 ipcMain.handle('browse-for-folder', async (event) => {

@@ -3249,6 +3249,29 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['master', 'feature/notes', 'zeta']);
   });
 
+  it('lists main first when the remote default changed from master and the stored HEAD still says master', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const origin = join(repoPath, '..', 'origin.git');
+    execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', origin]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['checkout', '-b', 'main']);
+    git(repoPath, ['push', 'origin', 'main']);
+    execFileSync('git', ['--git-dir', origin, 'symbolic-ref', 'HEAD', 'refs/heads/main'], {
+      stdio: 'ignore',
+    });
+    git(repoPath, ['remote', 'set-head', 'origin', 'master']);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)).toEqual(['main', 'feature', 'zeta']);
+  });
+
   it('lists main first when that is the default branch and keeps every other worktree in order', async () => {
     const repoPath = createEmptyRepository(roots, 'main');
     git(repoPath, ['branch', 'feature/login']);

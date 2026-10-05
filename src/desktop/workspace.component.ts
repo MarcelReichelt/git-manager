@@ -95,6 +95,7 @@ import {
   listRemoteBranchesWithoutWorktree,
   listWorktreeBranches,
   pruneRemoteTrackingRefs,
+  refreshRemoteHead,
   pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -2089,6 +2090,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const path = this.effectivePath();
     if (path !== null) {
       pruneRemoteTrackingRefs(path);
+      refreshRemoteHead(path);
     }
     this.refreshBranches();
     this.commandPoll = setInterval(() => {
@@ -2130,6 +2132,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.runWhenPainted(() => {
       try {
         pruneRemoteTrackingRefs(path);
+        refreshRemoteHead(path);
         this.finishChoose(name, path);
         this.openingRepository.set(null);
       } catch (error) {

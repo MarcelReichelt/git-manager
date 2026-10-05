@@ -350,8 +350,19 @@ export function pinDefaultBranch<T extends { name: string }>(
   return [pinned, ...branches.slice(0, index), ...branches.slice(index + 1)];
 }
 
+const remoteHeadAnswers = new Map<string, string | undefined>();
+
 function aheadBehindBase(repoPath: string): string {
   return defaultBranchName(repoPath) ?? 'HEAD';
+}
+
+export function refreshRemoteHead(repoPath: string): void {
+  const remote = preferredRemote(repoPath);
+  if (!remote) {
+    return;
+  }
+  remoteHeadAnswers.delete(remoteHeadKey(repoPath, remote));
+  rememberedRemoteHead(repoPath, remote);
 }
 
 export function readDefaultBranch(repoPath: string): string | undefined {
@@ -359,11 +370,15 @@ export function readDefaultBranch(repoPath: string): string | undefined {
 }
 
 function defaultBranchName(repoPath: string): string | undefined {
-  const originHead = gitOptional(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
-  if (originHead?.startsWith('origin/')) {
-    const name = originHead.slice('origin/'.length);
-    if (name !== '') {
-      return name;
+  const remote = preferredRemote(repoPath);
+  if (remote) {
+    const asked = rememberedRemoteHead(repoPath, remote);
+    if (asked && refResolves(repoPath, asked)) {
+      return asked;
+    }
+    const stored = storedRemoteHead(repoPath, remote);
+    if (stored && refResolves(repoPath, stored)) {
+      return stored;
     }
   }
   const hasMaster = hasRef(repoPath, 'refs/heads/master');
@@ -385,6 +400,57 @@ function defaultBranchName(repoPath: string): string | undefined {
     return 'main';
   }
   return checkedOut;
+}
+
+function preferredRemote(repoPath: string): string | undefined {
+  const remotes = configuredRemotes(repoPath);
+  if (remotes.includes('origin')) {
+    return 'origin';
+  }
+  return remotes[0];
+}
+
+function remoteHeadKey(repoPath: string, remote: string): string {
+  return `${resolve(repoPath)}\0${remote}`;
+}
+
+function rememberedRemoteHead(repoPath: string, remote: string): string | undefined {
+  const key = remoteHeadKey(repoPath, remote);
+  if (remoteHeadAnswers.has(key)) {
+    return remoteHeadAnswers.get(key);
+  }
+  const name = queryRemoteHead(repoPath, remote);
+  remoteHeadAnswers.set(key, name);
+  return name;
+}
+
+function queryRemoteHead(repoPath: string, remote: string): string | undefined {
+  try {
+    execFileSync('git', ['remote', 'set-head', remote, '--auto'], {
+      cwd: repoPath,
+      stdio: 'ignore',
+      timeout: 15000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch {
+    // An unreachable remote keeps the remote HEAD ref already stored locally.
+    return undefined;
+  }
+  return storedRemoteHead(repoPath, remote);
+}
+
+function refResolves(repoPath: string, name: string): boolean {
+  return gitOptional(repoPath, ['rev-parse', '--verify', '--quiet', `${name}^{commit}`]) !== undefined;
+}
+
+function storedRemoteHead(repoPath: string, remote: string): string | undefined {
+  const head = gitOptional(repoPath, ['symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`]);
+  const prefix = `${remote}/`;
+  if (!head?.startsWith(prefix)) {
+    return undefined;
+  }
+  const name = head.slice(prefix.length);
+  return name === '' ? undefined : name;
 }
 
 function checkedOutBranch(repoPath: string): string | undefined {

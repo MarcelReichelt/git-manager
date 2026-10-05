@@ -615,7 +615,8 @@ export class RepositorySettings {
   readonly repositoryPath = input<string | null>(null);
   readonly appearanceChanged = output<void>();
   readonly sidebarColorSwatches = sidebarSwatches;
-  readonly repositoryLocation = computed(() => this.repositoryPath() ?? '');
+  private readonly explicitPath = signal<string | null>(null);
+  readonly repositoryLocation = computed(() => this.activeRepositoryPath() ?? '');
   private readonly ownSidebarColor = signal<string | null>(null);
   private readonly ownSidebarText = signal<SidebarText | null>(null);
   readonly settingsOpen = signal(false);
@@ -648,11 +649,11 @@ export class RepositorySettings {
   }
 
   createLayoutLine(): string {
-    return formatCreateLayout(this.repositoryPath());
+    return formatCreateLayout(this.activeRepositoryPath());
   }
 
   repositoryWorktreeMode(): 'workspaces' | 'sibling' | null {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       return readAppSettings().defaultLayout;
     }
@@ -664,7 +665,7 @@ export class RepositorySettings {
   }
 
   chooseRepositoryLayout(mode: 'workspaces' | 'sibling', event: Event): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       this.keepWorktreeModeRadios(event);
       return;
@@ -685,7 +686,7 @@ export class RepositorySettings {
   }
 
   chooseRepositorySidebarColor(color: string): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       return;
     }
@@ -699,7 +700,7 @@ export class RepositorySettings {
   }
 
   chooseRepositorySidebarText(text: SidebarText, event: Event): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       this.keepSidebarTextRadios(event);
       return;
@@ -710,7 +711,7 @@ export class RepositorySettings {
   }
 
   useAppSidebarColor(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       return;
     }
@@ -720,7 +721,7 @@ export class RepositorySettings {
   }
 
   useAppSidebarText(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       return;
     }
@@ -730,6 +731,24 @@ export class RepositorySettings {
   }
 
   openSettings(): void {
+    this.explicitPath.set(null);
+    this.presentSettings();
+  }
+
+  openForPath(path: string): void {
+    this.explicitPath.set(path);
+    this.presentSettings();
+  }
+
+  closeSettings(): void {
+    this.settingsError.set(null);
+    this.cancelAddRemote();
+    this.cancelChangeRemote();
+    this.explicitPath.set(null);
+    this.settingsOpen.set(false);
+  }
+
+  private presentSettings(): void {
     this.settingsError.set(null);
     this.cancelAddRemote();
     this.cancelChangeRemote();
@@ -738,11 +757,8 @@ export class RepositorySettings {
     this.settingsOpen.set(true);
   }
 
-  closeSettings(): void {
-    this.settingsError.set(null);
-    this.cancelAddRemote();
-    this.cancelChangeRemote();
-    this.settingsOpen.set(false);
+  private activeRepositoryPath(): string | null {
+    return this.explicitPath() ?? this.repositoryPath();
   }
 
   dismissSettingsFromBackdrop(event: Event): void {
@@ -803,7 +819,7 @@ export class RepositorySettings {
 
   confirmChangeRemote(): void {
     const currentName = this.editingRemote();
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!currentName || !path) {
       return;
     }
@@ -821,7 +837,7 @@ export class RepositorySettings {
 
   confirmRemoveRemote(): void {
     const name = this.editingRemote();
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!name || !path) {
       return;
     }
@@ -836,7 +852,7 @@ export class RepositorySettings {
   }
 
   confirmAddRemote(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!path) {
       return;
     }
@@ -866,7 +882,7 @@ export class RepositorySettings {
   }
 
   private loadAppearance(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (path === null) {
       this.ownSidebarColor.set(null);
       this.ownSidebarText.set(null);
@@ -895,7 +911,7 @@ export class RepositorySettings {
   }
 
   private loadRemotes(): void {
-    const path = this.repositoryPath();
+    const path = this.activeRepositoryPath();
     if (!path) {
       this.remotes.set([]);
       return;

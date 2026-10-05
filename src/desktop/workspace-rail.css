@@ -765,7 +765,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   white-space: nowrap;
 }
 
-.terminal-menu {
+.terminal-menu,
+.repository-tab-menu {
   position: fixed;
   z-index: 7;
   width: 160px;
@@ -776,7 +777,13 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--grid);
 }
 
-.terminal-menu button {
+.repository-tab-menu {
+  width: max-content;
+  min-width: 160px;
+}
+
+.terminal-menu button,
+.repository-tab-menu button {
   display: block;
   width: 100%;
   margin: 0;
@@ -788,7 +795,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   cursor: pointer;
 }
 
-.terminal-menu button:hover {
+.terminal-menu button:hover,
+.repository-tab-menu button:hover {
   background: var(--surface);
 }
 

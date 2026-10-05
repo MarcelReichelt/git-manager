@@ -958,6 +958,7 @@ button, input { font: inherit; color: inherit; }
                   [style.color]="repositoryTabSidebarTextColor(tab.path)"
                   [style.outline]="repositoryTabFrame(tab.path)"
                   (click)="selectRepositoryTab(tab.path, $event)"
+                  (contextmenu)="openRepositoryTabMenu($event, tab.path)"
                 >
                   {{ tab.name }}
                 </button>
@@ -1872,6 +1873,22 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (repositoryTabMenu(); as menu) {
+      <div
+        class="repository-tab-menu"
+        data-testid="repository-tab-menu"
+        role="menu"
+        [style.left.px]="menu.x"
+        [style.top.px]="menu.y"
+      >
+        <button type="button" role="menuitem" data-testid="repository-tab-settings" (click)="openRepositoryTabSettings()">
+          Repository settings
+        </button>
+        <button type="button" role="menuitem" data-testid="repository-tab-close" (click)="closeRepositoryTab(menu.path)">
+          Close
+        </button>
+      </div>
+    }
     @if (terminalMenu(); as menu) {
       @if (menuActions(); as actions) {
         <div
@@ -1976,6 +1993,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly worktreePath = signal('');
   readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
+  readonly repositoryTabMenu = signal<{ path: string; x: number; y: number } | null>(null);
   readonly renaming = signal<{ tabId: string; terminalId: string | null } | null>(null);
   readonly renameValue = signal('');
   readonly hoveredTabId = signal<string | null>(null);
@@ -2201,6 +2219,54 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.openRepository(name, path);
+  }
+
+  openRepositoryTabMenu(event: MouseEvent, path: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.repositoryTabMenu.set({
+      path,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  openRepositoryTabSettings(): void {
+    const menu = this.repositoryTabMenu();
+    if (!menu) {
+      return;
+    }
+    this.repositoryTabMenu.set(null);
+    this.repositorySettings()?.openForPath(menu.path);
+  }
+
+  closeRepositoryTab(path: string): void {
+    this.repositoryTabMenu.set(null);
+    const tabs = this.repositoryTabs();
+    const index = tabs.findIndex((tab) => tab.path === path);
+    if (index < 0) {
+      return;
+    }
+    this.endRepositoryTerminals(path);
+    this.repositoryWorkspaces.delete(path);
+    const remaining = tabs.filter((tab) => tab.path !== path);
+    this.repositoryTabs.set(remaining);
+    if (this.effectivePath() !== path) {
+      return;
+    }
+    const next = remaining[index] ?? remaining[index - 1];
+    if (!next) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.overlayOpen.set(false);
+      this.openBranch.set(null);
+      this.openingRepository.set(null);
+      this.clearBranchSelection();
+      this.clearTerminals();
+      this.applyOpenRepositoryAppearance();
+      return;
+    }
+    this.showKeptRepository(next);
   }
 
   selectRepositoryTab(path: string, event: Event): void {
@@ -3193,6 +3259,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   @HostListener('document:click', ['$event'])
   closeBranchMenuOutside(event: Event): void {
     this.closeTerminalMenuOnClick(event);
+    this.closeRepositoryTabMenuOnClick(event);
     const name = this.openBranch();
     if (name === null) {
       return;
@@ -3237,6 +3304,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (this.createDialogOpen()) {
       this.cancelCreate();
+      return;
+    }
+    if (this.repositoryTabMenu() !== null) {
+      this.repositoryTabMenu.set(null);
       return;
     }
     if (this.overlayOpen()) {
@@ -3978,6 +4049,63 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private closeTerminalMenu(): void {
     this.terminalMenu.set(null);
+  }
+
+  private endRepositoryTerminals(path: string): void {
+    if (this.effectivePath() === path) {
+      stopShellTerminals(this.terminalsByBranch());
+      this.killWorkspaceTmuxSessions(this.terminalsByBranch());
+    }
+    const saved = this.repositoryWorkspaces.get(path);
+    if (saved) {
+      stopShellTerminals(saved.terminalsByBranch);
+      this.killWorkspaceTmuxSessions(saved.terminalsByBranch);
+    }
+  }
+
+  private killWorkspaceTmuxSessions(branches: Record<string, WorktreeTerminalView>): void {
+    for (const state of Object.values(branches)) {
+      for (const tab of state.tabs) {
+        for (const terminal of tab.terminals) {
+          if (terminal.host === 'tmux' && terminal.session !== '') {
+            killTmuxSession(terminal.session);
+          }
+        }
+      }
+    }
+  }
+
+  private showKeptRepository(tab: RepositoryTab): void {
+    this.selectedName.set(tab.name);
+    this.openedPath.set(tab.path);
+    this.overlayOpen.set(false);
+    this.openBranch.set(null);
+    const saved = this.repositoryWorkspaces.get(tab.path);
+    if (saved) {
+      this.restoreBranchView(saved.view);
+      this.contentLoading.set(false);
+      this.terminalsByBranch.set(saved.terminalsByBranch);
+      this.worktreePath.set(saved.worktreePath);
+      this.closeTerminalMenu();
+      this.renaming.set(null);
+    } else {
+      this.clearBranchSelection();
+      this.clearTerminals();
+    }
+    this.refreshBranches();
+    this.applyOpenRepositoryAppearance();
+  }
+
+  private closeRepositoryTabMenuOnClick(event: Event): void {
+    if (this.repositoryTabMenu() === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (element?.closest('[data-testid="repository-tab-menu"]')) {
+      return;
+    }
+    this.repositoryTabMenu.set(null);
   }
 
   private closeTerminalMenuOnClick(event: Event): void {

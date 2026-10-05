@@ -23,6 +23,11 @@ jobs:
   pack:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.runner }}
+    env:
+      # .yarnrc.yml reads NPM_TOKEN for every Yarn command, including the
+      # setup-node cache lookup. The desktop build does not publish.
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      CSC_IDENTITY_AUTO_DISCOVERY: false
     strategy:
       fail-fast: false
       matrix:
@@ -56,8 +61,6 @@ jobs:
 
       - name: Pack the desktop app
         run: yarn pack:desktop
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Collect installers
         shell: bash

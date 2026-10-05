@@ -48,7 +48,7 @@ button, input { font: inherit; color: inherit; }
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: white;
+  color: inherit;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }

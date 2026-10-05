@@ -228,6 +228,11 @@ interface CardRepository {
   path: string | null;
 }
 
+interface RepositoryTab {
+  path: string;
+  name: string;
+}
+
 const sampleCard: CardRepository[] = [
   { name: 'Harbor', path: null },
   { name: 'Atlas', path: null },
@@ -896,7 +901,7 @@ button, input { font: inherit; color: inherit; }
             <button type="button" data-testid="add-repository" aria-label="Add repository" (click)="openAddDialog()">+</button>
           }
         </div>
-        @if (registryMode() && cardRepositories().length === 0) {
+        @if (registryMode() && registered().length === 0) {
           <p data-testid="repositories-empty">A repository needs to be added.</p>
         }
         @if (openError(); as message) {
@@ -940,17 +945,22 @@ button, input { font: inherit; color: inherit; }
               <circle cx="5.2" cy="12" r="1.6" fill="#ffffff" />
               <circle cx="11.4" cy="8" r="1.6" fill="#ffffff" />
             </svg>
-            <h1 data-testid="repository-name" [attr.title]="repositoryLocation()" (click)="copyLocation()">{{ workspaceTitle() }}</h1>
-            <button type="button" data-testid="switch-repository" aria-label="Switch repository" (click)="openSwitch()">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M1.25 3.15H8.7V1.55L14.75 4.35 8.7 7.15V5.55H1.25Z" />
-                <path fill="currentColor" d="M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z" />
-              </svg>
-            </button>
-            <gm-repository-settings
-              [repositoryPath]="effectivePath()"
-              (appearanceChanged)="applyOpenRepositoryAppearance()"
-            ></gm-repository-settings>
+            <div data-testid="repository-tabs">
+              @for (tab of repositoryTabs(); track tab.path) {
+                <button
+                  type="button"
+                  data-testid="repository-tab"
+                  [attr.data-name]="tab.name"
+                  [attr.data-path]="tab.path"
+                  [attr.title]="tab.name"
+                  [attr.aria-selected]="effectivePath() === tab.path"
+                  (click)="selectRepositoryTab(tab.path, $event)"
+                >
+                  {{ tab.name }}
+                </button>
+              }
+              <button type="button" data-testid="open-repository-card" aria-label="Open repository" (click)="openSwitch()">+</button>
+            </div>
           </div>
           <div class="window-controls">
             <button type="button" data-testid="app-settings" aria-label="App settings" (click)="openAppSettings()">
@@ -964,7 +974,13 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
-          <p class="branch-label"><span>Worktrees</span></p>
+          <p class="branch-label">
+            <span>Worktrees</span>
+            <gm-repository-settings
+              [repositoryPath]="effectivePath()"
+              (appearanceChanged)="applyOpenRepositoryAppearance()"
+            ></gm-repository-settings>
+          </p>
           <ul data-testid="branch-list">
             @for (branch of branches(); track branch.name) {
               <li
@@ -1908,6 +1924,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly branchActivity = signal<{ branch: string; label: string } | null>(null);
   readonly tmuxSessionRecords = signal<TmuxSessionRecord[]>([]);
   readonly overlayOpen = signal(false);
+  readonly repositoryTabs = signal<RepositoryTab[]>([]);
+  private tabToReveal: string | null = null;
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly openBranch = signal<string | null>(null);
   readonly selectedBranchName = signal<string | null>(null);
   readonly selectedFilePath = signal<string | null>(null);
@@ -2012,10 +2031,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!this.registryMode()) {
       return sampleCard;
     }
-    return this.registered().map((repository) => ({
-      name: repository.displayName,
-      path: repository.path,
-    }));
+    const openPaths = new Set(this.repositoryTabs().map((tab) => tab.path));
+    return this.registered()
+      .filter((repository) => !openPaths.has(repository.path))
+      .map((repository) => ({
+        name: repository.displayName,
+        path: repository.path,
+      }));
   });
   readonly workspaceTitle = computed(() => {
     const path = this.effectivePath();
@@ -2132,6 +2154,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const path = this.effectivePath();
     if (path !== null) {
+      this.appendRepositoryTab(path, this.workspaceTitle() ?? basename(path));
       pruneRemoteTrackingRefs(path);
       refreshRemoteHead(path);
     }
@@ -2149,6 +2172,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   ngAfterViewChecked(): void {
     this.captureMaximizedBody();
+    this.revealPendingTab();
   }
 
   ngOnDestroy(): void {
@@ -2173,6 +2197,25 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.finishChoose(name, null);
       return;
     }
+    this.openRepository(name, path);
+  }
+
+  selectRepositoryTab(path: string, event: Event): void {
+    const current = event.currentTarget;
+    if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') {
+      current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (this.effectivePath() === path) {
+      return;
+    }
+    const tab = this.repositoryTabs().find((item) => item.path === path);
+    if (!tab) {
+      return;
+    }
+    this.openRepository(tab.name, path);
+  }
+
+  private openRepository(name: string, path: string): void {
     this.overlayOpen.set(false);
     this.openError.set(null);
     if (this.repositoryPath() === null && this.selectedName() === null) {
@@ -2194,6 +2237,39 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         }
       }
     });
+  }
+
+  private appendRepositoryTab(path: string, name: string): void {
+    if (this.repositoryTabs().some((tab) => tab.path === path)) {
+      return;
+    }
+    this.repositoryTabs.update((tabs) => [...tabs, { path, name }]);
+    this.tabToReveal = path;
+  }
+
+  private revealPendingTab(): void {
+    const path = this.tabToReveal;
+    if (path === null) {
+      return;
+    }
+    const tab = this.repositoryTabElement(path);
+    if (tab === null) {
+      return;
+    }
+    this.tabToReveal = null;
+    if (typeof tab.scrollIntoView === 'function') {
+      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  private repositoryTabElement(path: string): HTMLElement | null {
+    const tabs = this.hostElement.nativeElement.querySelectorAll('[data-testid="repository-tab"]');
+    for (const tab of tabs) {
+      if (tab instanceof HTMLElement && tab.getAttribute('data-path') === path) {
+        return tab;
+      }
+    }
+    return null;
   }
 
   openAddDialog(): void {
@@ -3085,16 +3161,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const element = target instanceof Element ? target : null;
     if (
       element?.closest(
-        '[data-testid="repository-name"], [data-testid="switch-repository"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
       )
     ) {
       return;
     }
     requestWindowAction('drag');
-  }
-
-  copyLocation(): void {
-    copyText(this.repositoryLocation());
   }
 
   copyBranchName(name: string): void {
@@ -3967,6 +4039,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     this.refreshBranches();
     this.applyOpenRepositoryAppearance();
+    if (path !== null) {
+      this.appendRepositoryTab(path, name);
+    }
   }
 
   private runWhenPainted(work: () => void): void {

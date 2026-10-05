@@ -19,8 +19,8 @@
   -webkit-app-region: drag;
 }
 
-[data-testid='repository-name'],
-[data-testid='switch-repository'],
+[data-testid='repository-tab'],
+[data-testid='open-repository-card'],
 [data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
@@ -31,6 +31,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
   padding-left: 12px;
 }
 
@@ -93,32 +94,51 @@ aside {
   color: var(--sidebar-text);
 }
 
-h1 {
-  color: white;
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  cursor: pointer;
+[data-testid='repository-tabs'] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
 }
 
-[data-testid='switch-repository'] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+[data-testid='repository-tab'],
+[data-testid='open-repository-card'] {
   flex: none;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: white;
+  font: inherit;
   cursor: pointer;
 }
 
-[data-testid='switch-repository']:hover {
+[data-testid='repository-tab'] {
+  max-width: 160px;
+  padding: 0 8px;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid='repository-tab'][aria-selected='true'] {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+[data-testid='repository-tab']:hover,
+[data-testid='open-repository-card']:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+[data-testid='open-repository-card'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
 }
 
 [data-testid='create-worktree']:hover {
@@ -127,14 +147,18 @@ h1 {
 
 .branch-label {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   margin: 0 4px 8px;
   color: inherit;
-  opacity: 0.7;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.branch-label > span {
+  opacity: 0.7;
 }
 
 ul { margin: 0; padding: 0; list-style: none; }

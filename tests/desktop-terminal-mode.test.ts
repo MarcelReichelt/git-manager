@@ -189,9 +189,15 @@ function chooseRepository(fixture: ComponentFixture<WorkspaceComponent>, name: s
 }
 
 function switchRepository(fixture: ComponentFixture<WorkspaceComponent>, name: string): void {
-  const button = fixture.nativeElement.querySelector('[data-testid="switch-repository"]');
+  const tab = fixture.nativeElement.querySelector(`[data-testid="repository-tab"][data-name="${name}"]`);
+  if (tab instanceof HTMLButtonElement) {
+    tab.click();
+    fixture.detectChanges();
+    return;
+  }
+  const button = fixture.nativeElement.querySelector('[data-testid="open-repository-card"]');
   if (!(button instanceof HTMLButtonElement)) {
-    throw new Error('Switch repository is not shown');
+    throw new Error('Open repository is not shown');
   }
   button.click();
   fixture.detectChanges();
@@ -840,7 +846,9 @@ describe('terminal mode', () => {
     switchRepository(fixture, 'Atlas');
 
     expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Atlas');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][aria-selected="true"]').getAttribute('data-name')).toBe(
+      'Atlas',
+    );
     expect(paneText(fixture)).not.toContain('inappmarker');
     expect(harborShells()).toHaveLength(1);
     clickBranch(fixture, 'feature');
@@ -901,7 +909,9 @@ describe('terminal mode', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Atlas');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][aria-selected="true"]').getAttribute('data-name')).toBe(
+      'Atlas',
+    );
     expect(paneText(fixture)).not.toContain('harbormarker');
     clickBranch(fixture, 'feature');
     await waitFor(() => paneText(fixture!).includes(' $'));
@@ -947,19 +957,21 @@ describe('terminal mode', () => {
     switchRepository(fixture, 'Atlas');
 
     expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Harbor');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][aria-selected="true"]').getAttribute('data-name')).toBe(
+      'Harbor',
+    );
     expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
       'feature',
     );
     expect(paneText(fixture)).toContain('inappmarker');
     expect(shellArguments(worktreePath(harbor.repo)).filter((args) => args[0] === '/bin/bash')).toHaveLength(1);
     expect(workspaceError(fixture)).toContain('not a git repository');
-    expect(fixture.nativeElement.querySelector('[data-testid="switch-repository"]')).not.toBeNull();
-    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    expect(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).not.toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="open-repository-card"]').click();
     fixture.detectChanges();
     const names = [
       ...fixture.nativeElement.querySelectorAll('[data-testid="switching-overlay"] [data-testid="repository"]'),
     ].map((button) => button.getAttribute('data-name'));
-    expect(names).toEqual(['Atlas', 'Harbor']);
+    expect(names).toEqual(['Atlas']);
   });
 });

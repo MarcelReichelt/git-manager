@@ -1898,6 +1898,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly oldSessionChoices = signal<OldSessionChoice[]>([]);
   private dismissedOldSessions = new Set<string>();
   private oldSessionRepo: string | null = null;
+  private readonly repositoryWorkspaces = new Map<string, RepositoryWorkspace>();
   readonly terminalFont = signal(readAppSettings().terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
   readonly terminalBackground = signal(readAppSettings().terminalBackground);
@@ -2113,6 +2114,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.commandPoll = null;
     }
     stopShellTerminals(this.terminalsByBranch());
+    for (const workspace of this.repositoryWorkspaces.values()) {
+      stopShellTerminals(workspace.terminalsByBranch);
+    }
   }
 
   choose(name: string): void {
@@ -2128,7 +2132,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     this.overlayOpen.set(false);
     this.openError.set(null);
-    this.openingRepository.set(name);
+    if (this.repositoryPath() === null && this.selectedName() === null) {
+      this.openingRepository.set(name);
+    }
     this.runWhenPainted(() => {
       try {
         pruneRemoteTrackingRefs(path);
@@ -3571,7 +3577,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private clearTerminals(): void {
-    stopShellTerminals(this.terminalsByBranch());
     this.worktreePath.set('');
     this.terminalsByBranch.set({});
     this.closeTerminalMenu();
@@ -3876,12 +3881,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private finishChoose(name: string, path: string | null): void {
+    const leaving = this.effectivePath();
+    if (leaving !== null && leaving !== path) {
+      this.repositoryWorkspaces.set(leaving, {
+        view: this.snapshotBranchView(),
+        terminalsByBranch: this.terminalsByBranch(),
+        worktreePath: this.worktreePath(),
+      });
+    }
     this.selectedName.set(name);
     this.openedPath.set(path);
     this.overlayOpen.set(false);
     this.openBranch.set(null);
-    this.clearBranchSelection();
-    this.clearTerminals();
+    const saved = path === null ? undefined : this.repositoryWorkspaces.get(path);
+    if (saved) {
+      this.restoreBranchView(saved.view);
+      this.contentLoading.set(false);
+      this.terminalsByBranch.set(saved.terminalsByBranch);
+      this.worktreePath.set(saved.worktreePath);
+      this.closeTerminalMenu();
+      this.renaming.set(null);
+    } else {
+      this.clearBranchSelection();
+      this.clearTerminals();
+    }
     this.refreshBranches();
   }
 
@@ -4043,6 +4066,12 @@ function readRepositoryName(repoPath: string): string {
 const terminalHeaderHeight = 36;
 const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
+
+interface RepositoryWorkspace {
+  view: BranchViewSnapshot;
+  terminalsByBranch: Record<string, WorktreeTerminalView>;
+  worktreePath: string;
+}
 
 interface BranchViewSnapshot {
   name: string | null;

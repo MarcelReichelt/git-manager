@@ -1848,7 +1848,9 @@ describe('desktop workspace', () => {
     const mark = title.querySelector('[data-testid="app-mark"]');
     const name = title.querySelector('[data-testid="repository-tabs"]');
 
-    expect(getComputedStyle(title).paddingLeft).toBe('12px');
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const spaceAboveIcon = (parseFloat(getComputedStyle(bar).height) - parseFloat(mark.getAttribute('height') ?? '0')) / 2;
+    expect(getComputedStyle(title).paddingLeft).toBe(`${spaceAboveIcon}px`);
     expect(title.firstElementChild).toBe(mark);
     expect(mark.tagName).toBe('svg');
     expect(mark.closest('button')).toBeNull();

@@ -273,6 +273,41 @@ export function resetAppColors(env?: NodeJS.ProcessEnv): void {
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export interface OpenRepositoryTabs {
+  paths: string[];
+  selectedPath: string | null;
+}
+
+export function readOpenRepositoryTabs(env?: NodeJS.ProcessEnv): OpenRepositoryTabs {
+  const stored = readSettingsObject(resolveAppSettingsPath(env));
+  return {
+    paths: readPathList(stored.openRepositoryPaths),
+    selectedPath: readStoredPath(stored.selectedRepositoryPath),
+  };
+}
+
+export function saveOpenRepositoryTabs(
+  paths: readonly string[],
+  selectedPath: string | null,
+  env?: NodeJS.ProcessEnv,
+): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  if (paths.length === 0) {
+    delete current.openRepositoryPaths;
+    delete current.selectedRepositoryPath;
+  } else {
+    current.openRepositoryPaths = [...paths];
+    if (selectedPath === null) {
+      delete current.selectedRepositoryPath;
+    } else {
+      current.selectedRepositoryPath = selectedPath;
+    }
+  }
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
 function readSettingsObject(settingsPath: string): Record<string, unknown> {
   if (!existsSync(settingsPath)) {
     return {};
@@ -367,6 +402,20 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   return String(mode);
+}
+
+function readPathList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((path): path is string => typeof path === 'string');
+}
+
+function readStoredPath(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value;
 }
 
 function readChangesShare(value: unknown): number | null {

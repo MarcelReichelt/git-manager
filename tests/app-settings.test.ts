@@ -10,6 +10,7 @@ import {
   clearRepositorySidebarText,
   createLayoutForRepository,
   readAppSettings,
+  readOpenRepositoryTabs,
   readRepositoryAppearance,
   resetAppColors,
   resolveAppSettingsPath,
@@ -17,6 +18,7 @@ import {
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveOpenRepositoryTabs,
   saveRepositoryLayoutMode,
   saveRepositorySidebarColor,
   saveRepositorySidebarText,
@@ -989,6 +991,41 @@ describe('app settings', () => {
     expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
       layout: { mode: 'workspaces' },
     });
+  });
+
+  it('remembers open repository paths and the selected path without changing other app settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
+
+    writeFileSync(settingsPath, '{"theme":"mint","defaultLayout":"sibling"}\n');
+    saveOpenRepositoryTabs(['/repos/pier', '/repos/quay', '/repos/dock'], '/repos/quay', env);
+
+    expect(readOpenRepositoryTabs(env)).toEqual({
+      paths: ['/repos/pier', '/repos/quay', '/repos/dock'],
+      selectedPath: '/repos/quay',
+    });
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      openRepositoryPaths: ['/repos/pier', '/repos/quay', '/repos/dock'],
+      selectedRepositoryPath: '/repos/quay',
+    });
+    expect(readAppSettings(env).defaultLayout).toBe('sibling');
+
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","openRepositoryPaths":["/repos/pier",3,null],"selectedRepositoryPath":false}\n',
+    );
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: ['/repos/pier'], selectedPath: null });
+
+    saveOpenRepositoryTabs([], null, env);
+
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({ theme: 'mint' });
   });
 
   it('does not create a repository config when clearing sidebar color or sidebar text that were never set', () => {

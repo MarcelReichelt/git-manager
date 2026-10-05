@@ -13,7 +13,7 @@ import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
-import { addRepository } from '../src/registry';
+import { addRepository, unregisterRepository } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
@@ -86,11 +86,13 @@ describe('desktop workspace', () => {
   }
 
   async function renderLive() {
-    const previousSearch = location.search;
-    history.replaceState(null, '', `${location.pathname}?live=1`);
-    restoreSearch = () => {
-      history.replaceState(null, '', `${location.pathname}${previousSearch}`);
-    };
+    if (restoreSearch === undefined) {
+      const previousSearch = location.search;
+      history.replaceState(null, '', `${location.pathname}?live=1`);
+      restoreSearch = () => {
+        history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+      };
+    }
     return setupWorkspace();
   }
 
@@ -6503,6 +6505,224 @@ describe('desktop workspace', () => {
     fixture.destroy();
   });
 
+  it('reopens the repository tabs in the same order with the same one selected', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    writeFileSync(join(dock, 'README.md'), '# dock\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    git(dock, ['add', '.']);
+    git(dock, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    first.nativeElement.querySelector('[data-branch="feature"]').click();
+    first.detectChanges();
+    await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
+    submitTerminalCommand(first.nativeElement, 'echo pier-before-quit');
+    await waitForTerminal(() => terminalPaneText(first).includes('pier-before-quit'));
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    first.nativeElement.querySelector('[data-branch="master"]').click();
+    first.detectChanges();
+    await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
+    submitTerminalCommand(first.nativeElement, 'echo quay-before-quit');
+    await waitForTerminal(() => terminalPaneText(first).includes('quay-before-quit'));
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    expect(repositoryTabNames(first)).toEqual(['Pier', 'Quay', 'Dock']);
+    expect(first.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+
+    first.destroy();
+    addRepository(quay, 'North Quay');
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(repositoryTabNames(again)).toEqual(['Pier', 'North Quay', 'Dock']);
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]').textContent.trim()).toBe(
+      'North Quay',
+    );
+    expect(
+      again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]').getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(again.nativeElement.querySelector('.branch-row.is-selected')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="content-sheet"]').textContent).toContain('Select a branch');
+    expect(again.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(again.nativeElement.textContent).not.toContain('quay-before-quit');
+    expect(again.nativeElement.textContent).not.toContain('pier-before-quit');
+
+    again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    again.detectChanges();
+    await again.whenStable();
+    again.detectChanges();
+
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(again.nativeElement.querySelector('.branch-row.is-selected')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(again.nativeElement.textContent).not.toContain('pier-before-quit');
+  });
+
+  it('skips a repository that is no longer registered and selects the next tab, or the previous one', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    expect(repositoryTabNames(first)).toEqual(['Pier', 'Quay', 'Dock']);
+    first.destroy();
+
+    unregisterRepository(quay);
+    const withoutQuay = await renderLive();
+
+    expect(repositoryTabNames(withoutQuay)).toEqual(['Pier', 'Dock']);
+    expect(withoutQuay.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Dock"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(withoutQuay.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    withoutQuay.destroy();
+
+    unregisterRepository(dock);
+    const withoutDock = await renderLive();
+
+    expect(repositoryTabNames(withoutDock)).toEqual(['Pier']);
+    expect(withoutDock.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(withoutDock.nativeElement.querySelector('[data-testid="start-screen"]')).toBeNull();
+    expect(withoutDock.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+  });
+
+  it('skips a repository tab whose path is no longer a git repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    const dock = join(root, 'dock');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    initGitRepo(dock);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    addRepository(dock, 'Dock');
+
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Dock');
+    first.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    first.detectChanges();
+    first.destroy();
+
+    rmSync(join(dock, '.git'), { recursive: true, force: true });
+    const again = await renderLive();
+
+    expect(repositoryTabNames(again)).toEqual(['Pier', 'Quay']);
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(again.nativeElement.querySelector('[data-testid="repository"][data-name="Dock"]')).toBeNull();
+  });
+
+  it('shows the start screen when every remembered repository tab is skipped', async () => {
+    const { pier, quay } = registerPair();
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    first.destroy();
+
+    unregisterRepository(pier);
+    unregisterRepository(quay);
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(again.nativeElement.querySelector('.start-screen')).not.toBeNull();
+    const names = [...again.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) =>
+      element.getAttribute('data-name'),
+    );
+    expect(names).toEqual([]);
+    again.destroy();
+
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const later = await renderLive();
+
+    expect(later.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(later.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect([...later.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) => element.getAttribute('data-name'))).toEqual([
+      'Pier',
+      'Quay',
+    ]);
+  });
+
+  it('shows the start screen on the next launch after the last repository tab is closed', async () => {
+    registerPair();
+    const first = await renderLive();
+    await openLiveRepository(first, 'Pier');
+    openRepositoryCard(first);
+    await openLiveRepository(first, 'Quay');
+    openRepositoryTabMenu(first, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
+    first.detectChanges();
+    openRepositoryTabMenu(first, 'Quay').querySelector('[data-testid="repository-tab-close"]').click();
+    first.detectChanges();
+    expect(first.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    first.destroy();
+
+    const again = await renderLive();
+
+    expect(again.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(again.nativeElement.querySelector('.start-screen')).not.toBeNull();
+    expect([...again.nativeElement.querySelectorAll('[data-testid="repository"]')].map((element) => element.getAttribute('data-name'))).toEqual([
+      'Pier',
+      'Quay',
+    ]);
+  });
+
   it('leaves a stale remote-tracking ref in place when a worktree is removed', async () => {
     const repoPath = createEmptyRepository(roots);
     const origin = join(repoPath, '..', 'origin.git');
@@ -6944,6 +7164,32 @@ function holdPaint(): { release(): void } {
       }
     },
   };
+}
+
+function terminalPaneText(fixture: { nativeElement: HTMLElement }): string {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')]
+    .map((pane) => pane.textContent ?? '')
+    .join('\n');
+}
+
+function submitTerminalCommand(root: HTMLElement, command: string): void {
+  const textarea = root.querySelector('.terminal-pane textarea');
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    throw new Error('The terminal pane is not accepting input');
+  }
+  textarea.focus();
+  for (const char of command) {
+    const keyCode = char === ' ' ? 32 : char === '-' ? 189 : char.toUpperCase().charCodeAt(0);
+    textarea.dispatchEvent(terminalKeyEvent('keydown', char, keyCode));
+  }
+  textarea.dispatchEvent(terminalKeyEvent('keydown', 'Enter', 13));
+}
+
+function terminalKeyEvent(type: string, key: string, keyCode: number): KeyboardEvent {
+  const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+  Object.defineProperty(event, 'which', { get: () => keyCode });
+  return event;
 }
 
 function repositoryTabNames(fixture: { nativeElement: HTMLElement }): string[] {

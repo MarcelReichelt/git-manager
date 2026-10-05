@@ -21,12 +21,15 @@ import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import {
   formatCreateLayout,
   readAppSettings,
+  readOpenRepositoryTabs,
   readRepositoryAppearance,
+  resolveAppSettingsPath,
   resetAppColors,
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveOpenRepositoryTabs,
   saveShellCommand,
   saveSidebarColor,
   saveSidebarText,
@@ -1980,6 +1983,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private dismissedOldSessions = new Set<string>();
   private oldSessionRepo: string | null = null;
   private readonly repositoryWorkspaces = new Map<string, RepositoryWorkspace>();
+  private readonly appSettingsEnv: NodeJS.ProcessEnv = {
+    GIT_MANAGER_APP_SETTINGS_PATH: resolveAppSettingsPath(),
+  };
+  private persistOpenTabs = false;
   readonly terminalFont = signal(readAppSettings().terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
   readonly terminalBackground = signal(readAppSettings().terminalBackground);
@@ -2170,6 +2177,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   ngOnInit(): void {
+    this.persistOpenTabs = this.registryMode() && this.repositoryPath() === null;
     if (this.registryMode()) {
       this.registered.set(listRepositories());
     }
@@ -2178,6 +2186,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.appendRepositoryTab(path, this.workspaceTitle() ?? basename(path));
       pruneRemoteTrackingRefs(path);
       refreshRemoteHead(path);
+    } else if (this.persistOpenTabs) {
+      this.restoreOpenRepositoryTabs();
     }
     this.refreshBranches();
     this.applyOpenRepositoryAppearance();
@@ -2197,6 +2207,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   ngOnDestroy(): void {
+    this.rememberOpenRepositoryTabs();
     if (this.commandPoll !== null) {
       clearInterval(this.commandPoll);
       this.commandPoll = null;
@@ -2252,6 +2263,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
     if (this.effectivePath() !== path) {
+      this.rememberOpenRepositoryTabs();
       return;
     }
     const next = remaining[index] ?? remaining[index - 1];
@@ -2264,9 +2276,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.clearBranchSelection();
       this.clearTerminals();
       this.applyOpenRepositoryAppearance();
+      this.rememberOpenRepositoryTabs();
       return;
     }
     this.showKeptRepository(next);
+    this.rememberOpenRepositoryTabs();
   }
 
   selectRepositoryTab(path: string, event: Event): void {
@@ -4197,6 +4211,44 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (path !== null) {
       this.appendRepositoryTab(path, name);
     }
+    this.rememberOpenRepositoryTabs();
+  }
+
+  private restoreOpenRepositoryTabs(): void {
+    const saved = readOpenRepositoryTabs(this.appSettingsEnv);
+    if (saved.paths.length === 0) {
+      return;
+    }
+    const registered = new Set(listRepositories().map((repository) => repository.path));
+    const remaining = saved.paths.filter((path) => registered.has(path) && gitRepositoryOpens(path));
+    const selectedPath = restoredRepositoryPath(saved.paths, saved.selectedPath, remaining);
+    if (selectedPath === null) {
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    for (const path of remaining) {
+      const repository = findRepository(path);
+      if (!repository) {
+        continue;
+      }
+      this.appendRepositoryTab(path, repository.displayName);
+    }
+    const selected = findRepository(selectedPath);
+    if (!selected) {
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    this.openRepository(selected.displayName, selected.path);
+  }
+
+  private rememberOpenRepositoryTabs(): void {
+    if (!this.persistOpenTabs) {
+      return;
+    }
+    const paths = this.repositoryTabs().map((tab) => tab.path);
+    const opened = this.openedPath();
+    const selectedPath = opened !== null && paths.includes(opened) ? opened : null;
+    saveOpenRepositoryTabs(paths, selectedPath, this.appSettingsEnv);
   }
 
   private runWhenPainted(work: () => void): void {
@@ -4295,6 +4347,47 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.oldSessionChoices.set(
       ambiguousLegacySessions(path, branches).filter((choice) => !this.dismissedOldSessions.has(choice.name)),
     );
+  }
+}
+
+function restoredRepositoryPath(
+  savedPaths: readonly string[],
+  selectedPath: string | null,
+  remaining: readonly string[],
+): string | null {
+  if (remaining.length === 0) {
+    return null;
+  }
+  if (selectedPath !== null && remaining.includes(selectedPath)) {
+    return selectedPath;
+  }
+  const selectedIndex = selectedPath === null ? -1 : savedPaths.indexOf(selectedPath);
+  if (selectedIndex < 0) {
+    return remaining[0] ?? null;
+  }
+  for (let index = selectedIndex + 1; index < savedPaths.length; index += 1) {
+    const path = savedPaths[index];
+    if (path !== undefined && remaining.includes(path)) {
+      return path;
+    }
+  }
+  for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+    const path = savedPaths[index];
+    if (path !== undefined && remaining.includes(path)) {
+      return path;
+    }
+  }
+  return null;
+}
+
+function gitRepositoryOpens(path: string): boolean {
+  try {
+    execFileSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 

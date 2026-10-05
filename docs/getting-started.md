@@ -2,7 +2,7 @@
 
 ## Install
 
-Requires **Node.js 20+** and **git** on your `PATH`. The desktop window also needs a display. On Linux and macOS the branch terminal uses `tmux`.
+Requires **Node.js 20+** and **git** on your `PATH`. The desktop window also needs a display. A new terminal is in-app. App settings can choose a tmux session, or no terminal section.
 
 ### From the npm registry
 
@@ -49,7 +49,7 @@ With nothing selected, a centered card lists registered repositories. Choosing o
 
 ## Create a worktree
 
-Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, create uses the app default. The branch already exists locally, or on a remote that create fetches.
+Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, create uses the app default. A new name creates a local branch at the primary checkout's current commit. An existing local branch is checked out as it is. A branch that exists only on a remote is fetched first.
 
 ```bash
 git-manager worktree create feature --repo Harbor

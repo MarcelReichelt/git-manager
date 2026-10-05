@@ -30,3 +30,11 @@ commands = ["yarn"]
 `[copy].files` are copied from the registered repository into the new checkout after `git worktree add`. A missing source is skipped.
 
 Hook commands run in the registered repository. Pre-create commands run before the worktree is added. Post-create commands run after the copied files. See [Plugins](plugins.md).
+
+## App settings
+
+App settings live in `~/.config/git-manager/app-settings.json`. `GIT_MANAGER_APP_SETTINGS_PATH` overrides that path. The desktop window writes this file. It holds the default layout, the terminal mode, the shell command, the colors, the terminal font, the IDE command, and the arrangement.
+
+`defaultLayout` is `workspaces` or `sibling`. Worktree create uses it when `[layout].mode` is unset. The default is `workspaces`.
+
+`terminalMode` is `terminal`, `tmux`, or `none`. The default is `terminal`. An in-app terminal uses `shellCommand`. A blank command starts the login shell, then `/bin/bash`, then `powershell.exe` on Windows. Tmux mode ignores the shell command. See [Desktop](desktop.md).

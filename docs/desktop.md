@@ -16,7 +16,7 @@ A path that is not a git repository shows that error under Location and disables
 
 The top bar shows the app mark, then the display name. Hovering the name shows the location. Clicking it copies the location.
 
-Switch repository is the pair of arrows beside the name. It opens the card over the workspace. Repository settings shows the location and the remotes. Minimize, maximize, and close sit on the right. Drag the top bar to move the window.
+Switch repository is the pair of arrows beside the name. It opens the card over the workspace. Repository settings shows the location, the worktree mode, and the remotes. App settings sits with minimize, maximize, and close on the right. Drag the top bar to move the window.
 
 ## Worktrees
 
@@ -40,11 +40,11 @@ Click a row to open it. **···** opens the branch actions: Update from master,
 
 Create worktree opens a dialog. The name field is New branch. Existing branches lists names that have no checkout, including a branch that exists only on a remote, and omits a branch whose remote copy was deleted. The heading is absent when that list is empty. Choosing a row fills the name field.
 
-Confirm runs the same create as the CLI. A new name creates a local branch at the primary checkout's current commit, with no upstream. A local branch is checked out as it is. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout. See [Worktrees and layouts](worktrees-and-layouts.md).
+The dialog shows the layout create will use, such as `Workspaces, the app default` or `Sibling, set by this repository`. Confirm runs the same create as the CLI. A new name creates a local branch at the primary checkout's current commit, with no upstream. A local branch is checked out as it is. A remote-only branch is fetched first. Pre-create hooks run before the worktree is added. Post-create hooks run after checkout. See [Worktrees and layouts](worktrees-and-layouts.md).
 
 ## Content
 
-The heading is the branch name. Click it to copy the name.
+The heading is the branch name. Click it to copy the name. IDE sits beside the name. It stays disabled until App settings has an IDE command. The command runs in the selected checkout. `{folder}` is replaced with that checkout path, quoted for the shell. A command without `{folder}` is left as it is and still runs with that checkout as its working directory. An empty checkout reports `No checkout for this branch`. A command that fails shows that error on the workspace.
 
 The default branch is the name in `origin/HEAD` when that ref is set. Otherwise it is `master` or `main` when only one of those local branches exists. When both exist, it is whichever of them is checked out on the primary checkout, and `master` when the checkout is neither. When neither exists, it is the branch checked out on the primary checkout.
 
@@ -98,6 +98,12 @@ Opening a repository looks for this app's tmux sessions that were created before
 
 App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
 
+App settings also chooses the default layout, Workspaces or Sibling. Create uses that layout when the repository config sets no mode. The IDE command is a field in the same dialog. Colors cover the sidebar, the content sheet, and the terminal background and foreground. Each row offers swatches and a custom color. The sidebar starts at `#1a3c2b` and the content at `#f7f7f5`. Reset restores those four colors. The font and the IDE command stay as they are.
+
+## Worktree mode
+
+Repository settings lists Worktree mode under the location. The line under the heading names the layout create will use, and whether the repository config or the app default set it. Workspaces and Sibling write `[layout].mode` in `.git-manager/config.toml`. Choosing one writes that mode and leaves the rest of the file in place. An unsupported mode shows its value, with neither choice selected, until Workspaces or Sibling replaces it. When the open repository has no path on disk, the radios stay on the app default and write no config.
+
 ## Remotes
 
 Repository settings lists each remote under Remotes. The name is a label. The URL is the fetch URL, and it is read-only. Hovering or focusing a row shows the edit icon.
@@ -106,4 +112,4 @@ Add remote opens a dialog for the name and URL. That URL is used for fetch and p
 
 ## Dismiss
 
-Escape closes one layer. Add repository, Add remote, and Edit remote close before Repository settings. Merge into master and Create worktree close before the repository switcher. The branch menu closes after those. A click on a dialog's backdrop closes that dialog. A click outside the branch menu closes the menu. Close on the switcher card closes the switcher.
+Escape closes one layer. An old tmux session question closes first, then the terminal-mode question, then App settings. Add repository closes before Repository settings. Add remote and Edit remote close before Repository settings. Merge into master and Create worktree close before the repository switcher. A rename field and a terminal menu close before the branch menu. A click on a dialog's backdrop closes that dialog. A click outside the branch menu closes the menu. Close on the switcher card closes the switcher.

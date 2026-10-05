@@ -67,7 +67,7 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 | [Getting started](docs/getting-started.md) | Install, register, open the workspace |
 | [Desktop](docs/desktop.md) | Card, worktrees, diffs, commits, terminal, push, remotes, settings |
 | [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
-| [Configuration](docs/configuration.md) | Registry file and per-repo TOML |
+| [Configuration](docs/configuration.md) | Registry file, per-repo TOML, and app settings |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
 | [Plugins](docs/plugins.md) | Create hooks and plugin modules |
 | [Use cases](docs/use-cases.md) | Create, merge, remove, copy, and hooks |

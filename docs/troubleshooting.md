@@ -15,8 +15,8 @@ You can also add this to `~/.npmrc` or a project `.npmrc`.
 
 ### `better-sqlite3` / `node-gyp` errors
 
-The package depends on native SQLite bindings. On minimal Linux images, install
-build tools before `npm install -g`:
+The package depends on the native modules `better-sqlite3` and `node-pty`. On
+minimal Linux images, install build tools before `npm install -g`:
 
 ```bash
 # Debian/Ubuntu

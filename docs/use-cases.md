@@ -2,7 +2,7 @@
 
 ## Parallel feature development
 
-Register the repository, then check out a branch that already exists locally or on a remote:
+Register the repository, then create a worktree. A new name creates a local branch. An existing local or remote branch is checked out:
 
 ```bash
 git-manager add --path ~/src/harbor --name Harbor

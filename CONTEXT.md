@@ -81,7 +81,7 @@ The settings that apply to every registered repository: the app default, the ter
 _Avoid_: repository settings
 
 **Repository settings**:
-The location, the remotes, the sidebar color, and the sidebar text of one registered repository.
+The location, the display name, the remotes, the sidebar color, and the sidebar text of one registered repository.
 _Avoid_: app settings
 
 **Remote**:

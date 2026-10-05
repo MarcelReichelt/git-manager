@@ -92,6 +92,24 @@ export function listRepositories(): RegisteredRepository[] {
   }
 }
 
+export function renameRepository(repoPath: string, displayName: string): RegisteredRepository {
+  const path = resolve(repoPath);
+  const name = displayName.trim();
+  if (name === '') {
+    throw new Error('Enter a display name');
+  }
+  const db = openDatabase();
+  try {
+    const result = db.prepare('UPDATE repositories SET display_name = ? WHERE path = ?').run(name, path);
+    if (result.changes === 0) {
+      throw new Error(`Repository is not registered: ${path}`);
+    }
+    return { path, displayName: name };
+  } finally {
+    db.close();
+  }
+}
+
 export function unregisterRepository(repoPath: string): void {
   const path = resolve(repoPath);
   const db = openDatabase();

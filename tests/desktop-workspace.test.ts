@@ -13,7 +13,7 @@ import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
-import { addRepository, unregisterRepository } from '../src/registry';
+import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
@@ -2163,6 +2163,44 @@ describe('desktop workspace', () => {
     dialog.querySelector('[data-testid="close-repository-settings"]').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]')).toBeNull();
+  });
+
+  it('renames a repository from its settings and updates that repository tab', async () => {
+    const { pier, quay } = registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const name = dialog.querySelector('[data-testid="repository-display-name"]');
+    expect(name.value).toBe('Quay');
+    name.value = 'North Quay';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const renamed = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-path="' + quay + '"]');
+    expect(renamed.getAttribute('data-name')).toBe('North Quay');
+    expect(renamed.getAttribute('title')).toBe('North Quay');
+    expect(renamed.textContent.trim()).toBe('North Quay');
+    expect(renamed.getAttribute('aria-selected')).toBe('false');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(findRepository(quay)?.displayName).toBe('North Quay');
+    expect(findRepository(pier)?.displayName).toBe('Pier');
+
+    name.value = '   ';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(dialog.querySelector('[data-testid="display-name-error"]').textContent.trim()).toBe('Enter a display name');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="North Quay"]')).not.toBeNull();
+    expect(findRepository(quay)?.displayName).toBe('North Quay');
   });
 
   it('centers the repository and app settings icons', async () => {

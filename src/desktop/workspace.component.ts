@@ -16,7 +16,12 @@ import {
 } from '@angular/core';
 import { execFileSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
-import { addRepository, findRepository, listRepositories, type RegisteredRepository } from '../registry.js';
+import {
+  addRepository,
+  findRepository,
+  listRepositories,
+  type RegisteredRepository,
+} from '../registry.js';
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import {
   formatCreateLayout,
@@ -986,6 +991,7 @@ button, input { font: inherit; color: inherit; }
             <gm-repository-settings
               [repositoryPath]="effectivePath()"
               (appearanceChanged)="applyOpenRepositoryAppearance()"
+              (displayNameChanged)="renameOpenRepository($event)"
             ></gm-repository-settings>
           </p>
           <ul data-testid="branch-list">
@@ -3536,6 +3542,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     saveSidebarText(text);
     this.sidebarText.set(text);
     this.applyOpenRepositoryAppearance();
+  }
+
+  renameOpenRepository(change: { path: string; displayName: string }): void {
+    this.registered.set(listRepositories());
+    this.repositoryTabs.update((tabs) =>
+      tabs.map((tab) => (tab.path === change.path ? { ...tab, name: change.displayName } : tab)),
+    );
+    if (this.effectivePath() === change.path) {
+      this.selectedName.set(change.displayName);
+    }
   }
 
   applyOpenRepositoryAppearance(): void {

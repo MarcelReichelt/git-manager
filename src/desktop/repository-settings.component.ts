@@ -12,6 +12,7 @@ import {
   type SidebarText,
 } from '../app-settings.js';
 import { sidebarSwatches } from './color-swatches';
+import { findRepository, renameRepository } from '../registry.js';
 import {
   addRemote,
   changeRemote,
@@ -229,6 +230,29 @@ button, input { font: inherit; color: inherit; }
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+[data-testid='repository-display-name'] {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  border-radius: 0;
+  background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='display-name-error'] {
+  margin: 0;
+  color: var(--coral);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 [data-testid='copy-location-icon'] {
@@ -449,6 +473,15 @@ button, input { font: inherit; color: inherit; }
             Location
             <button type="button" data-testid="repository-location" title="Copy location" (click)="copyLocation()">{{ repositoryLocation() }}<svg data-testid="copy-location-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" /><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" /></svg></button>
           </label>
+          @if (canRename()) {
+            <label>
+              Display name
+              <input data-testid="repository-display-name" [value]="displayName()" (input)="setDisplayName($event)" />
+            </label>
+            @if (displayNameError(); as message) {
+              <p data-testid="display-name-error">{{ message }}</p>
+            }
+          }
           <h3 data-testid="worktree-mode-heading">Worktree mode</h3>
           <p data-testid="worktree-mode-source">{{ createLayoutLine() }}</p>
           <label class="worktree-mode">
@@ -617,8 +650,12 @@ export class RepositorySettings {
   readonly settingsDialog = viewChild<TemplateRef<unknown>>('settingsDialog');
   readonly repositoryPath = input<string | null>(null);
   readonly appearanceChanged = output<void>();
+  readonly displayNameChanged = output<{ path: string; displayName: string }>();
   readonly sidebarColorSwatches = sidebarSwatches;
   private readonly explicitPath = signal<string | null>(null);
+  readonly displayName = signal('');
+  readonly displayNameError = signal<string | null>(null);
+  readonly canRename = computed(() => this.activeRepositoryPath() !== null);
   readonly repositoryLocation = computed(() => this.activeRepositoryPath() ?? '');
   private readonly ownSidebarColor = signal<string | null>(null);
   private readonly ownSidebarText = signal<SidebarText | null>(null);
@@ -751,13 +788,41 @@ export class RepositorySettings {
     this.settingsOpen.set(false);
   }
 
+  setDisplayName(event: Event): void {
+    const name = inputValue(event);
+    this.displayName.set(name);
+    const path = this.activeRepositoryPath();
+    if (path === null) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (trimmed === '') {
+      this.displayNameError.set('Enter a display name');
+      return;
+    }
+    try {
+      renameRepository(path, trimmed);
+      this.displayNameError.set(null);
+      this.displayNameChanged.emit({ path, displayName: trimmed });
+    } catch (error) {
+      this.displayNameError.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private presentSettings(): void {
     this.settingsError.set(null);
+    this.displayNameError.set(null);
     this.cancelAddRemote();
     this.cancelChangeRemote();
+    this.loadDisplayName();
     this.loadAppearance();
     this.loadRemotes();
     this.settingsOpen.set(true);
+  }
+
+  private loadDisplayName(): void {
+    const path = this.activeRepositoryPath();
+    this.displayName.set(path === null ? '' : findRepository(path)?.displayName ?? '');
   }
 
   private activeRepositoryPath(): string | null {

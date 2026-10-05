@@ -954,6 +954,9 @@ button, input { font: inherit; color: inherit; }
                   [attr.data-path]="tab.path"
                   [attr.title]="tab.name"
                   [attr.aria-selected]="effectivePath() === tab.path"
+                  [style.background-color]="repositoryTabSidebarColor(tab.path)"
+                  [style.color]="repositoryTabSidebarTextColor(tab.path)"
+                  [style.outline]="repositoryTabFrame(tab.path)"
                   (click)="selectRepositoryTab(tab.path, $event)"
                 >
                   {{ tab.name }}
@@ -3423,6 +3426,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const own = path === null ? {} : readRepositoryAppearance(path);
     this.paintedSidebarColor.set(own.sidebarColor ?? settings.sidebarColor);
     this.paintedSidebarText.set(own.sidebarText ?? settings.sidebarText);
+  }
+
+  repositoryTabSidebarColor(path: string): string {
+    return this.repositoryTabAppearance(path).sidebarColor;
+  }
+
+  repositoryTabSidebarTextColor(path: string): string {
+    return this.repositoryTabAppearance(path).sidebarText === 'black' ? '#000000' : '#ffffff';
+  }
+
+  repositoryTabFrame(path: string): string {
+    if (this.effectivePath() !== path) {
+      return 'none';
+    }
+    return `2px solid ${this.repositoryTabSidebarTextColor(path)}`;
+  }
+
+  private repositoryTabAppearance(path: string): { sidebarColor: string; sidebarText: SidebarText } {
+    const settings = readAppSettings();
+    const own = readRepositoryAppearance(path);
+    return {
+      sidebarColor: own.sidebarColor ?? settings.sidebarColor,
+      sidebarText: own.sidebarText ?? settings.sidebarText,
+    };
   }
 
   private applySidebarColor(color: string): void {

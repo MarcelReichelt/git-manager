@@ -63,7 +63,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: white;
+  color: var(--sidebar-text);
   cursor: pointer;
 }
 
@@ -111,7 +111,6 @@ aside {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: white;
   font: inherit;
   cursor: pointer;
 }
@@ -125,11 +124,6 @@ aside {
   white-space: nowrap;
 }
 
-[data-testid='repository-tab'][aria-selected='true'] {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-[data-testid='repository-tab']:hover,
 [data-testid='open-repository-card']:hover {
   background: rgba(255, 255, 255, 0.12);
 }
@@ -139,6 +133,7 @@ aside {
   align-items: center;
   justify-content: center;
   width: 28px;
+  color: var(--sidebar-text);
 }
 
 [data-testid='create-worktree']:hover {

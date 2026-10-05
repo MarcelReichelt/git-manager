@@ -1266,6 +1266,312 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
   });
 
+  it('paints every repository tab with that repository sidebar color and sidebar text', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(quayTab.getAttribute('aria-selected')).toBe('true');
+    expect(pierTab.getAttribute('aria-selected')).toBe('false');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('frames the selected repository tab in its sidebar text color', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #000000');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).outline).toBe('none');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+  });
+
+  it('paints the window bar from the selected workspace sidebar color and sidebar text', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const bar = fixture.nativeElement.querySelector('[data-testid="window-bar"]');
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(bar).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="app-settings"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-maximize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-close"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(bar).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe(
+      'rgb(255, 255, 255)',
+    );
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(bar.querySelector('[data-testid="window-close"]')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+  });
+
+  it('updates a repository tab as soon as that repository sidebar color or sidebar text changes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#abcdef');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(pierTab.getAttribute('aria-selected')).toBe('true');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(171, 205, 239)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+  });
+
+  it('follows a later app settings change for a sidebar choice the repository has not stored', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(pier, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_text = "white"', ''].join('\n'),
+    );
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#1a3c2b"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const pierTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    dialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).outline).toBe('none');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).outline).toBe('2px solid #000000');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    pierTab.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(pierTab).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(pierTab).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(pierTab).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(quayTab).outline).toBe('none');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="open-repository-card"]')).color).toBe(
+      'rgb(255, 255, 255)',
+    );
+  });
+
   it('follows app settings when the open repository has no path for its own sidebar', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
     roots.push(root);

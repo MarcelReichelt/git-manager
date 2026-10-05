@@ -1,10 +1,17 @@
-import { Component, computed, input, signal } from '@angular/core';
+import { Component, computed, input, output, signal } from '@angular/core';
 import {
+  clearRepositorySidebarColor,
+  clearRepositorySidebarText,
   createLayoutForRepository,
   formatCreateLayout,
   readAppSettings,
+  readRepositoryAppearance,
   saveRepositoryLayoutMode,
+  saveRepositorySidebarColor,
+  saveRepositorySidebarText,
+  type SidebarText,
 } from '../app-settings.js';
+import { sidebarSwatches } from './color-swatches';
 import {
   addRemote,
   changeRemote,
@@ -72,7 +79,9 @@ button, input { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 22rem;
+  width: 28rem;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
   padding: 16px;
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -91,7 +100,8 @@ button, input { font: inherit; color: inherit; }
 
 [data-testid='repository-settings-dialog'] label,
 [data-testid='remotes-heading'],
-[data-testid='worktree-mode-heading'] {
+[data-testid='worktree-mode-heading'],
+[data-testid='repository-sidebar-heading'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -103,7 +113,8 @@ button, input { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 
-[data-testid='repository-settings-dialog'] label.worktree-mode {
+[data-testid='repository-settings-dialog'] label.worktree-mode,
+[data-testid='repository-settings-dialog'] label.sidebar-text {
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -113,8 +124,63 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='remotes-heading'],
-[data-testid='worktree-mode-heading'] {
+[data-testid='worktree-mode-heading'],
+[data-testid='repository-sidebar-heading'] {
   margin-top: 8px;
+}
+
+[data-testid='repository-settings-dialog'] .color-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  color: var(--grid);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches,
+[data-testid='repository-settings-dialog'] .sidebar-text-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-testid='repository-settings-dialog'] .sidebar-text-choices {
+  gap: 16px;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+[data-testid='repository-settings-dialog'] .color-swatches button.is-selected {
+  outline: 2px solid var(--grid);
+  outline-offset: 2px;
+}
+
+[data-testid='repository-settings-dialog'] .custom-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+[data-testid='repository-settings-dialog'] input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(58, 58, 56, 0.2);
+  background-color: var(--paper);
+  cursor: pointer;
 }
 
 .remotes-header {
@@ -238,7 +304,7 @@ button, input { font: inherit; color: inherit; }
   }
 }
 
-[data-testid='repository-settings-dialog'] input:not([type='radio']),
+[data-testid='repository-settings-dialog'] input:not([type='radio']):not([type='color']),
 [data-testid='open-add-remote'],
 [data-testid='remove-remote'],
 [data-testid='close-repository-settings'] {
@@ -251,7 +317,7 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='repository-settings-dialog'] input:not([type='radio']) {
+[data-testid='repository-settings-dialog'] input:not([type='radio']):not([type='color']) {
   width: 100%;
   height: 36px;
   padding: 0 8px;
@@ -406,6 +472,61 @@ button, input { font: inherit; color: inherit; }
             />
             Sibling
           </label>
+          <h3 data-testid="repository-sidebar-heading">Sidebar</h3>
+          <div class="color-choice">
+            <span>Color</span>
+            <div class="color-swatches">
+              @for (swatch of sidebarColorSwatches; track swatch.color) {
+                <button
+                  type="button"
+                  data-testid="repository-sidebar-swatch"
+                  [attr.data-color]="swatch.color"
+                  [attr.aria-label]="swatch.name"
+                  [class.is-selected]="isSelectedColor(shownSidebarColor(), swatch.color)"
+                  [style.background-color]="swatch.color"
+                  (click)="chooseRepositorySidebarColor(swatch.color)"
+                ></button>
+              }
+              <span class="custom-color">
+                Custom
+                <input
+                  type="color"
+                  data-testid="repository-sidebar-color"
+                  aria-label="Custom sidebar color"
+                  [value]="shownSidebarColor()"
+                  (input)="chooseRepositorySidebarColorFromInput($event)"
+                  (change)="chooseRepositorySidebarColorFromInput($event)"
+                />
+              </span>
+            </div>
+            <button type="button" data-testid="use-app-sidebar-color" (click)="useAppSidebarColor()">Use app settings</button>
+          </div>
+          <div class="color-choice">
+            <span>Text</span>
+            <div class="sidebar-text-choices">
+              <label class="sidebar-text">
+                <input
+                  type="radio"
+                  name="repository-sidebar-text"
+                  data-testid="repository-sidebar-text-white"
+                  [checked]="shownSidebarText() === 'white'"
+                  (click)="chooseRepositorySidebarText('white', $event)"
+                />
+                White
+              </label>
+              <label class="sidebar-text">
+                <input
+                  type="radio"
+                  name="repository-sidebar-text"
+                  data-testid="repository-sidebar-text-black"
+                  [checked]="shownSidebarText() === 'black'"
+                  (click)="chooseRepositorySidebarText('black', $event)"
+                />
+                Black
+              </label>
+            </div>
+            <button type="button" data-testid="use-app-sidebar-text" (click)="useAppSidebarText()">Use app settings</button>
+          </div>
           <div class="remotes-header">
             <h3 id="remotes-heading" data-testid="remotes-heading">Remotes</h3>
             <button type="button" data-testid="open-add-remote" aria-label="Add remote" (click)="openAddRemote()">+</button>
@@ -492,7 +613,11 @@ button, input { font: inherit; color: inherit; }
 })
 export class RepositorySettings {
   readonly repositoryPath = input<string | null>(null);
+  readonly appearanceChanged = output<void>();
+  readonly sidebarColorSwatches = sidebarSwatches;
   readonly repositoryLocation = computed(() => this.repositoryPath() ?? '');
+  private readonly ownSidebarColor = signal<string | null>(null);
+  private readonly ownSidebarText = signal<SidebarText | null>(null);
   readonly settingsOpen = signal(false);
   readonly remotes = signal<RepositoryRemote[]>([]);
   readonly addRemoteOpen = signal(false);
@@ -547,10 +672,68 @@ export class RepositorySettings {
     saveRepositoryLayoutMode(path, mode);
   }
 
+  shownSidebarColor(): string {
+    return this.ownSidebarColor() ?? readAppSettings().sidebarColor;
+  }
+
+  shownSidebarText(): SidebarText {
+    return this.ownSidebarText() ?? readAppSettings().sidebarText;
+  }
+
+  isSelectedColor(current: string, swatch: string): boolean {
+    return current.toLowerCase() === swatch.toLowerCase();
+  }
+
+  chooseRepositorySidebarColor(color: string): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      return;
+    }
+    saveRepositorySidebarColor(path, color);
+    this.ownSidebarColor.set(color);
+    this.appearanceChanged.emit();
+  }
+
+  chooseRepositorySidebarColorFromInput(event: Event): void {
+    this.chooseRepositorySidebarColor(inputValue(event));
+  }
+
+  chooseRepositorySidebarText(text: SidebarText, event: Event): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      this.keepSidebarTextRadios(event);
+      return;
+    }
+    saveRepositorySidebarText(path, text);
+    this.ownSidebarText.set(text);
+    this.appearanceChanged.emit();
+  }
+
+  useAppSidebarColor(): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      return;
+    }
+    clearRepositorySidebarColor(path);
+    this.ownSidebarColor.set(null);
+    this.appearanceChanged.emit();
+  }
+
+  useAppSidebarText(): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      return;
+    }
+    clearRepositorySidebarText(path);
+    this.ownSidebarText.set(null);
+    this.appearanceChanged.emit();
+  }
+
   openSettings(): void {
     this.settingsError.set(null);
     this.cancelAddRemote();
     this.cancelChangeRemote();
+    this.loadAppearance();
     this.loadRemotes();
     this.settingsOpen.set(true);
   }
@@ -679,6 +862,35 @@ export class RepositorySettings {
     }
     for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="worktree-mode"]')) {
       radio.checked = radio.value === selected;
+    }
+  }
+
+  private loadAppearance(): void {
+    const path = this.repositoryPath();
+    if (path === null) {
+      this.ownSidebarColor.set(null);
+      this.ownSidebarText.set(null);
+      return;
+    }
+    const appearance = readRepositoryAppearance(path);
+    this.ownSidebarColor.set(appearance.sidebarColor ?? null);
+    this.ownSidebarText.set(appearance.sidebarText ?? null);
+  }
+
+  private keepSidebarTextRadios(event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const selected = this.shownSidebarText();
+    const dialog = input.closest('[data-testid="repository-settings-dialog"]');
+    if (!(dialog instanceof HTMLElement)) {
+      return;
+    }
+    for (const radio of dialog.querySelectorAll<HTMLInputElement>('input[name="repository-sidebar-text"]')) {
+      radio.checked =
+        radio.getAttribute('data-testid') ===
+        (selected === 'black' ? 'repository-sidebar-text-black' : 'repository-sidebar-text-white');
     }
   }
 

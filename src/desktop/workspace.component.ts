@@ -21,6 +21,7 @@ import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import {
   formatCreateLayout,
   readAppSettings,
+  readRepositoryAppearance,
   resetAppColors,
   saveArrangement,
   saveContentColor,
@@ -28,11 +29,13 @@ import {
   saveIdeCommand,
   saveShellCommand,
   saveSidebarColor,
+  saveSidebarText,
   saveTerminalBackground,
   saveTerminalFont,
   saveTerminalForeground,
   saveTerminalMode,
   type AppSettings,
+  type SidebarText,
   type TerminalMode,
 } from '../app-settings.js';
 import { pushBranch } from '../push.js';
@@ -236,8 +239,9 @@ const sampleCard: CardRepository[] = [
   imports: [NgTemplateOutlet, TerminalHost, RepositorySettings],
   styleUrl: './workspace-rail.css',
   host: {
-    '[style.--forest]': 'sidebarColor()',
+    '[style.--forest]': 'paintedSidebarColor()',
     '[style.--paper]': 'contentColor()',
+    '[style.--sidebar-text]': 'paintedSidebarTextColor()',
   },
   styles: [
     `
@@ -245,6 +249,7 @@ const sampleCard: CardRepository[] = [
   --paper: #f7f7f5;
   --surface: #ffffff;
   --forest: #1a3c2b;
+  --sidebar-text: #ffffff;
   --grid: #3a3a38;
   --coral: #ff8c69;
   display: block;
@@ -693,11 +698,16 @@ button, input { font: inherit; color: inherit; }
   gap: 6px;
 }
 
-.color-swatches {
+.color-swatches,
+.sidebar-text-choices {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.sidebar-text-choices {
+  gap: 16px;
 }
 
 .color-swatches button {
@@ -937,7 +947,10 @@ button, input { font: inherit; color: inherit; }
                 <path fill="currentColor" d="M14.75 12.85H7.3V14.45L1.25 11.65 7.3 8.85V10.45H14.75Z" />
               </svg>
             </button>
-            <gm-repository-settings [repositoryPath]="effectivePath()"></gm-repository-settings>
+            <gm-repository-settings
+              [repositoryPath]="effectivePath()"
+              (appearanceChanged)="applyOpenRepositoryAppearance()"
+            ></gm-repository-settings>
           </div>
           <div class="window-controls">
             <button type="button" data-testid="app-settings" aria-label="App settings" (click)="openAppSettings()">
@@ -1661,6 +1674,31 @@ button, input { font: inherit; color: inherit; }
             </div>
           </div>
           <div class="color-choice">
+            <span>Sidebar text</span>
+            <div class="sidebar-text-choices">
+              <label>
+                <input
+                  type="radio"
+                  name="sidebar-text"
+                  data-testid="sidebar-text-white"
+                  [checked]="sidebarText() === 'white'"
+                  (click)="chooseSidebarText('white')"
+                />
+                White
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="sidebar-text"
+                  data-testid="sidebar-text-black"
+                  [checked]="sidebarText() === 'black'"
+                  (click)="chooseSidebarText('black')"
+                />
+                Black
+              </label>
+            </div>
+          </div>
+          <div class="color-choice">
             <span>Content</span>
             <div class="color-swatches">
               @for (swatch of contentColorSwatches; track swatch.color) {
@@ -1888,6 +1926,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly terminalBackgroundSwatches = terminalBackgroundSwatchList;
   readonly terminalForegroundSwatches = terminalForegroundSwatchList;
   readonly sidebarColor = signal(readAppSettings().sidebarColor);
+  readonly sidebarText = signal<SidebarText>(readAppSettings().sidebarText);
+  readonly paintedSidebarColor = signal(readAppSettings().sidebarColor);
+  readonly paintedSidebarText = signal<SidebarText>(readAppSettings().sidebarText);
+  readonly paintedSidebarTextColor = computed(() => (this.paintedSidebarText() === 'black' ? '#000000' : '#ffffff'));
   readonly contentColor = signal(readAppSettings().contentColor);
   readonly ideCommand = signal(readAppSettings().ideCommand);
   readonly terminalMode = signal<TerminalMode>(readAppSettings().terminalMode);
@@ -2093,6 +2135,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       refreshRemoteHead(path);
     }
     this.refreshBranches();
+    this.applyOpenRepositoryAppearance();
     this.commandPoll = setInterval(() => {
       this.zone.run(() => this.refreshTerminalCommands());
     }, 250);
@@ -3290,9 +3333,24 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return current.toLowerCase() === swatch.toLowerCase();
   }
 
+  chooseSidebarText(text: SidebarText): void {
+    saveSidebarText(text);
+    this.sidebarText.set(text);
+    this.applyOpenRepositoryAppearance();
+  }
+
+  applyOpenRepositoryAppearance(): void {
+    const settings = readAppSettings();
+    const path = this.effectivePath();
+    const own = path === null ? {} : readRepositoryAppearance(path);
+    this.paintedSidebarColor.set(own.sidebarColor ?? settings.sidebarColor);
+    this.paintedSidebarText.set(own.sidebarText ?? settings.sidebarText);
+  }
+
   private applySidebarColor(color: string): void {
     saveSidebarColor(color);
     this.sidebarColor.set(color);
+    this.applyOpenRepositoryAppearance();
   }
 
   private applyContentColor(color: string): void {
@@ -3314,9 +3372,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     resetAppColors();
     const settings = readAppSettings();
     this.sidebarColor.set(settings.sidebarColor);
+    this.sidebarText.set(settings.sidebarText);
     this.contentColor.set(settings.contentColor);
     this.terminalBackground.set(settings.terminalBackground);
     this.terminalForeground.set(settings.terminalForeground);
+    this.applyOpenRepositoryAppearance();
   }
 
   createLayoutLine(): string {
@@ -3883,6 +3943,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.clearBranchSelection();
     this.clearTerminals();
     this.refreshBranches();
+    this.applyOpenRepositoryAppearance();
   }
 
   private runWhenPainted(work: () => void): void {

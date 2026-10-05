@@ -16,7 +16,7 @@ A path that is not a git repository shows that error under Location and disables
 
 The top bar shows the app mark, then the display name. Hovering the name shows the location. Clicking it copies the location.
 
-Switch repository is the pair of arrows beside the name. It opens the card over the workspace. Repository settings shows the location, the worktree mode, and the remotes. App settings sits with minimize, maximize, and close on the right. Drag the top bar to move the window.
+Switch repository is the pair of arrows beside the name. It opens the card over the workspace. Repository settings shows the location, the worktree mode, the sidebar color, the sidebar text, and the remotes. App settings sits with minimize, maximize, and close on the right. Drag the top bar to move the window.
 
 ## Worktrees
 
@@ -98,7 +98,7 @@ Opening a repository looks for this app's tmux sessions that were created before
 
 App settings chooses the terminal font and the terminal background and foreground. The font family is `UbuntuMono Nerd Font Mono` by default, and the terminal uses that name followed by `monospace`. The background starts at `#1e1e1e` and the foreground at `#d4d4d4`. A terminal that is already open uses a new font or color immediately. The header stays `#252526`.
 
-App settings also chooses the default layout, Workspaces or Sibling. Create uses that layout when the repository config sets no mode. The IDE command is a field in the same dialog. Colors cover the sidebar, the content sheet, and the terminal background and foreground. Each row offers swatches and a custom color. The sidebar starts at `#1a3c2b` and the content at `#f7f7f5`. Reset restores those four colors. The font and the IDE command stay as they are.
+App settings also chooses the default layout, Workspaces or Sibling. Create uses that layout when the repository config sets no mode. The IDE command is a field in the same dialog. Colors cover the sidebar, the sidebar text, the content sheet, and the terminal background and foreground. The sidebar, the content, and the terminal rows offer swatches and a custom color. Sidebar text is white or black, and it starts white. The sidebar starts at `#1a3c2b` and the content at `#f7f7f5`. Reset restores those colors and white sidebar text. The font and the IDE command stay as they are.
 
 ## Worktree mode
 

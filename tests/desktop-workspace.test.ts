@@ -428,7 +428,17 @@ describe('desktop workspace', () => {
 
     const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
     const labels = [...dialog.querySelectorAll('label')].map((label) => label.textContent.trim());
-    expect(labels).toEqual(['Workspaces', 'Sibling', 'None', 'Terminal', 'Tmux', 'IDE command', 'Font family']);
+    expect(labels).toEqual([
+      'Workspaces',
+      'Sibling',
+      'None',
+      'Terminal',
+      'Tmux',
+      'IDE command',
+      'Font family',
+      'White',
+      'Black',
+    ]);
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
     expect([...dialog.querySelectorAll('button')].map((button) => button.textContent.trim())).not.toContain('Save');
@@ -868,6 +878,7 @@ describe('desktop workspace', () => {
     expect(readAppSettings()).toEqual({
       defaultLayout: 'workspaces',
       sidebarColor: '#123456',
+      sidebarText: 'white',
       contentColor: '#abcdef',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -914,6 +925,7 @@ describe('desktop workspace', () => {
     expect(readAppSettings()).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -928,6 +940,358 @@ describe('desktop workspace', () => {
       terminalExpanded: true,
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
+  });
+
+  it('offers white or black sidebar text and reset restores white on the worktrees region', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const white = dialog.querySelector('[data-testid="sidebar-text-white"]');
+    const black = dialog.querySelector('[data-testid="sidebar-text-black"]');
+    expect(white).toBeInstanceOf(HTMLInputElement);
+    expect(black).toBeInstanceOf(HTMLInputElement);
+    expect(white.type).toBe('radio');
+    expect(black.type).toBe('radio');
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(white.closest('label').textContent).toContain('White');
+    expect(black.closest('label').textContent).toContain('Black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    black.click();
+    fixture.detectChanges();
+
+    expect(black.checked).toBe(true);
+    expect(white.checked).toBe(false);
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    const selected = fixture.nativeElement.querySelector('.branch-row.is-selected');
+    expect(getComputedStyle(selected).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(selected).color).toBe('rgb(26, 60, 43)');
+
+    white.click();
+    fixture.detectChanges();
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    black.click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="reset-colors"]').click();
+    fixture.detectChanges();
+
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(readAppSettings().sidebarColor).toBe('#1a3c2b');
+    expect(readAppSettings().contentColor).toBe('#f7f7f5');
+    expect(readAppSettings().terminalBackground).toBe('#1e1e1e');
+    expect(readAppSettings().terminalForeground).toBe('#d4d4d4');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+  });
+
+  it('offers the same sidebar color controls and white or black sidebar text in repository settings', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const appDialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    const appSwatches = [...appDialog.querySelectorAll('[data-testid="sidebar-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    const appCustom = appDialog.querySelector('[data-testid="sidebar-color"]');
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    const repoSwatches = [...dialog.querySelectorAll('[data-testid="repository-sidebar-swatch"]')].map((swatch) =>
+      swatch.getAttribute('data-color'),
+    );
+    const custom = dialog.querySelector('[data-testid="repository-sidebar-color"]');
+    const white = dialog.querySelector('[data-testid="repository-sidebar-text-white"]');
+    const black = dialog.querySelector('[data-testid="repository-sidebar-text-black"]');
+
+    expect(repoSwatches).toEqual(appSwatches);
+    expect(repoSwatches).toContain('#1a3c2b');
+    expect(repoSwatches).toContain('#065f46');
+    expect(custom).toBeInstanceOf(HTMLInputElement);
+    expect(custom.type).toBe('color');
+    expect(custom.getAttribute('aria-label')).toBe('Custom sidebar color');
+    expect(custom.value).toBe('#1a3c2b');
+    expect(dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').classList.contains('is-selected')).toBe(
+      true,
+    );
+    expect(white).toBeInstanceOf(HTMLInputElement);
+    expect(black).toBeInstanceOf(HTMLInputElement);
+    expect(white.type).toBe('radio');
+    expect(black.type).toBe('radio');
+    expect(white.checked).toBe(true);
+    expect(black.checked).toBe(false);
+    expect(dialog.querySelector('[data-testid="use-app-sidebar-color"]').textContent.trim()).toBe('Use app settings');
+    expect(dialog.querySelector('[data-testid="use-app-sidebar-text"]').textContent.trim()).toBe('Use app settings');
+    expect(dialog.querySelector('[data-testid="content-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="terminal-background-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="terminal-foreground-color"]')).toBeNull();
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
+    expect(appCustom.getAttribute('aria-label')).toBe('Custom sidebar color');
+  });
+
+  it('stores a repository sidebar color and sidebar text even when they match app settings and paints the worktrees region', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      appearance: { sidebar_color: '#1a3c2b', sidebar_text: 'white' },
+    });
+    expect(readAppSettings().sidebarColor).toBe('#1a3c2b');
+    expect(readAppSettings().sidebarText).toBe('white');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#123456');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-black"]').click();
+    fixture.detectChanges();
+
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      appearance: { sidebar_color: '#123456', sidebar_text: 'black' },
+    });
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(18, 52, 86)');
+    const selected = fixture.nativeElement.querySelector('.branch-row.is-selected');
+    expect(getComputedStyle(selected).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(selected).color).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(247, 247, 245)',
+    );
+  });
+
+  it('uses app settings on the worktrees region until a repository sets its own sidebar', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    const fixture = await renderRepository(repoPath);
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    dialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+    pickColor(dialog.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="terminal-background-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(readAppSettings().contentColor).toBe('#abcdef');
+    expect(readAppSettings().terminalBackground).toBe('#065f46');
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+  });
+
+  it('keeps a repository sidebar when app settings change and clears one choice with Use app settings', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const root = join(repoPath, '..');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      ['[layout]', 'mode = "sibling"', '', '[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join(
+        '\n',
+      ),
+    );
+
+    const fixture = await renderRepository(repoPath);
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    const appDialog = fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]');
+    appDialog.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    appDialog.querySelector('[data-testid="sidebar-text-white"]').click();
+    fixture.detectChanges();
+    pickColor(appDialog.querySelector('[data-testid="content-color"]'), '#abcdef');
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="content-sheet"]')).backgroundColor).toBe(
+      'rgb(171, 205, 239)',
+    );
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('white');
+
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+    dialog.querySelector('[data-testid="use-app-sidebar-color"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { mode: 'sibling' },
+      appearance: { sidebar_text: 'black' },
+    });
+
+    dialog.querySelector('[data-testid="use-app-sidebar-text"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { mode: 'sibling' },
+    });
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Sibling, set by this repository',
+    );
+  });
+
+  it('paints each open repository from its own sidebar or from app settings, including a repository with no path', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    initGitRepo(quay);
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="sidebar-swatch"][data-color="#065f46"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="sidebar-text-black"]').click();
+    fixture.detectChanges();
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Quay');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('follows app settings when the open repository has no path for its own sidebar', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    roots.push(root);
+    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#065f46","sidebarText":"black"}\n');
+
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    dialog.querySelector('[data-testid="repository-sidebar-swatch"][data-color="#1a3c2b"]').click();
+    fixture.detectChanges();
+    dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
+    fixture.detectChanges();
+
+    expect(readAppSettings().sidebarColor).toBe('#065f46');
+    expect(readAppSettings().sidebarText).toBe('black');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+    expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
+      'Workspaces, the app default',
+    );
   });
 
   it('names the app default layout on the create dialog for sample Harbor', async () => {
@@ -1621,6 +1985,9 @@ describe('desktop workspace', () => {
     expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual([
       'worktree-mode-workspaces',
       'worktree-mode-sibling',
+      'repository-sidebar-color',
+      'repository-sidebar-text-white',
+      'repository-sidebar-text-black',
       'remote-url',
     ]);
     const remoteUrl = settingsInputs.find((input) => input.getAttribute('data-testid') === 'remote-url');

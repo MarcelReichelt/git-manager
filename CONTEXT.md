@@ -12,6 +12,10 @@ _Avoid_: workspaces
 A registered repository open in the window. Closing it leaves that registered repository in the registry.
 _Avoid_: tab, project, session
 
+**Repository card**:
+The registered repositories that have no repository tab, together with Add repository. The start screen shows it. The + opens it over the workspace.
+_Avoid_: switcher, repository menu
+
 **Content**:
 The region of a workspace beside the list of branches. It shows the branch heading, the changed files, the commits, and the diff.
 _Avoid_: sheet

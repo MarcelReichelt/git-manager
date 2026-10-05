@@ -820,7 +820,7 @@ describe('terminal mode', () => {
     expect(tabNames(fixture)).toEqual(['1 bash']);
   });
 
-  it('ends in-app terminals when the repository changes and leaves tmux sessions running', async () => {
+  it('keeps in-app terminals when the repository changes and leaves tmux sessions running', async () => {
     const harbor = createRepo('git-manager-mode-harbor-');
     const atlas = createRepo('git-manager-mode-atlas-');
     roots.push(harbor.root, atlas.root);
@@ -833,17 +833,27 @@ describe('terminal mode', () => {
     await waitFor(() => paneText(fixture!).includes(' $'));
     submitCommand(fixture.nativeElement, 'echo inappmarker');
     await waitFor(() => paneText(fixture!).includes('inappmarker'));
-    await waitFor(() => shellArguments(worktreePath(harbor.repo)).some((args) => args[0] === '/bin/bash'));
+    const harborShells = () =>
+      shellArguments(worktreePath(harbor.repo)).filter((args) => args[0] === '/bin/bash');
+    await waitFor(() => harborShells().length === 1);
 
     switchRepository(fixture, 'Atlas');
-    await waitFor(() => !shellArguments(worktreePath(harbor.repo)).some((args) => args[0] === '/bin/bash'));
-    clickBranch(fixture, 'feature');
-    await waitFor(() => paneText(fixture!).includes(' $'));
-    switchRepository(fixture, 'Harbor');
-    clickBranch(fixture, 'feature');
-    await waitFor(() => paneText(fixture!).includes(' $'));
 
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Atlas');
     expect(paneText(fixture)).not.toContain('inappmarker');
+    expect(harborShells()).toHaveLength(1);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => paneText(fixture!).includes(' $'));
+    expect(paneText(fixture)).not.toContain('inappmarker');
+    expect(harborShells()).toHaveLength(1);
+    switchRepository(fixture, 'Harbor');
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    await waitFor(() => paneText(fixture!).includes('inappmarker'));
+    expect(harborShells()).toHaveLength(1);
     expect(sessionsForBranch(harbor.repo, 'feature')).toEqual([]);
 
     fixture.destroy();
@@ -863,9 +873,93 @@ describe('terminal mode', () => {
 
     expect(hasSession(session)).toBe(true);
     expect(sessionsForBranch(harbor.repo, 'feature')).toEqual([session]);
+    expect(sessionsForBranch(atlas.repo, 'feature')).not.toContain(session);
     switchRepository(fixture, 'Harbor');
-    clickBranch(fixture, 'feature');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
     await waitFor(() => paneText(fixture!).includes('keptsession'));
     expect(sessionsForBranch(harbor.repo, 'feature')).toEqual([session]);
+    expect(sessionsForBranch(atlas.repo, 'feature')).not.toContain(session);
+  });
+
+  it('keeps the selected branch and running terminals of every repository opened this launch', async () => {
+    const harbor = createRepo('git-manager-mode-harbor-');
+    const atlas = createRepo('git-manager-mode-atlas-');
+    roots.push(harbor.root, atlas.root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    addRepository(harbor.repo, 'Harbor');
+    addRepository(atlas.repo, 'Atlas');
+    fixture = await renderWorkspace(null, { liveRegistry: true });
+    chooseRepository(fixture, 'Harbor');
+    clickBranch(fixture, 'feature');
+    await waitFor(() => paneText(fixture!).includes(' $'));
+    submitCommand(fixture.nativeElement, 'echo harbormarker');
+    await waitFor(() => paneText(fixture!).includes('harbormarker'));
+
+    switchRepository(fixture, 'Atlas');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Atlas');
+    expect(paneText(fixture)).not.toContain('harbormarker');
+    clickBranch(fixture, 'feature');
+    await waitFor(() => paneText(fixture!).includes(' $'));
+    submitCommand(fixture.nativeElement, 'echo atlasmarker');
+    await waitFor(() => paneText(fixture!).includes('atlasmarker'));
+    expect(paneText(fixture)).not.toContain('harbormarker');
+
+    switchRepository(fixture, 'Harbor');
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    await waitFor(() => paneText(fixture!).includes('harbormarker'));
+    expect(paneText(fixture)).not.toContain('atlasmarker');
+    expect(shellArguments(worktreePath(harbor.repo)).filter((args) => args[0] === '/bin/bash')).toHaveLength(1);
+
+    switchRepository(fixture, 'Atlas');
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    await waitFor(() => paneText(fixture!).includes('atlasmarker'));
+    expect(paneText(fixture)).not.toContain('harbormarker');
+    expect(shellArguments(worktreePath(atlas.repo)).filter((args) => args[0] === '/bin/bash')).toHaveLength(1);
+    expect(shellArguments(worktreePath(harbor.repo)).filter((args) => args[0] === '/bin/bash')).toHaveLength(1);
+  });
+
+  it('shows a failed open on the current workspace and leaves that workspace in place', async () => {
+    const harbor = createRepo('git-manager-mode-harbor-');
+    const atlas = createRepo('git-manager-mode-atlas-');
+    roots.push(harbor.root, atlas.root);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    addRepository(harbor.repo, 'Harbor');
+    addRepository(atlas.repo, 'Atlas');
+    fixture = await renderWorkspace(null, { liveRegistry: true });
+    chooseRepository(fixture, 'Harbor');
+    clickBranch(fixture, 'feature');
+    await waitFor(() => paneText(fixture!).includes(' $'));
+    submitCommand(fixture.nativeElement, 'echo inappmarker');
+    await waitFor(() => paneText(fixture!).includes('inappmarker'));
+    rmSync(join(atlas.repo, '.git'), { recursive: true, force: true });
+
+    switchRepository(fixture, 'Atlas');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Harbor');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    expect(paneText(fixture)).toContain('inappmarker');
+    expect(shellArguments(worktreePath(harbor.repo)).filter((args) => args[0] === '/bin/bash')).toHaveLength(1);
+    expect(workspaceError(fixture)).toContain('not a git repository');
+    expect(fixture.nativeElement.querySelector('[data-testid="switch-repository"]')).not.toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    const names = [
+      ...fixture.nativeElement.querySelectorAll('[data-testid="switching-overlay"] [data-testid="repository"]'),
+    ].map((button) => button.getAttribute('data-name'));
+    expect(names).toEqual(['Atlas', 'Harbor']);
   });
 });

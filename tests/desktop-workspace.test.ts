@@ -5306,6 +5306,128 @@ describe('desktop workspace', () => {
     ).toBe('master');
   });
 
+  it('keeps the open workspace visible while another repository opens', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const held = holdPaint();
+    try {
+      fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+      fixture.detectChanges();
+      fixture.nativeElement
+        .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Quay"]')
+        .click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+      expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+        'feature',
+      );
+      expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).toBeNull();
+
+      held.release();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Quay');
+      expect(fixture.nativeElement.querySelector('[data-testid="switch-repository"]')).not.toBeNull();
+      fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+      fixture.detectChanges();
+      const names = [
+        ...fixture.nativeElement.querySelectorAll(
+          '[data-testid="switching-overlay"] [data-testid="repository"]',
+        ),
+      ].map((element) => element.getAttribute('data-name'));
+      expect(names).toEqual(['Pier', 'Quay']);
+    } finally {
+      held.release();
+    }
+  });
+
+  it('shows the same selected branch when an earlier repository is opened again', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    const quay = join(root, 'quay');
+    initGitRepo(pier);
+    initGitRepo(quay);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    writeFileSync(join(quay, 'README.md'), '# quay\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    git(quay, ['add', '.']);
+    git(quay, ['commit', '-m', 'init']);
+    mkdirSync(join(pier, '.workspaces'));
+    git(pier, ['branch', 'feature']);
+    git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    addRepository(quay, 'Quay');
+    const fixture = await renderLive();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Quay"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Pier"]')
+      .click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Pier');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'feature',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+
+    fixture.nativeElement.querySelector('[data-testid="switch-repository"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Quay"]')
+      .click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-name"]').textContent).toContain('Quay');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe(
+      'master',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('master');
+  });
+
   it('shows Loading branches before the create dialog lists names', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);

@@ -1,0 +1,84 @@
+appId: dev.mreichelt.git-manager
+productName: git-manager
+executableName: git-manager
+copyright: Copyright © 2026 Murakai
+directories:
+  output: release
+extraMetadata:
+  main: src/desktop/electron-main.mjs
+  author: Murakai
+  desktopName: git-manager.desktop
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+files:
+  - package.json
+  - LICENSE
+  - dist/desktop-app/**/*
+  - src/desktop/electron-main.mjs
+  - src/desktop/electron-preload.cjs
+  - src/desktop/install-electron-natives.cjs
+  - src/desktop/shell-main.mjs
+  - src/desktop/shell-channels.cjs
+  - src/desktop/shell-host.ts
+  - src/desktop/tmux-sessions.ts
+  - src/desktop/windows-foreground.ts
+  - src/runtime-env.ts
+  - src/desktop/app-icon.png
+  - native/electron/**/*
+  - node_modules/better-sqlite3/**/*
+  - node_modules/bindings/**/*
+  - node_modules/file-uri-to-path/**/*
+  - node_modules/node-pty/**/*
+  - node_modules/koffi/**/*
+  - node_modules/@koromix/**/*
+  - node_modules/jiti/**/*
+  - "!**/{.DS_Store,.git}"
+  - "!**/*.{md,map}"
+  # The window bundle already contains the Angular app. The installer keeps
+  # the native modules and jiti, and leaves the CLI and the build tools out.
+  - "!**/node_modules/better-sqlite3/{deps,src}/**"
+  - "!**/node_modules/node-pty/{deps,src,third_party,prebuilds}/**"
+  - "!**/node_modules/{@analogjs,@angular,@angular-devkit,@babel,@esbuild,@inquirer,@lmdb,@parcel,@rolldown,@rollup,@types,@xterm}/**"
+  - "!**/node_modules/{@iarna,@msgpackr-extract,@napi-rs,@oxc-parser,app-builder-lib,caniuse-lite,colorjs.io,commander,electron,electron-builder,es-toolkit,esbuild,execa,ink,jsdom,lightningcss,lightningcss-linux-x64-gnu,lmdb,lodash,node-gyp,react,react-dom,rolldown,rollup,rxjs,sass,sass-embedded,sass-embedded-linux-musl-x64,sass-embedded-linux-x64,scheduler,simple-git,typescript,vite,zone.js,zod}/**"
+asarUnpack:
+  - native/electron/**/*
+  - node_modules/better-sqlite3/**/*
+  - node_modules/node-pty/**/*
+  - node_modules/koffi/**/*
+  - node_modules/@koromix/**/*
+linux:
+  target:
+    - AppImage
+    - deb
+  executableName: git-manager
+  syncDesktopName: true
+  maintainer: MarcelReichelt <marcelreichelt91@gmail.com>
+  category: Development
+  icon: src/desktop/app-icon.png
+  synopsis: Desktop workspace for one registered git repository
+win:
+  target:
+    - nsis
+    - portable
+  icon: src/desktop/app-icon.png
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  icon: src/desktop/app-icon.png
+appImage:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+deb:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${os}-${arch}-setup.${ext}
+portable:
+  artifactName: ${productName}-${version}-${os}-${arch}-portable.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}

@@ -28,6 +28,26 @@ yarn link:global
 yarn desktop
 ```
 
+## Desktop installers
+
+The npm package is the CLI. The desktop window is an Electron app, built on the operating system it targets:
+
+```bash
+yarn pack:desktop
+```
+
+The installers are written to `release/`.
+
+| System | Files |
+| --- | --- |
+| Linux | AppImage and deb |
+| Windows | setup exe and portable exe |
+| macOS | dmg and zip |
+
+git still has to be on `PATH`. On Linux and macOS the branch terminal can use `tmux`. A `v*` tag builds all three systems and attaches the installers to the GitHub release. The same workflow can be started by hand.
+
+macOS and Windows packages are unsigned unless `CSC_LINK` points at a code-signing certificate. `CSC_IDENTITY_AUTO_DISCOVERY` stays off so a build without a certificate still finishes.
+
 ## Register an existing repo
 
 ```bash

@@ -287,6 +287,51 @@ export function listTmuxSessionRecords(): TmuxSessionRecord[] {
   return listedTmuxSessions();
 }
 
+export interface TmuxSessionSnapshot extends TmuxSessionRecord {
+  command: string;
+}
+
+export function listTmuxSessionSnapshots(): TmuxSessionSnapshot[] | null {
+  try {
+    const output = execFileSync(
+      tmuxBinary(),
+      ['list-sessions', '-F', '#{session_name}\t#{@gm_branch}\t#{pane_current_command}'],
+      {
+        encoding: 'utf8',
+        env: terminalEnvironment(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map(parseSessionSnapshot);
+  } catch (error) {
+    const stderr = typeof error === 'object' && error !== null && 'stderr' in error ? String(error.stderr) : '';
+    if (/no server running|no sessions|failed to connect|error connecting/i.test(stderr)) {
+      return [];
+    }
+    return null;
+  }
+}
+
+function parseSessionSnapshot(line: string): TmuxSessionSnapshot {
+  const nameEnd = line.indexOf('\t');
+  if (nameEnd < 0) {
+    return { name: line, branch: '', command: '' };
+  }
+  const branchEnd = line.indexOf('\t', nameEnd + 1);
+  if (branchEnd < 0) {
+    return { name: line.slice(0, nameEnd), branch: line.slice(nameEnd + 1), command: '' };
+  }
+  return {
+    name: line.slice(0, nameEnd),
+    branch: line.slice(nameEnd + 1, branchEnd),
+    command: line.slice(branchEnd + 1),
+  };
+}
+
 function parseListedSession(line: string): TmuxSessionRecord {
   const separator = line.indexOf('|');
   if (separator < 0) {

@@ -435,6 +435,7 @@ describe('terminal font and colors', () => {
     expect(readAppSettings()).toEqual({
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',

@@ -1,21 +1,29 @@
 import TOML from '@iarna/toml';
 import Database from 'better-sqlite3';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  clearRepositorySidebarColor,
+  clearRepositorySidebarText,
   createLayoutForRepository,
   readAppSettings,
+  readOpenRepositoryTabs,
+  readRepositoryAppearance,
   resetAppColors,
   resolveAppSettingsPath,
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
   saveIdeCommand,
+  saveOpenRepositoryTabs,
   saveRepositoryLayoutMode,
+  saveRepositorySidebarColor,
+  saveRepositorySidebarText,
   saveSidebarColor,
+  saveSidebarText,
   saveShellCommand,
   saveTerminalBackground,
   saveTerminalFont,
@@ -47,6 +55,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -180,6 +189,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'workspaces',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -216,6 +226,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#112233',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -259,6 +270,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -290,6 +302,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -449,13 +462,64 @@ describe('app settings', () => {
     expect(readAppSettings(env).contentColor).toBe('#abcdef');
   });
 
+  it('uses white sidebar text when that key is missing or not white or black', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).sidebarText).toBe('white');
+
+    writeFileSync(settingsPath, '{"sidebarText":"black","sidebarColor":"#112233"}\n');
+    expect(readAppSettings(env).sidebarText).toBe('black');
+    expect(readAppSettings(env).sidebarColor).toBe('#112233');
+
+    writeFileSync(settingsPath, '{"sidebarText":"blue"}\n');
+    expect(readAppSettings(env).sidebarText).toBe('white');
+
+    writeFileSync(settingsPath, '{"sidebarText":1}\n');
+    expect(readAppSettings(env).sidebarText).toBe('white');
+  });
+
+  it('saves black or white sidebar text without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalFont":"JetBrains Mono"}\n',
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveSidebarText('black', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      ideCommand: 'cursor',
+      sidebarColor: '#112233',
+      contentColor: '#abcdef',
+      terminalFont: 'JetBrains Mono',
+      sidebarText: 'black',
+    });
+    expect(readAppSettings(env).sidebarText).toBe('black');
+    expect(readAppSettings(env).sidebarColor).toBe('#112233');
+    expect(readAppSettings(env).terminalFont).toBe('JetBrains Mono');
+
+    saveSidebarText('white', env);
+
+    expect(readAppSettings(env).sidebarText).toBe('white');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).theme).toBe('mint');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
+  });
+
   it('restores the original colors and leaves the layout and other settings in place', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
-      '{"defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef"}\n',
+      '{"defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","sidebarText":"black"}\n',
     );
     const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
@@ -465,6 +529,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       ideCommand: 'cursor',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -472,6 +537,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -504,6 +570,7 @@ describe('app settings', () => {
       defaultLayout: 'sibling',
       ideCommand: 'cursor',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -512,6 +579,7 @@ describe('app settings', () => {
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
       sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
       contentColor: '#f7f7f5',
       terminalBackground: '#1e1e1e',
       terminalForeground: '#d4d4d4',
@@ -812,5 +880,163 @@ describe('app settings', () => {
       source: 'repository',
       supported: true,
     });
+  });
+
+  it('reads no repository sidebar color or sidebar text when those keys are absent', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(repoPath);
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({});
+
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({});
+  });
+
+  it('reads a repository sidebar color and sidebar text and ignores values that cannot be used', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#112233"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({
+      sidebarColor: '#112233',
+      sidebarText: 'black',
+    });
+
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = 1', 'sidebar_text = "blue"', ''].join('\n'),
+    );
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({});
+  });
+
+  it('saves a repository sidebar color and sidebar text that match the app settings and keeps the layout', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-manager', 'config.toml'),
+      [
+        '[layout]',
+        'workspaces_dir = ".workspaces"',
+        'mode = "sibling"',
+        '',
+        '[copy]',
+        'files = [".env.local"]',
+        '',
+        '[hooks]',
+        'modules = ["./plugins/mark.ts"]',
+        '',
+      ].join('\n'),
+    );
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+
+    saveRepositorySidebarColor(repoPath, '#1a3c2b');
+    saveRepositorySidebarText(repoPath, 'white');
+
+    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'));
+    expect(parsed).toEqual({
+      layout: { workspaces_dir: '.workspaces', mode: 'sibling' },
+      copy: { files: ['.env.local'] },
+      hooks: { modules: ['./plugins/mark.ts'] },
+      appearance: { sidebar_color: '#1a3c2b', sidebar_text: 'white' },
+    });
+    expect(readRepositoryAppearance(repoPath)).toEqual({
+      sidebarColor: '#1a3c2b',
+      sidebarText: 'white',
+    });
+    expect(readAppSettings(env).sidebarColor).toBe('#1a3c2b');
+    expect(readAppSettings(env).sidebarText).toBe('white');
+    expect(createLayoutForRepository(repoPath, env)).toEqual({
+      label: 'Sibling',
+      source: 'repository',
+      supported: true,
+    });
+  });
+
+  it('clears only the repository sidebar color or only the repository sidebar text', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(
+      configPath,
+      ['[layout]', 'mode = "workspaces"', '', '[appearance]', 'sidebar_color = "#112233"', 'sidebar_text = "black"', ''].join(
+        '\n',
+      ),
+    );
+
+    clearRepositorySidebarColor(repoPath);
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({ sidebarText: 'black' });
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      layout: { mode: 'workspaces' },
+      appearance: { sidebar_text: 'black' },
+    });
+
+    clearRepositorySidebarText(repoPath);
+
+    expect(readRepositoryAppearance(repoPath)).toEqual({});
+    expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      layout: { mode: 'workspaces' },
+    });
+  });
+
+  it('remembers open repository paths and the selected path without changing other app settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
+
+    writeFileSync(settingsPath, '{"theme":"mint","defaultLayout":"sibling"}\n');
+    saveOpenRepositoryTabs(['/repos/pier', '/repos/quay', '/repos/dock'], '/repos/quay', env);
+
+    expect(readOpenRepositoryTabs(env)).toEqual({
+      paths: ['/repos/pier', '/repos/quay', '/repos/dock'],
+      selectedPath: '/repos/quay',
+    });
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      openRepositoryPaths: ['/repos/pier', '/repos/quay', '/repos/dock'],
+      selectedRepositoryPath: '/repos/quay',
+    });
+    expect(readAppSettings(env).defaultLayout).toBe('sibling');
+
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","openRepositoryPaths":["/repos/pier",3,null],"selectedRepositoryPath":false}\n',
+    );
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: ['/repos/pier'], selectedPath: null });
+
+    saveOpenRepositoryTabs([], null, env);
+
+    expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({ theme: 'mint' });
+  });
+
+  it('does not create a repository config when clearing sidebar color or sidebar text that were never set', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(repoPath);
+
+    clearRepositorySidebarColor(repoPath);
+    clearRepositorySidebarText(repoPath);
+
+    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
   });
 });

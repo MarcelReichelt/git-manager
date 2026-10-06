@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
@@ -147,19 +148,6 @@ function remoteShortNames(repoPath: string, remotes: string[]): string[] {
   return names;
 }
 
-function upstreamRef(repoPath: string, branch: string): string | undefined {
-  const remote = gitOptional(repoPath, ['config', '--get', `branch.${branch}.remote`]);
-  const merge = gitOptional(repoPath, ['config', '--get', `branch.${branch}.merge`]);
-  if (!remote || !merge || !merge.startsWith('refs/heads/')) {
-    return undefined;
-  }
-  const short = merge.slice('refs/heads/'.length);
-  if (remote === '.') {
-    return merge;
-  }
-  return `refs/remotes/${remote}/${short}`;
-}
-
 function aheadBehind(repoPath: string, branch: string, base: string): { ahead: number; behind: number } {
   const output = gitText(repoPath, ['rev-list', '--left-right', '--count', `${base}...${branch}`]).trim();
   const [behindText, aheadText] = output.split(/\s+/);
@@ -200,29 +188,81 @@ function parseNumstat(raw: string): ChangedFile[] {
 }
 
 function untrackedFiles(worktree: string): ChangedFile[] {
-  const raw = gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']);
+  return nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z'])).map((path) => {
+    const stat = untrackedLineStat(worktree, path);
+    return {
+      path,
+      previousPath: null,
+      added: stat.added,
+      deleted: stat.deleted,
+      binary: stat.binary,
+    };
+  });
+}
+
+function untrackedLineStat(
+  worktree: string,
+  path: string,
+): { added: number | null; deleted: number | null; binary: boolean } {
+  const absolute = resolve(worktree, path);
+  let info: ReturnType<typeof lstatSync>;
+  try {
+    info = lstatSync(absolute);
+  } catch {
+    return { added: null, deleted: null, binary: true };
+  }
+  if (!info.isFile()) {
+    return gitUntrackedLineStat(worktree, path);
+  }
+  const data = readFileSync(absolute);
+  if (data.includes(0)) {
+    return { added: null, deleted: null, binary: true };
+  }
+  return { added: lineCount(data), deleted: 0, binary: false };
+}
+
+function gitUntrackedLineStat(
+  worktree: string,
+  path: string,
+): { added: number | null; deleted: number | null; binary: boolean } {
+  const numstat = gitText(worktree, ['diff', '--numstat', '--no-index', '--', '/dev/null', path], true);
+  const file = parseNumstat(`${numstat.trim()}\0`)[0];
+  if (!file) {
+    return { added: null, deleted: null, binary: true };
+  }
+  return { added: file.added, deleted: file.deleted, binary: file.binary };
+}
+
+function lineCount(data: Buffer): number {
+  if (data.length === 0) {
+    return 0;
+  }
+  let lines = 0;
+  for (const byte of data) {
+    if (byte === 10) {
+      lines += 1;
+    }
+  }
+  if (data[data.length - 1] !== 10) {
+    lines += 1;
+  }
+  return lines;
+}
+
+function nulPaths(raw: string): string[] {
   if (raw === '') {
     return [];
   }
-  const paths = raw.split('\0').filter((path) => path !== '');
-  return paths.map((path) => {
-    const numstat = gitText(
-      worktree,
-      ['diff', '--numstat', '--no-index', '--', '/dev/null', path],
-      true,
-    );
-    const parsed = parseNumstat(`${numstat.trim()}\0`);
-    const file = parsed[0];
-    if (!file) {
-      return { path, previousPath: null, added: null, deleted: null, binary: true };
-    }
-    return { ...file, path, previousPath: null };
-  });
+  return raw.split('\0').filter((path) => path !== '');
 }
 
 function changedFilesInWorktree(worktree: string): ChangedFile[] {
   const tracked = parseNumstat(gitText(worktree, ['diff', '-M', '--numstat', '-z', 'HEAD']));
   return [...tracked, ...untrackedFiles(worktree)];
+}
+
+export function ensureGitRepository(repoPath: string): void {
+  gitText(repoPath, ['rev-parse', '--is-inside-work-tree']);
 }
 
 export function pruneRemoteTrackingRefs(repoPath: string): void {
@@ -240,60 +280,151 @@ export function pruneRemoteTrackingRefs(repoPath: string): void {
   }
 }
 
-export function listBranches(repoPath: string): BranchRow[] {
-  const fallbackBase = aheadBehindBase(repoPath);
-  const localNames = gitText(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
-    .split('\n')
-    .map((name) => name.trim())
-    .filter((name) => name !== '');
-  const local = new Set(localNames);
-  const rows: BranchRow[] = localNames.map((name) => {
-    const configuredUpstream = upstreamRef(repoPath, name);
-    const upstreamExists = configuredUpstream ? hasRef(repoPath, configuredUpstream) : false;
-    let status: BranchStatus = 'local-only';
-    let base = fallbackBase;
-    if (configuredUpstream && upstreamExists) {
-      status = 'local-and-remote';
-      base = configuredUpstream;
-    } else if (configuredUpstream) {
-      status = 'remote-deleted';
-    }
-    const counts = aheadBehind(repoPath, name, base);
-    const checkout = worktreePath(repoPath, name);
-    return {
-      name,
-      status,
-      changedFileCount: checkout ? changedFilesInWorktree(checkout).length : 0,
-      ahead: counts.ahead,
-      behind: counts.behind,
-    };
-  });
+function changedFileCount(worktree: string): number {
+  const tracked = nulPaths(gitText(worktree, ['diff', '-M', '--name-only', '-z', 'HEAD']));
+  const untracked = nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']));
+  return tracked.length + untracked.length;
+}
 
-  const remoteNames = gitText(repoPath, [
-    'for-each-ref',
-    '--format=%(refname:short)',
-    'refs/remotes/origin',
-  ])
-    .split('\n')
-    .map((name) => name.trim())
-    .filter((name) => name.startsWith('origin/') && name !== 'origin/HEAD');
+interface DescribedBranch {
+  name: string;
+  status: BranchStatus;
+  ahead: number;
+  behind: number;
+}
 
-  for (const name of remoteNames) {
-    const localName = name.slice('origin/'.length);
-    if (local.has(localName)) {
+function describeBranches(repoPath: string): { rows: DescribedBranch[]; defaultBranch: string | undefined } {
+  const base = aheadBehindBase(repoPath);
+  const comparison = aheadBehindAtom(repoPath, base);
+  const localAtoms = ['%(refname:short)', '%(upstream)', '%(upstream:track)'];
+  if (comparison) {
+    localAtoms.push(comparison);
+  }
+  const locals = forEachFields(repoPath, localAtoms, 'refs/heads');
+  const localNames = new Set(locals.map((fields) => fields[0] ?? ''));
+  const rows: DescribedBranch[] = locals.map((fields) => describeLocalBranch(repoPath, base, fields));
+  const remoteAtoms = ['%(refname:short)'];
+  if (comparison) {
+    remoteAtoms.push(comparison);
+  }
+  for (const fields of forEachFields(repoPath, remoteAtoms, 'refs/remotes/origin')) {
+    const name = fields[0] ?? '';
+    if (!name.startsWith('origin/') || name === 'origin/HEAD') {
       continue;
     }
-    const counts = aheadBehind(repoPath, name, fallbackBase);
-    rows.push({
-      name,
-      status: 'remote-only',
-      changedFileCount: 0,
-      ahead: counts.ahead,
-      behind: counts.behind,
-    });
+    const localName = name.slice('origin/'.length);
+    if (localNames.has(localName)) {
+      continue;
+    }
+    const counts = countsFromField(repoPath, name, base, fields[1]);
+    rows.push({ name, status: 'remote-only', ahead: counts.ahead, behind: counts.behind });
   }
+  return { rows, defaultBranch: base === 'HEAD' ? defaultBranchName(repoPath) : base };
+}
 
-  return pinDefaultBranch(rows, defaultBranchName(repoPath));
+function describeLocalBranch(repoPath: string, base: string, fields: readonly string[]): DescribedBranch {
+  const name = fields[0] ?? '';
+  const upstream = fields[1] ?? '';
+  const track = parseUpstreamTrack(fields[2] ?? '');
+  if (upstream === '') {
+    const counts = countsFromField(repoPath, name, base, fields[3]);
+    return { name, status: 'local-only', ahead: counts.ahead, behind: counts.behind };
+  }
+  if (track === 'gone') {
+    const counts = countsFromField(repoPath, name, base, fields[3]);
+    return { name, status: 'remote-deleted', ahead: counts.ahead, behind: counts.behind };
+  }
+  if (track === 'none') {
+    return { name, status: 'local-and-remote', ahead: 0, behind: 0 };
+  }
+  return { name, status: 'local-and-remote', ahead: track.ahead, behind: track.behind };
+}
+
+function aheadBehindAtom(repoPath: string, base: string): string | undefined {
+  if (!/^[A-Za-z0-9._/-]+$/.test(base)) {
+    return undefined;
+  }
+  if (gitOptional(repoPath, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]) === undefined) {
+    return undefined;
+  }
+  return `%(ahead-behind:${base})`;
+}
+
+function countsFromField(
+  repoPath: string,
+  branch: string,
+  base: string,
+  field: string | undefined,
+): { ahead: number; behind: number } {
+  const parsed = field === undefined ? undefined : parseAheadBehind(field);
+  if (parsed) {
+    return parsed;
+  }
+  return aheadBehind(repoPath, branch, base);
+}
+
+function forEachFields(repoPath: string, atoms: readonly string[], ref: string): string[][] {
+  const output = gitText(repoPath, ['for-each-ref', `--format=${atoms.join('%00')}`, ref]);
+  if (output === '') {
+    return [];
+  }
+  return output
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => line.split('\0'));
+}
+
+// %(ahead-behind:<base>) prints "ahead behind". rev-list --left-right prints "behind ahead".
+function parseAheadBehind(value: string): { ahead: number; behind: number } | undefined {
+  const match = /^(\d+) (\d+)$/.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+  return { ahead: Number(match[1]), behind: Number(match[2]) };
+}
+
+function parseUpstreamTrack(
+  value: string,
+): { ahead: number; behind: number } | 'gone' | 'none' {
+  const track = value.trim();
+  if (track === '') {
+    return 'none';
+  }
+  if (track === '[gone]') {
+    return 'gone';
+  }
+  const ahead = /ahead (\d+)/.exec(track);
+  const behind = /behind (\d+)/.exec(track);
+  if (!ahead && !behind) {
+    return 'none';
+  }
+  return { ahead: ahead ? Number(ahead[1]) : 0, behind: behind ? Number(behind[1]) : 0 };
+}
+
+export function listBranches(repoPath: string): BranchRow[] {
+  const described = describeBranches(repoPath);
+  const checkouts = checkoutPaths(repoPath);
+  const rows = described.rows.map((row) => {
+    const checkout = checkouts.get(row.name);
+    return {
+      name: row.name,
+      status: row.status,
+      changedFileCount: checkout ? changedFileCount(checkout) : 0,
+      ahead: row.ahead,
+      behind: row.behind,
+    };
+  });
+  return pinDefaultBranch(rows, described.defaultBranch);
+}
+
+function checkoutPaths(repoPath: string): Map<string, string> {
+  const paths = new Map<string, string>();
+  for (const entry of listWorktrees(repoPath)) {
+    if (entry.branch) {
+      paths.set(entry.branch, resolve(entry.path));
+    }
+  }
+  return paths;
 }
 
 export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
@@ -320,7 +451,7 @@ export function listBranchesWithoutWorktree(repoPath: string): AvailableBranch[]
     available.push({ name, status });
   };
 
-  for (const row of listBranches(repoPath)) {
+  for (const row of describeBranches(repoPath).rows) {
     if (row.status === 'remote-deleted') {
       continue;
     }
@@ -351,6 +482,7 @@ export function pinDefaultBranch<T extends { name: string }>(
 }
 
 const remoteHeadAnswers = new Map<string, string | undefined>();
+const resolvedDefaults = new Map<string, string | undefined>();
 
 function aheadBehindBase(repoPath: string): string {
   return defaultBranchName(repoPath) ?? 'HEAD';
@@ -361,8 +493,80 @@ export function refreshRemoteHead(repoPath: string): void {
   if (!remote) {
     return;
   }
-  remoteHeadAnswers.delete(remoteHeadKey(repoPath, remote));
-  rememberedRemoteHead(repoPath, remote);
+  rememberRemoteHead(repoPath, remote, queryRemoteHead(repoPath, remote));
+}
+
+let remoteRefreshes = 0;
+const remoteRefreshIdle: Array<() => void> = [];
+
+export function whenRemoteRefreshIdle(): Promise<void> {
+  if (remoteRefreshes === 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    remoteRefreshIdle.push(resolve);
+  });
+}
+
+export function refreshOpenRepositoryRemotes(repoPath: string): Promise<boolean> {
+  const remotes = configuredRemotes(repoPath);
+  if (remotes.length === 0) {
+    return Promise.resolve(false);
+  }
+  remoteRefreshes += 1;
+  return pruneRemotes(repoPath, remotes)
+    .then(() => askRemoteHead(repoPath))
+    .then(() => true)
+    .finally(() => {
+      remoteRefreshes -= 1;
+      if (remoteRefreshes > 0) {
+        return;
+      }
+      setTimeout(() => {
+        if (remoteRefreshes > 0) {
+          return;
+        }
+        const waiting = remoteRefreshIdle.splice(0);
+        for (const resolve of waiting) {
+          resolve();
+        }
+      }, 0);
+    });
+}
+
+function pruneRemotes(repoPath: string, remotes: readonly string[]): Promise<void> {
+  return remotes.reduce(
+    (chain, remote) => chain.then(() => gitFinished(repoPath, ['remote', 'prune', remote])),
+    Promise.resolve(),
+  );
+}
+
+function askRemoteHead(repoPath: string): Promise<void> {
+  const remote = preferredRemote(repoPath);
+  if (!remote) {
+    return Promise.resolve();
+  }
+  return gitFinished(repoPath, ['remote', 'set-head', remote, '--auto']).then((asked) => {
+    rememberRemoteHead(repoPath, remote, asked ? storedRemoteHead(repoPath, remote) : undefined);
+  });
+}
+
+function gitFinished(cwd: string, args: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      'git',
+      args,
+      {
+        cwd,
+        timeout: 15000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        windowsHide: true,
+      },
+      (error) => {
+        resolve(error === null);
+      },
+    );
+  });
 }
 
 export function readDefaultBranch(repoPath: string): string | undefined {
@@ -370,6 +574,16 @@ export function readDefaultBranch(repoPath: string): string | undefined {
 }
 
 function defaultBranchName(repoPath: string): string | undefined {
+  const key = resolve(repoPath);
+  if (resolvedDefaults.has(key)) {
+    return resolvedDefaults.get(key);
+  }
+  const name = uncachedDefaultBranchName(repoPath);
+  resolvedDefaults.set(key, name);
+  return name;
+}
+
+function uncachedDefaultBranchName(repoPath: string): string | undefined {
   const remote = preferredRemote(repoPath);
   if (remote) {
     const asked = rememberedRemoteHead(repoPath, remote);
@@ -415,13 +629,12 @@ function remoteHeadKey(repoPath: string, remote: string): string {
 }
 
 function rememberedRemoteHead(repoPath: string, remote: string): string | undefined {
-  const key = remoteHeadKey(repoPath, remote);
-  if (remoteHeadAnswers.has(key)) {
-    return remoteHeadAnswers.get(key);
-  }
-  const name = queryRemoteHead(repoPath, remote);
-  remoteHeadAnswers.set(key, name);
-  return name;
+  return remoteHeadAnswers.get(remoteHeadKey(repoPath, remote));
+}
+
+function rememberRemoteHead(repoPath: string, remote: string, name: string | undefined): void {
+  remoteHeadAnswers.set(remoteHeadKey(repoPath, remote), name);
+  resolvedDefaults.delete(resolve(repoPath));
 }
 
 function queryRemoteHead(repoPath: string, remote: string): string | undefined {

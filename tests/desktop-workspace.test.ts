@@ -5049,7 +5049,7 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(sheet).overflowY).toBe('hidden');
   });
 
-  it('keeps a scrollbar inside the content sheet corners', async () => {
+  it('clips overlay scrollbars inside the content sheet corners', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -5060,12 +5060,12 @@ describe('desktop workspace', () => {
 
     let sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
     expectContentSheetCorners(sheet);
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
 
     fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
     fixture.detectChanges();
     sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
 
     openRepositoryCard(fixture);
     fixture.detectChanges();
@@ -5076,7 +5076,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="main"]').click();
     fixture.detectChanges();
     sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
   });
 
   it('scrolls the branch list inside the sidebar', async () => {
@@ -5091,6 +5091,168 @@ describe('desktop workspace', () => {
     expect(Number.parseFloat(style.minHeight)).toBe(0);
     expect(Number.parseFloat(style.flexGrow)).toBeGreaterThan(0);
     expect(branchList.parentElement).toBe(sidebar);
+  });
+
+  it('shows a thin overlay scrollbar on the branch list while the pointer is over it and while it scrolls', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]') as HTMLElement;
+    expect(getComputedStyle(branchList).scrollbarWidth).toBe('none');
+    expect(getComputedStyle(branchList).scrollbarGutter).not.toBe('stable');
+    expect(branchList.parentElement?.tagName).toBe('ASIDE');
+
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    expect(thumb).not.toBeNull();
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    const thumbStyle = getComputedStyle(thumb);
+    expect(thumbStyle.position).toBe('absolute');
+    expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
+    expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
+    expect(thumb.style.height).toBe('25px');
+    expect(thumb.style.transform).toBe('translateY(0px)');
+
+    vi.useFakeTimers();
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 100 });
+    branchList.dispatchEvent(new Event('scroll'));
+    expect(thumb.style.transform).toBe('translateY(25px)');
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    branchList.dispatchEvent(new Event('pointerleave'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    branchList.dispatchEvent(new Event('pointerenter'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    branchList.dispatchEvent(new Event('pointerleave'));
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    branchList.dispatchEvent(new Event('scroll'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('drags the branch list overlay scrollbar', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]') as HTMLElement;
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    thumb.dispatchEvent(new PointerEvent('pointerdown', { clientY: 10, bubbles: true }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientY: 40, bubbles: true }));
+    expect(branchList.scrollTop).toBe(120);
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  });
+
+  it('shows a thin overlay scrollbar on changes, commits, the diff, and commit files', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="changed-files"]'));
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="branch-commits"]'));
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="diff"]'));
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="commit-files"]'));
+
+    openRepositoryCard(fixture);
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+  });
+
+  it('shows a thin overlay scrollbar on dialogs', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"] .dialog-panel'),
+    );
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"] .dialog-panel'),
+    );
+
+    const repoPath = createRepositoryWithDeletedRemoteBranches(roots);
+    const live = await renderRepository(repoPath);
+    live.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    live.detectChanges();
+    await expectOverlayScrollbar(live.nativeElement.querySelector('[data-testid="create-branch-options"]'));
+  });
+
+  it('leaves the terminal scrollbar unchanged', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="branch-row"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('[data-testid="terminal-row"]');
+    expect(row).not.toBeNull();
+    expect(row.querySelector('[data-testid="overlay-scrollbar"]')).toBeNull();
+    expect(row.querySelector('.overlay-scroll')).toBeNull();
+    const viewport = fixture.nativeElement.querySelector('.xterm-viewport');
+    if (viewport instanceof HTMLElement) {
+      expect(viewport.classList.contains('overlay-scroll')).toBe(false);
+      expect(viewport.style.scrollbarWidth).not.toBe('none');
+    }
+    const style = document.getElementById('gm-overlay-scrollbar');
+    expect(style?.textContent ?? '').not.toContain('xterm');
   });
 
   it('scrolls the changes inside their own region', async () => {
@@ -7130,39 +7292,67 @@ function expectContentSheetCorners(sheet: HTMLElement): void {
   expect(style.overflow).toBe('hidden');
 }
 
-function expectScrollingRegionsInset(sheet: HTMLElement): void {
-  const regions = scrollingRegions(sheet);
-  expect(regions.length).toBeGreaterThan(0);
-  for (const region of regions) {
-    expect(scrollingRegionRightInset(region, sheet)).toBeGreaterThan(0);
+function expectOverlayScrollbarsClipped(sheet: HTMLElement): void {
+  expect(Number.parseFloat(getComputedStyle(sheet).paddingRight) || 0).toBe(0);
+  const scrollbars = [...sheet.querySelectorAll('[data-testid="overlay-scrollbar"]')];
+  expect(scrollbars.length).toBeGreaterThan(0);
+  for (const scrollbar of scrollbars) {
+    expect(sheet.contains(scrollbar)).toBe(true);
+    expect(getComputedStyle(scrollbar).position).toBe('absolute');
   }
 }
 
-function scrollingRegions(sheet: HTMLElement): HTMLElement[] {
-  return [...sheet.querySelectorAll<HTMLElement>('*')].filter((element) => {
-    const overflowY = getComputedStyle(element).overflowY;
-    return overflowY === 'auto' || overflowY === 'scroll';
+async function expectOverlayScrollbar(region: HTMLElement | null): Promise<void> {
+  expect(region).toBeInstanceOf(HTMLElement);
+  if (!(region instanceof HTMLElement)) {
+    return;
+  }
+  expect(getComputedStyle(region).scrollbarWidth).toBe('none');
+  expect(getComputedStyle(region).scrollbarGutter).not.toBe('stable');
+  installScrollMetrics(region, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+  region.dispatchEvent(new Event('pointerenter'));
+  const thumb = region.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+  expect(thumb).not.toBeNull();
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+
+  installScrollMetrics(region, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+  region.dispatchEvent(new Event('pointerenter'));
+  expect(thumb.classList.contains('is-visible')).toBe(true);
+  const thumbStyle = getComputedStyle(thumb);
+  expect(thumbStyle.position).toBe('absolute');
+  expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
+  expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
+
+  vi.useFakeTimers();
+  region.dispatchEvent(new Event('pointerleave'));
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+  region.dispatchEvent(new Event('scroll'));
+  expect(thumb.classList.contains('is-visible')).toBe(true);
+  await vi.advanceTimersByTimeAsync(700);
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+  vi.useRealTimers();
+}
+
+function installScrollMetrics(
+  element: HTMLElement,
+  metrics: { clientHeight: number; scrollHeight: number; scrollTop: number },
+): void {
+  let scrollTop = metrics.scrollTop;
+  Object.defineProperty(element, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
   });
-}
-
-function scrollingRegionRightInset(region: HTMLElement, sheet: HTMLElement): number {
-  const regionStyle = getComputedStyle(region);
-  const sheetStyle = getComputedStyle(sheet);
-  const paddingRight = Math.max(
-    Number.parseFloat(regionStyle.paddingRight) || 0,
-    Number.parseFloat(sheetStyle.paddingRight) || 0,
-  );
-  const marginRight = Number.parseFloat(regionStyle.marginRight) || 0;
-  if (paddingRight > 0 || marginRight > 0) {
-    return Math.max(paddingRight, marginRight);
-  }
-
-  const regionBox = region.getBoundingClientRect();
-  const sheetBox = sheet.getBoundingClientRect();
-  if (sheetBox.width > 0 && regionBox.width < sheetBox.width) {
-    return sheetBox.width - regionBox.width;
-  }
-  return 0;
+  Object.defineProperty(element, 'scrollHeight', {
+    configurable: true,
+    get: () => metrics.scrollHeight,
+  });
+  Object.defineProperty(element, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value: number) => {
+      scrollTop = value;
+    },
+  });
 }
 
 function scrollCommitList(

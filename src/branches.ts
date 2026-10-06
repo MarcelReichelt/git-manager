@@ -696,7 +696,7 @@ export function readRecentCommits(repoPath: string, branch: string, offset = 0):
   );
 }
 
-export function countBranchHistory(repoPath: string, branch: string): number | undefined {
+export function countBranchCommits(repoPath: string, branch: string): number | undefined {
   return parseCommitCount(gitOptional(repoPath, ['rev-list', '--count', branch]));
 }
 

@@ -110,7 +110,7 @@ import {
   listWorktreeBranches,
   refreshOpenRepositoryRemotes,
   pinDefaultBranch,
-  countBranchHistory,
+  countBranchCommits,
   countCommitsOnlyOnBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -4499,7 +4499,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         return;
       }
       const total = this.branchIsDefault()
-        ? countBranchHistory(path, name)
+        ? countBranchCommits(path, name)
         : countCommitsOnlyOnBranch(path, name);
       if (this.effectivePath() !== path || this.selectedBranchName() !== name || total === undefined) {
         return;

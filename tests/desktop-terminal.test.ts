@@ -597,9 +597,9 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
     clickCollapse(fixture);
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
     const again = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
     expect(terminalRowHeight(again.parentElement as HTMLElement)).toBe(after);
-    expect(visiblePaneCount(fixture)).toBe(0);
   });
 
   it('collapses the terminal row to its header', async () => {
@@ -1043,7 +1043,7 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'feature')).toHaveLength(1);
   });
 
-  it('expands an empty terminal section without starting a shell', async () => {
+  it('starts one terminal when an empty terminal section expands', async () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
@@ -1061,16 +1061,28 @@ describe('branch terminal', () => {
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalRowHeight).toBe(300);
 
     clickCollapse(fixture);
-    expect(terminalCount(fixture, 'feature')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(visiblePaneCount(fixture)).toBe(1);
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(tabNames(fixture)).toHaveLength(1);
     expect(terminalRowHeight(
       (fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement).parentElement as HTMLElement,
     )).toBe(300);
+  });
 
-    clickControl(fixture, 'New');
-    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+  it('starts one tmux session when an empty terminal section expands', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listTmuxSessions();
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    clickCollapse(fixture);
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
+
     expect(visiblePaneCount(fixture)).toBe(1);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
   });
 
   it('leaves the saved arrangement in place when the terminal section is maximized', async () => {
@@ -1163,11 +1175,12 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
 
     clickCollapse(fixture);
-    expect(terminalCount(fixture, 'feature')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(visiblePaneCount(fixture)).toBe(1);
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
 
-    clickCollapse(fixture);
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
     clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 

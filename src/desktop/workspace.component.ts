@@ -3082,9 +3082,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!branch) {
       return;
     }
+    const expanding = this.sectionFor(branch) === 'collapsed';
     const keepShare = this.changesShare() !== null;
-    if (this.sectionFor(branch) === 'collapsed') {
+    if (expanding) {
       this.setSection(branch, 'docked');
+      if (this.terminalCount(branch) === 0) {
+        this.newTerminal();
+      }
     } else {
       this.setSection(branch, 'collapsed');
     }

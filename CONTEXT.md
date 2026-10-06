@@ -1,6 +1,11 @@
 # Git workspace manager
 
-git-manager is the desktop app for one workspace at a time, with a checkout per branch. The window holds the open repository tabs.
+git-worktree-manager is the desktop app for one workspace at a time, with a checkout per branch. The window holds the open repository tabs.
+
+The project is git-worktree-manager. It was renamed from git-manager.
+docs/research/, .cursor/plans/, and .scratch/ still use the old name.
+Do not rename them. The app does not read or write the old config paths
+or the GIT_MANAGER_* environment variables.
 
 ## Language
 

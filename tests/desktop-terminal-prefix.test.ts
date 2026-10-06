@@ -19,7 +19,7 @@ import {
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-prefix-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-prefix-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
@@ -54,7 +54,7 @@ function startUntaggedSession(name: string, cwd: string): void {
 function writeSettings(root: string, settings: Record<string, string>): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, `${JSON.stringify(settings)}\n`);
-  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+  process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
 }
 
 function branchRow(fixture: ComponentFixture<WorkspaceComponent>, name: string): HTMLElement {
@@ -195,11 +195,11 @@ describe('branch tmux session prefix', () => {
   let previousSettings: string | undefined;
 
   beforeEach(() => {
-    previousRegistry = process.env.GIT_MANAGER_REGISTRY_PATH;
-    previousSettings = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
-    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-prefix-settings-'));
+    previousRegistry = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+    previousSettings = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-prefix-settings-'));
     roots.push(settingsRoot);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
     TestBed.resetTestingModule();
   });
 
@@ -216,19 +216,19 @@ describe('branch tmux session prefix', () => {
       rmSync(root, { recursive: true, force: true });
     }
     if (previousRegistry === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistry;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistry;
     }
     if (previousSettings === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettings;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousSettings;
     }
   });
 
   it('does not list a feature/foo session for feature-foo', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const expected = `gm_${hash}_feature/foo_1`;
@@ -240,7 +240,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('does not list a feature-foo session for feature/foo', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const expected = `gm_${hash}_feature-foo_1`;
@@ -252,8 +252,8 @@ describe('branch tmux session prefix', () => {
   });
 
   it('does not list a tagged session from another repository', () => {
-    const left = createDirectory('git-manager-prefix-left-');
-    const right = createDirectory('git-manager-prefix-right-');
+    const left = createDirectory('git-worktree-manager-prefix-left-');
+    const right = createDirectory('git-worktree-manager-prefix-right-');
     roots.push(left, right);
     const leftName = `gm_${repoHash(left)}_feature_1`;
     const rightName = `gm_${repoHash(right)}_feature_1`;
@@ -267,7 +267,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('keeps a tmux-safe branch name in the session', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const expected = `gm_${hash}_feature_1`;
@@ -278,7 +278,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('does not reuse the index of a recognized session', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const legacy = `gm_${hash}_feature-foo_1`;
@@ -294,7 +294,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves an existing untagged session untagged', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const existing = `gm_${hash}_feature-foo_1`;
@@ -306,7 +306,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('matches a slash or hex-encoded app session and ignores a session that is not the app', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const slash = `gm_${hash}_feature/foo_1`;
@@ -325,7 +325,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('encodes a dot or colon so the session stays distinct from a hyphenated branch', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const dotted = `gm_${hash}_feature-2efoo/${branchHash('feature.foo')}_1`;
@@ -345,7 +345,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('still lists an untagged legacy session for the branch that created it', () => {
-    const repo = createDirectory('git-manager-prefix-');
+    const repo = createDirectory('git-worktree-manager-prefix-');
     roots.push(repo);
     const hash = repoHash(repo);
     const legacySlash = `gm_${hash}_feature-foo_1`;
@@ -359,7 +359,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('tags an untagged feature session when that branch is the only match and does not ask', async () => {
-    const repo = createRepo('git-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
+    const repo = createRepo('git-worktree-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
     roots.push(repo.root);
     const session = `gm_${repoHash(repo.repo)}_feature_1`;
     startUntaggedSession(session, repo.repo);
@@ -375,7 +375,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('tags an untagged feature-foo session as feature/foo when that is the only match and keeps the old name', async () => {
-    const repo = createRepo('git-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    const repo = createRepo('git-worktree-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
     roots.push(repo.root);
     const hash = repoHash(repo.repo);
     const session = `gm_${hash}_feature-foo_1`;
@@ -392,7 +392,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('does not list a silently tagged session for a branch created later with the same old name', async () => {
-    const repo = createRepo('git-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    const repo = createRepo('git-worktree-manager-prefix-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
     roots.push(repo.root);
     const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
     startUntaggedSession(session, repo.repo);
@@ -406,7 +406,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('asks before keeping an untagged session that matches two branches', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -431,7 +431,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('lists each ambiguous session and tags a session that matches one branch', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
       { name: 'topic', folder: 'topic' },
@@ -461,7 +461,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('keeps the old name and lists the session only for the branch the person chooses', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -488,7 +488,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('ends the session when the person chooses Kill', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -524,7 +524,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves an ambiguous session unchanged and still opens the workspace', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -560,13 +560,13 @@ describe('branch tmux session prefix', () => {
   });
 
   it('asks again when that repository is opened after a session was left unchanged', async () => {
-    const harbor = createRepo('git-manager-prefix-harbor-', [
+    const harbor = createRepo('git-worktree-manager-prefix-harbor-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
-    const atlas = createRepo('git-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
+    const atlas = createRepo('git-worktree-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
     roots.push(harbor.root, atlas.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     const session = `gm_${repoHash(harbor.repo)}_feature-foo_1`;
@@ -605,7 +605,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves a session running and does not ask when its old name matches no branch', async () => {
-    const repo = createRepo('git-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
+    const repo = createRepo('git-worktree-manager-prefix-', [{ name: 'feature', folder: 'feature' }]);
     roots.push(repo.root);
     const session = `gm_${repoHash(repo.repo)}_retired_1`;
     startUntaggedSession(session, repo.repo);
@@ -620,7 +620,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves a tmux session that is not the app running and out of the question', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -642,10 +642,10 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves an old session for another repository until that repository is opened', async () => {
-    const harbor = createRepo('git-manager-prefix-harbor-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
-    const atlas = createRepo('git-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
+    const harbor = createRepo('git-worktree-manager-prefix-harbor-', [{ name: 'feature/foo', folder: 'slash-foo' }]);
+    const atlas = createRepo('git-worktree-manager-prefix-atlas-', [{ name: 'feature', folder: 'feature' }]);
     roots.push(harbor.root, atlas.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     const harborSession = `gm_${repoHash(harbor.repo)}_feature-foo_1`;
@@ -672,7 +672,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves the remaining sessions unchanged when Escape closes the question', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -697,7 +697,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('leaves the remaining sessions unchanged when the question backdrop is clicked', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -728,12 +728,12 @@ describe('branch tmux session prefix', () => {
   });
 
   it('does not ask again during the same open after a session is left unchanged', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
     roots.push(repo.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repo.root, 'registry.db');
     addRepository(repo.repo, 'Billing');
     const session = `gm_${repoHash(repo.repo)}_feature-foo_1`;
     startUntaggedSession(session, repo.repo);
@@ -761,7 +761,7 @@ describe('branch tmux session prefix', () => {
   });
 
   it('keeps New, Split, and Kill on one branch off the other branch', async () => {
-    const repo = createRepo('git-manager-prefix-', [
+    const repo = createRepo('git-worktree-manager-prefix-', [
       { name: 'feature/foo', folder: 'slash-foo' },
       { name: 'feature-foo', folder: 'feature-foo' },
     ]);
@@ -836,15 +836,15 @@ describe('branch tmux session prefix', () => {
   });
 
   it('kills a slash-branch session for a repository that is not open and leaves other sessions', async () => {
-    const harbor = createRepo('git-manager-prefix-harbor-', [
+    const harbor = createRepo('git-worktree-manager-prefix-harbor-', [
       { name: 'feature/foo', folder: 'slash-foo' },
     ]);
-    const atlas = createRepo('git-manager-prefix-atlas-', [
+    const atlas = createRepo('git-worktree-manager-prefix-atlas-', [
       { name: 'feature', folder: 'feature' },
     ]);
     roots.push(harbor.root, atlas.root);
     writeSettings(harbor.root, { terminalMode: 'tmux' });
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     startUntaggedSession('outside-kept', harbor.root);

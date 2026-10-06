@@ -12,19 +12,19 @@ import {
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-tabs-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-desktop-tabs-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
 process.env.GIT_TERMINAL_PROMPT = '0';
 
 function createRepo(): { root: string; repo: string } {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-tabs-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-tabs-'));
   const repo = join(root, 'billing');
   mkdirSync(repo);
   execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repo, stdio: 'ignore' });
   writeFileSync(join(repo, 'README'), 'hi\n');
   execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
@@ -244,28 +244,28 @@ function renameFrom(fixture: ComponentFixture<WorkspaceComponent>, target: Eleme
 function useTmuxMode(root: string): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, '{"terminalMode":"tmux"}\n');
-  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+  process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
 }
 
 describe('terminal tabs', () => {
   let root = '';
   let settingsRoot = '';
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
-  const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+  const previousSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
-    settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-tabs-settings-'));
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+    settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-tabs-settings-'));
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
   });
 
   afterEach(() => {
     fixture?.destroy();
     fixture = undefined;
     if (previousSettingsPath === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
     }
     if (root) {
       for (const name of listTmuxSessions()) {
@@ -390,7 +390,7 @@ describe('terminal tabs', () => {
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]') as HTMLElement;
     Object.defineProperty(split.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 200 });
-    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
     const before = readFileSync(settingsPath, 'utf8');
     split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 0, clientY: 0 }));
     split.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 0 }));

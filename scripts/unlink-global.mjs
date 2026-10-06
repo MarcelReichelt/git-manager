@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 const binDir = join(homedir(), '.local', 'bin');
-const candidates = [join(binDir, 'git-manager'), join(binDir, 'git-manager.cmd')];
+const candidates = [join(binDir, 'git-worktree-manager'), join(binDir, 'git-worktree-manager.cmd')];
 
 const removed = candidates.filter((linkPath) => {
   if (!existsSync(linkPath)) {
@@ -16,5 +16,5 @@ const removed = candidates.filter((linkPath) => {
 });
 
 if (removed.length === 0) {
-  console.log('No global git-manager link found.');
+  console.log('No global git-worktree-manager link found.');
 }

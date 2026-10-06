@@ -16,7 +16,7 @@ import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
 import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
@@ -24,14 +24,14 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 
 describe('desktop workspace', () => {
   const roots: string[] = [];
-  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
-  const previousAppSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+  const previousAppSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
   let restoreSearch: (() => void) | undefined;
 
   beforeEach(() => {
-    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-desktop-settings-'));
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-settings-'));
     roots.push(settingsRoot);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
   });
 
   afterEach(() => {
@@ -45,14 +45,14 @@ describe('desktop workspace', () => {
     restoreSearch?.();
     restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
     if (previousAppSettingsPath === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
     }
     const removing = roots.splice(0);
     for (const name of listTmuxSessions()) {
@@ -99,8 +99,8 @@ describe('desktop workspace', () => {
   }
 
   function renderRepository(repoPath: string) {
-    if (!process.env.GIT_MANAGER_REGISTRY_PATH) {
-      process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    if (!process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH) {
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     }
     return setupWorkspace((fixture) => {
       fixture.componentRef.setInput('repositoryPath', repoPath);
@@ -117,7 +117,7 @@ describe('desktop workspace', () => {
   }
 
   function registerPair(): { pier: string; quay: string } {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -132,7 +132,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(pier, '.workspaces'));
     git(pier, ['branch', 'feature']);
     git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     return { pier, quay };
@@ -475,9 +475,9 @@ describe('desktop workspace', () => {
   });
 
   it('saves Sibling as soon as it is chosen and shows that choice when App settings reopens', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -517,9 +517,9 @@ describe('desktop workspace', () => {
   });
 
   it('saves the IDE command as soon as it changes and shows it when App settings reopens', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -557,8 +557,8 @@ describe('desktop workspace', () => {
   it('shows a disabled IDE button to the right of the selected branch name while the command is empty', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
@@ -587,9 +587,9 @@ describe('desktop workspace', () => {
 
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"ideCommand":"code -n {folder}"}\n');
 
     const fixture = await renderRepository(repoPath);
@@ -618,9 +618,9 @@ describe('desktop workspace', () => {
 
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"ideCommand":"code -n {folder}"}\n');
     git(repoPath, ['branch', 'feature']);
     const checkout = join(repoPath, '.workspaces', 'feature');
@@ -649,8 +649,8 @@ describe('desktop workspace', () => {
 
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
@@ -686,9 +686,9 @@ describe('desktop workspace', () => {
 
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"ideCommand":"cursor"}\n');
 
     const fixture = await renderRepository(repoPath);
@@ -705,9 +705,9 @@ describe('desktop workspace', () => {
   it('shows a shell failure from the IDE command on the workspace', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"ideCommand":"exit 9"}\n');
 
     const fixture = await renderRepository(repoPath);
@@ -730,10 +730,10 @@ describe('desktop workspace', () => {
       launched.push('launched');
     });
 
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-ide-missing-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-ide-missing-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"ideCommand":"cursor"}\n');
 
     const fixture = await render();
@@ -758,9 +758,9 @@ describe('desktop workspace', () => {
   });
 
   it('offers sidebar and content color choosers and a reset button in App settings', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -803,9 +803,9 @@ describe('desktop workspace', () => {
   });
 
   it('applies a curated sidebar color from the swatch and still accepts a custom color', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -844,9 +844,9 @@ describe('desktop workspace', () => {
   });
 
   it('paints the open window with the chosen sidebar color and keeps the selected row white', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -878,9 +878,9 @@ describe('desktop workspace', () => {
   });
 
   it('paints the content sheet, dialogs, and light buttons with the chosen content color', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -912,9 +912,9 @@ describe('desktop workspace', () => {
   });
 
   it('shows the saved colors when the workspace is opened again', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const first = await render();
     first.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -954,10 +954,10 @@ describe('desktop workspace', () => {
   });
 
   it('restores the original colors and leaves a saved Sibling layout in place', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"defaultLayout":"sibling","ideCommand":"cursor"}\n');
 
     const fixture = await render();
@@ -1002,9 +1002,9 @@ describe('desktop workspace', () => {
   });
 
   it('offers white or black sidebar text and reset restores white on the worktrees region', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -1063,7 +1063,7 @@ describe('desktop workspace', () => {
   it('offers the same sidebar color controls and white or black sidebar text in repository settings', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
     fixture.detectChanges();
@@ -1116,7 +1116,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
@@ -1130,7 +1130,7 @@ describe('desktop workspace', () => {
     dialog.querySelector('[data-testid="repository-sidebar-text-white"]').click();
     fixture.detectChanges();
 
-    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
     expect(TOML.parse(readFileSync(configPath, 'utf8'))).toEqual({
       appearance: { sidebar_color: '#1a3c2b', sidebar_text: 'white' },
     });
@@ -1161,12 +1161,12 @@ describe('desktop workspace', () => {
   it('uses app settings on the worktrees region until a repository sets its own sidebar', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     const fixture = await renderRepository(repoPath);
 
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(26, 60, 43)');
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
-    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+    expect(existsSync(join(repoPath, '.git-worktree-manager', 'config.toml'))).toBe(false);
 
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
     fixture.detectChanges();
@@ -1189,17 +1189,17 @@ describe('desktop workspace', () => {
     expect(readAppSettings().sidebarText).toBe('black');
     expect(readAppSettings().contentColor).toBe('#abcdef');
     expect(readAppSettings().terminalBackground).toBe('#065f46');
-    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+    expect(existsSync(join(repoPath, '.git-worktree-manager', 'config.toml'))).toBe(false);
   });
 
   it('keeps a repository sidebar when app settings change and clears one choice with Use app settings', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       ['[layout]', 'mode = "sibling"', '', '[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join(
         '\n',
       ),
@@ -1240,7 +1240,7 @@ describe('desktop workspace', () => {
 
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
-    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'))).toEqual({
       layout: { mode: 'sibling' },
       appearance: { sidebar_text: 'black' },
     });
@@ -1250,7 +1250,7 @@ describe('desktop workspace', () => {
 
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
     expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
-    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'))).toEqual({
       layout: { mode: 'sibling' },
     });
     expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
@@ -1259,7 +1259,7 @@ describe('desktop workspace', () => {
   });
 
   it('paints each open repository from its own sidebar or from app settings, including a repository with no path', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1271,13 +1271,13 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -1324,7 +1324,7 @@ describe('desktop workspace', () => {
   });
 
   it('paints every repository tab with that repository sidebar color and sidebar text', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1336,13 +1336,13 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -1368,7 +1368,7 @@ describe('desktop workspace', () => {
   });
 
   it('frames the selected repository tab in its sidebar text color', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1380,13 +1380,13 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -1421,7 +1421,7 @@ describe('desktop workspace', () => {
   });
 
   it('paints the window bar from the selected workspace sidebar color and sidebar text', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1433,13 +1433,13 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -1484,7 +1484,7 @@ describe('desktop workspace', () => {
   });
 
   it('updates a repository tab as soon as that repository sidebar color or sidebar text changes', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1496,13 +1496,13 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -1548,7 +1548,7 @@ describe('desktop workspace', () => {
   });
 
   it('follows a later app settings change for a sidebar choice the repository has not stored', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -1560,18 +1560,18 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    mkdirSync(join(pier, '.git-manager'), { recursive: true });
+    mkdirSync(join(pier, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(pier, '.git-manager', 'config.toml'),
+      join(pier, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_text = "white"', ''].join('\n'),
     );
-    mkdirSync(join(quay, '.git-manager'), { recursive: true });
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(quay, '.git-manager', 'config.toml'),
+      join(quay, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#1a3c2b"', ''].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#1a3c2b","sidebarText":"white"}\n');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
@@ -1631,9 +1631,9 @@ describe('desktop workspace', () => {
   });
 
   it('follows app settings when the open repository has no path for its own sidebar', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     writeFileSync(join(root, 'app-settings.json'), '{"sidebarColor":"#065f46","sidebarText":"black"}\n');
 
     const fixture = await render();
@@ -1661,9 +1661,9 @@ describe('desktop workspace', () => {
   });
 
   it('names the app default layout on the create dialog for sample Harbor', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
 
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
@@ -1696,8 +1696,8 @@ describe('desktop workspace', () => {
   it('uses the app default for a repository with no layout mode', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(repoPath, 'Harbor');
     git(repoPath, ['branch', 'notes']);
     const fixture = await renderRepository(repoPath);
@@ -1736,12 +1736,12 @@ describe('desktop workspace', () => {
   it('names the repository layout even when the app default differs', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -1754,7 +1754,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
     fixture.detectChanges();
     writeFileSync(settingsPath, '{"defaultLayout":"workspaces"}\n');
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
     fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="create-layout"]').textContent.trim()).toBe(
@@ -1765,13 +1765,13 @@ describe('desktop workspace', () => {
   it('shows an unsupported repository layout and still refuses to create it', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
     git(repoPath, ['branch', 'notes']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
     addRepository(repoPath, 'Harbor');
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
@@ -1867,7 +1867,7 @@ describe('desktop workspace', () => {
 
   it('ellipsizes a repository tab and shows the full display name as its tooltip', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     const displayName = 'North Harbor Warehouse and Dry Dock';
     addRepository(repoPath, displayName);
     const fixture = await renderRepository(repoPath);
@@ -1884,13 +1884,13 @@ describe('desktop workspace', () => {
   });
 
   it('scrolls repository tabs together with + and scrolls the selected tab into view', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
     initGitRepo(pier);
     initGitRepo(quay);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     const scrolled: Element[] = [];
@@ -1943,7 +1943,7 @@ describe('desktop workspace', () => {
   });
 
   it('appends a repository tab when a registered repository is opened and does not reorder it', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const alpha = join(root, 'a-alpha');
     const beta = join(root, 'b-beta');
@@ -1963,7 +1963,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(alpha, '.workspaces'));
     git(alpha, ['branch', 'feature']);
     git(alpha, ['worktree', 'add', join(alpha, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(gamma, 'Gamma');
     addRepository(alpha, 'Alpha');
     addRepository(beta, 'Beta');
@@ -2009,11 +2009,11 @@ describe('desktop workspace', () => {
   });
 
   it('keeps Add repository on the card when every registered repository already has a tab', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     const fixture = await renderLive();
     expect(fixture.nativeElement.querySelector('[data-testid="repositories-empty"]')).toBeNull();
@@ -2029,13 +2029,13 @@ describe('desktop workspace', () => {
   });
 
   it('registers a repository from an open card without opening it', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
     initGitRepo(pier);
     initGitRepo(quay);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     setFolderBrowser(async () => quay);
     const fixture = await renderLive();
@@ -2252,14 +2252,14 @@ describe('desktop workspace', () => {
     const openedDialog = opened.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(openedDialog.querySelector('[data-testid="repository-location"]').textContent).toBe(repoPath);
 
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
     writeFileSync(join(pier, 'README.md'), '# pier\n');
     git(pier, ['add', '.']);
     git(pier, ['commit', '-m', 'init']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
 
     const live = await renderLive();
@@ -2315,7 +2315,7 @@ describe('desktop workspace', () => {
   it('shows the app default worktree mode in repository settings without writing a config', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
     fixture.detectChanges();
@@ -2343,7 +2343,7 @@ describe('desktop workspace', () => {
     expect(heading.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(source.compareDocumentPosition(workspaces) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(sibling.compareDocumentPosition(remotes) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+    expect(existsSync(join(repoPath, '.git-worktree-manager', 'config.toml'))).toBe(false);
 
     const workspacesLabel = workspaces.closest('label');
     const siblingLabel = sibling.closest('label');
@@ -2372,8 +2372,8 @@ describe('desktop workspace', () => {
   it('saves Sibling from repository settings and creates the next worktree beside the repository', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     addRepository(repoPath, 'Harbor');
     git(repoPath, ['branch', 'notes']);
     const fixture = await renderRepository(repoPath);
@@ -2386,7 +2386,7 @@ describe('desktop workspace', () => {
     layoutChoice(dialog, 'Sibling').click();
     fixture.detectChanges();
 
-    const configPath = join(repoPath, '.git-manager', 'config.toml');
+    const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
     expect(readFileSync(configPath, 'utf8')).toContain('mode = "sibling"');
     expect(dialog.querySelector('[data-testid="worktree-mode-source"]').textContent.trim()).toBe(
       'Sibling, set by this repository',
@@ -2394,7 +2394,7 @@ describe('desktop workspace', () => {
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(false);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(true);
     expect(readdirSync(root).sort()).toEqual(parentBefore);
-    expect(readdirSync(repoPath).sort()).toEqual([...repoBefore, '.git-manager'].sort());
+    expect(readdirSync(repoPath).sort()).toEqual([...repoBefore, '.git-worktree-manager'].sort());
     expect(existsSync(join(repoPath, '.workspaces'))).toBe(false);
     expect(existsSync(join(root, 'notes'))).toBe(false);
 
@@ -2422,10 +2422,10 @@ describe('desktop workspace', () => {
   it('shows an unsupported worktree mode with neither choice selected and replaces it with Workspaces', async () => {
     const repoPath = createEmptyRepository(roots);
     const root = join(repoPath, '..');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       ['[layout]', 'workspaces_dir = ".workspaces"', 'mode = "custom"', '', '[copy]', 'files = [".env"]', ''].join('\n'),
     );
     const fixture = await renderRepository(repoPath);
@@ -2447,16 +2447,16 @@ describe('desktop workspace', () => {
     );
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
-    expect(TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'))).toEqual({
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'))).toEqual({
       layout: { workspaces_dir: '.workspaces', mode: 'workspaces' },
       copy: { files: ['.env'] },
     });
   });
 
   it('leaves the app default in place when the repository has no path on disk', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-app-settings-'));
     roots.push(root);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -2477,7 +2477,7 @@ describe('desktop workspace', () => {
     );
     expect(layoutChoice(dialog, 'Workspaces').checked).toBe(true);
     expect(layoutChoice(dialog, 'Sibling').checked).toBe(false);
-    expect(existsSync(join(root, '.git-manager', 'config.toml'))).toBe(false);
+    expect(existsSync(join(root, '.git-worktree-manager', 'config.toml'))).toBe(false);
   });
 
   it('lists each git remote once with its name and fetch URL', async () => {
@@ -2912,9 +2912,9 @@ describe('desktop workspace', () => {
       ).borderRadius,
     ).toBe('8px');
 
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const live = await renderLive();
     live.nativeElement.querySelector('[data-testid="add-repository"]').click();
     live.detectChanges();
@@ -3090,7 +3090,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'done']);
     git(repoPath, ['update-ref', 'refs/remotes/origin/done', sha]);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'done'), 'done']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3112,7 +3112,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'hold']);
     git(repoPath, ['update-ref', 'refs/remotes/origin/master', sha]);
     git(repoPath, ['update-ref', 'refs/remotes/origin/hold', sha]);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3149,7 +3149,7 @@ describe('desktop workspace', () => {
 
   it('creates a worktree for a branch that exists only on a non-origin remote', async () => {
     const repoPath = createPickerRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3171,7 +3171,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     const sha = git(repoPath, ['rev-parse', 'HEAD']);
     git(repoPath, ['update-ref', 'refs/remotes/origin/feature', sha]);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3195,15 +3195,15 @@ describe('desktop workspace', () => {
     git(repoPath, ['remote', 'add', 'origin', remotePath]);
     git(repoPath, ['push', '-u', 'origin', 'master']);
     execFileSync('git', ['clone', remotePath, otherPath], { stdio: 'ignore' });
-    git(otherPath, ['config', 'user.name', 'git-manager test']);
-    git(otherPath, ['config', 'user.email', 'test@git-manager.local']);
+    git(otherPath, ['config', 'user.name', 'git-worktree-manager test']);
+    git(otherPath, ['config', 'user.email', 'test@git-worktree-manager.local']);
     git(otherPath, ['checkout', '-b', 'feature']);
     writeFileSync(join(otherPath, 'feature.txt'), 'from remote\n');
     git(otherPath, ['add', 'feature.txt']);
     git(otherPath, ['commit', '-m', 'add feature']);
     git(otherPath, ['push', '-u', 'origin', 'feature']);
     git(repoPath, ['fetch', 'origin']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3232,7 +3232,7 @@ describe('desktop workspace', () => {
     const sha = git(repoPath, ['rev-parse', 'HEAD']);
     git(repoPath, ['branch', 'notes']);
     git(repoPath, ['update-ref', 'refs/remotes/origin/feature', sha]);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3274,7 +3274,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['add', 'local.txt']);
     git(repoPath, ['commit', '-m', 'local only']);
     const head = git(repoPath, ['rev-parse', 'HEAD']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3309,7 +3309,7 @@ describe('desktop workspace', () => {
     execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
     git(repoPath, ['remote', 'add', 'origin', remotePath]);
     git(repoPath, ['push', '-u', 'origin', 'master']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3346,7 +3346,7 @@ describe('desktop workspace', () => {
 
   it('reports that a local-only branch has no remote to push to', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -3613,7 +3613,7 @@ describe('desktop workspace', () => {
   it('closes the branch menu without updating, merging, or removing the worktree', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4189,7 +4189,7 @@ describe('desktop workspace', () => {
 
   it('titles a registered repository with its display name', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
 
     const fixture = await renderRepository(repoPath);
@@ -4208,7 +4208,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'zeta']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature-notes'), 'feature/notes']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4231,7 +4231,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'zeta']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4244,7 +4244,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'zeta']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature-login'), 'feature/login']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4254,7 +4254,7 @@ describe('desktop workspace', () => {
   it('omits the default branch when that checkout is on a feature branch', async () => {
     const repoPath = createEmptyRepository(roots, 'main');
     git(repoPath, ['checkout', '-b', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4265,7 +4265,7 @@ describe('desktop workspace', () => {
   it('omits master when the checkout is a feature branch', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['checkout', '-b', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4275,7 +4275,7 @@ describe('desktop workspace', () => {
   it('creates the notes worktree from the button', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'notes']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4310,7 +4310,7 @@ describe('desktop workspace', () => {
     const checkout = join(repoPath, '.workspaces', 'feature-notes');
     mkdirSync(checkout, { recursive: true });
     writeFileSync(join(checkout, 'keep.txt'), 'stay');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
@@ -4356,12 +4356,12 @@ describe('desktop workspace', () => {
         '',
       ].join('\n'),
     );
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       '[hooks]\nmodules = ["plugins/abort.ts"]\n',
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const fixture = await renderRepository(repoPath);
@@ -4414,9 +4414,9 @@ describe('desktop workspace', () => {
         '',
       ].join('\n'),
     );
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       [
         '[hooks]',
         'modules = ["plugins/mark.ts"]',
@@ -4426,7 +4426,7 @@ describe('desktop workspace', () => {
         '',
       ].join('\n'),
     );
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4450,9 +4450,9 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     writeFileSync(join(repoPath, '.env'), 'SECRET=1\n');
     git(repoPath, ['branch', 'notes']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[copy]\nfiles = [".env"]\n');
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[copy]\nfiles = [".env"]\n');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4475,7 +4475,7 @@ describe('desktop workspace', () => {
 
   it('leaves the branch list unchanged when create is cancelled', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4533,7 +4533,7 @@ describe('desktop workspace', () => {
   it('omits a branch that has no worktree', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4547,7 +4547,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
     git(repoPath, ['checkout', '-b', 'other']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
 
@@ -4569,7 +4569,7 @@ describe('desktop workspace', () => {
   it('updates the branch worktree from master', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4623,7 +4623,7 @@ describe('desktop workspace', () => {
   it('merges the branch into master', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4654,7 +4654,7 @@ describe('desktop workspace', () => {
   it('squashes the branch into one master commit when squash is checked', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4684,7 +4684,7 @@ describe('desktop workspace', () => {
   it('does not merge into master when the merge dialog is cancelled', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4715,7 +4715,7 @@ describe('desktop workspace', () => {
   it('removes the worktree and drops that branch from the sidebar', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const checkout = join(repoPath, '.workspaces', 'feature');
     git(repoPath, ['worktree', 'add', checkout, 'feature']);
@@ -4735,9 +4735,9 @@ describe('desktop workspace', () => {
   });
 
   it('reads the registry on the centered card when the live query flag is set', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     const fixture = await renderLive();
     const card = fixture.nativeElement.querySelector('[data-testid="repository-card"]');
 
@@ -4751,7 +4751,7 @@ describe('desktop workspace', () => {
   });
 
   it('lists registered repositories on the card and opens that repository', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -4764,7 +4764,7 @@ describe('desktop workspace', () => {
     writeFileSync(join(quay, 'README.md'), '# quay\n');
     git(quay, ['add', '.']);
     git(quay, ['commit', '-m', 'init']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
 
@@ -4791,11 +4791,11 @@ describe('desktop workspace', () => {
   });
 
   it('adds a repository from the centered card', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => pier);
 
     const fixture = await renderLive();
@@ -4836,13 +4836,13 @@ describe('desktop workspace', () => {
   });
 
   it('suggests the repository name when a git directory is chosen', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const nested = join(pier, 'src');
     initGitRepo(pier, 'dock');
     mkdirSync(nested);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => nested);
 
     const fixture = await renderLive();
@@ -4864,11 +4864,11 @@ describe('desktop workspace', () => {
   });
 
   it('shows an error when the chosen directory is not a git repository', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const plain = join(root, 'plain');
     mkdirSync(plain);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => plain);
 
     const fixture = await renderLive();
@@ -4899,11 +4899,11 @@ describe('desktop workspace', () => {
   });
 
   it('suggests the directory name of a bare git repository', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const bare = join(root, 'pier.git');
     execFileSync('git', ['init', '--bare', bare], { stdio: 'ignore' });
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => bare);
 
     const fixture = await renderLive();
@@ -4919,13 +4919,13 @@ describe('desktop workspace', () => {
   });
 
   it('accepts a typed folder path and opens the chooser again from the folder button', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const plain = join(root, 'plain');
     initGitRepo(pier, 'dock');
     mkdirSync(plain);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
 
     const fixture = await renderLive();
     fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
@@ -4961,11 +4961,11 @@ describe('desktop workspace', () => {
   });
 
   it('shows an error and does not add a repository when the folder is not a git repository', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const plain = join(root, 'plain');
     mkdirSync(plain);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => plain);
 
     const fixture = await renderLive();
@@ -4991,9 +4991,9 @@ describe('desktop workspace', () => {
   });
 
   it('shows an error and does not add a repository when no folder is chosen', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
 
     const fixture = await renderLive();
     fixture.nativeElement.querySelector('[data-testid="add-repository"]').click();
@@ -5013,11 +5013,11 @@ describe('desktop workspace', () => {
   });
 
   it('shows an error and does not add a repository when the display name is blank', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     setFolderBrowser(async () => pier);
 
     const fixture = await renderLive();
@@ -5356,7 +5356,7 @@ describe('desktop workspace', () => {
   it('remembers the changes and commits share and the docked terminal height', async () => {
     const repoPath = createEmptyRepository(roots);
     const settingsPath = join(repoPath, '..', 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
 
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
@@ -5398,7 +5398,7 @@ describe('desktop workspace', () => {
   });
 
   it('remembers the changes column and the commit-files column across repositories', async () => {
-    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -5455,7 +5455,7 @@ describe('desktop workspace', () => {
   it('remembers a divider that was double-clicked', async () => {
     const repoPath = createEmptyRepository(roots);
     const settingsPath = join(repoPath, '..', 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
@@ -5490,7 +5490,7 @@ describe('desktop workspace', () => {
       settingsPath,
       '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240,"terminalExpanded":true}\n',
     );
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
@@ -5790,13 +5790,13 @@ describe('desktop workspace', () => {
   });
 
   it('leaves registered repositories unchanged when the add dialog is cancelled', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
     initGitRepo(pier);
     initGitRepo(quay);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     setFolderBrowser(async () => quay);
 
@@ -5825,14 +5825,14 @@ describe('desktop workspace', () => {
   });
 
   it('shows Opening until the repository list is ready', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
     writeFileSync(join(pier, 'README.md'), '# pier\n');
     git(pier, ['add', '.']);
     git(pier, ['commit', '-m', 'init']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     const fixture = await renderLive();
     const held = holdPaint();
@@ -5858,7 +5858,7 @@ describe('desktop workspace', () => {
   });
 
   it('prunes remote-tracking refs when a repository is opened from the card', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const origin = join(root, 'origin.git');
@@ -5870,7 +5870,7 @@ describe('desktop workspace', () => {
     git(pier, ['remote', 'add', 'origin', origin]);
     git(pier, ['push', '-u', 'origin', 'master']);
     git(pier, ['update-ref', 'refs/remotes/origin/stale', git(pier, ['rev-parse', 'HEAD'])]);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     const fixture = await renderLive();
 
@@ -5885,14 +5885,14 @@ describe('desktop workspace', () => {
   });
 
   it('leaves the selected branch in place when the open repository tab is clicked', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
     writeFileSync(join(pier, 'README.md'), '# pier\n');
     git(pier, ['add', '.']);
     git(pier, ['commit', '-m', 'init']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     const fixture = await renderLive();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
@@ -5919,7 +5919,7 @@ describe('desktop workspace', () => {
   });
 
   it('keeps the open workspace visible while another repository opens', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -5934,7 +5934,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(pier, '.workspaces'));
     git(pier, ['branch', 'feature']);
     git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     const fixture = await renderLive();
@@ -5987,7 +5987,7 @@ describe('desktop workspace', () => {
   });
 
   it('shows the same selected branch when an earlier repository is opened again', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -6002,7 +6002,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(pier, '.workspaces'));
     git(pier, ['branch', 'feature']);
     git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     const fixture = await renderLive();
@@ -6047,7 +6047,7 @@ describe('desktop workspace', () => {
   it('shows Loading branches before the create dialog lists names', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     const held = holdPaint();
@@ -6077,7 +6077,7 @@ describe('desktop workspace', () => {
   it('shows Creating worktree until the new row is listed', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
@@ -6105,7 +6105,7 @@ describe('desktop workspace', () => {
 
   it('reports an empty branch name without the creating hint', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
@@ -6123,7 +6123,7 @@ describe('desktop workspace', () => {
 
   it('shows Loading in the content until the worktree is open', async () => {
     const repoPath = createEmptyRepository(roots);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     const held = holdPaint();
@@ -6153,7 +6153,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
@@ -6182,7 +6182,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
@@ -6213,7 +6213,7 @@ describe('desktop workspace', () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
@@ -6231,14 +6231,14 @@ describe('desktop workspace', () => {
   });
 
   it('opens Repository settings and Close from a repository tab and shows no close icon', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     initGitRepo(pier);
     writeFileSync(join(pier, 'README.md'), '# pier\n');
     git(pier, ['add', '.']);
     git(pier, ['commit', '-m', 'init']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     const fixture = await renderLive();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
@@ -6303,9 +6303,9 @@ describe('desktop workspace', () => {
     pickColor(dialog.querySelector('[data-testid="repository-sidebar-color"]'), '#123456');
     fixture.detectChanges();
 
-    expect(readFileSync(join(pier, '.git-manager', 'config.toml'), 'utf8')).toContain('mode = "sibling"');
-    expect(readFileSync(join(pier, '.git-manager', 'config.toml'), 'utf8')).toContain('sidebar_color = "#123456"');
-    expect(existsSync(join(quay, '.git-manager', 'config.toml'))).toBe(false);
+    expect(readFileSync(join(pier, '.git-worktree-manager', 'config.toml'), 'utf8')).toContain('mode = "sibling"');
+    expect(readFileSync(join(pier, '.git-worktree-manager', 'config.toml'), 'utf8')).toContain('sidebar_color = "#123456"');
+    expect(existsSync(join(quay, '.git-worktree-manager', 'config.toml'))).toBe(false);
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
       'true',
     );
@@ -6419,7 +6419,7 @@ describe('desktop workspace', () => {
 
   it('shows the start screen when the last repository tab is closed', async () => {
     const { pier } = registerPair();
-    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH ?? '';
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
     const fixture = await renderLive();
     await openLiveRepository(fixture, 'Pier');
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
@@ -6529,7 +6529,7 @@ describe('desktop workspace', () => {
 
   it('ends the closed repository tab tmux session and leaves the other repository session running', async () => {
     const { pier, quay } = registerPair();
-    const settingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     if (!settingsPath) {
       throw new Error('App settings path is not set');
     }
@@ -6567,7 +6567,7 @@ describe('desktop workspace', () => {
   });
 
   it('reopens the repository tabs in the same order with the same one selected', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -6587,7 +6587,7 @@ describe('desktop workspace', () => {
     mkdirSync(join(pier, '.workspaces'));
     git(pier, ['branch', 'feature']);
     git(pier, ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     addRepository(dock, 'Dock');
@@ -6645,7 +6645,7 @@ describe('desktop workspace', () => {
   });
 
   it('skips a repository that is no longer registered and selects the next tab, or the previous one', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -6653,7 +6653,7 @@ describe('desktop workspace', () => {
     initGitRepo(pier);
     initGitRepo(quay);
     initGitRepo(dock);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     addRepository(dock, 'Dock');
@@ -6693,7 +6693,7 @@ describe('desktop workspace', () => {
   });
 
   it('skips a repository tab whose path is no longer a git repository', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
     const pier = join(root, 'pier');
     const quay = join(root, 'quay');
@@ -6701,7 +6701,7 @@ describe('desktop workspace', () => {
     initGitRepo(pier);
     initGitRepo(quay);
     initGitRepo(dock);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(pier, 'Pier');
     addRepository(quay, 'Quay');
     addRepository(dock, 'Dock');
@@ -6792,7 +6792,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['push', '-u', 'origin', 'master']);
     git(repoPath, ['branch', 'feature']);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
     git(repoPath, ['update-ref', 'refs/remotes/origin/stale', git(repoPath, ['rev-parse', 'HEAD'])]);
@@ -7057,7 +7057,7 @@ function scrollCommitList(
 }
 
 function createLongHistoryRepository(roots: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
   roots.push(root);
   const repoPath = join(root, 'harbor');
   initGitRepo(repoPath);
@@ -7145,7 +7145,7 @@ function createPickerRepository(roots: string[]): string {
 }
 
 function createEmptyRepository(roots: string[], branch = 'master'): string {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
   roots.push(root);
   const repoPath = join(root, 'harbor');
   initGitRepo(repoPath, branch);
@@ -7156,7 +7156,7 @@ function createEmptyRepository(roots: string[], branch = 'master'): string {
 }
 
 function createRewriteRepository(roots: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-desktop-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
   roots.push(root);
   const repoPath = join(root, 'harbor');
   mkdirSync(join(repoPath, 'docs'), { recursive: true });
@@ -7186,11 +7186,11 @@ function createRewriteRepository(roots: string[]): string {
 function initGitRepo(repoPath: string, branch = 'master'): void {
   mkdirSync(repoPath, { recursive: true });
   execFileSync('git', ['init', '-b', branch], { cwd: repoPath, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], {
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], {
     cwd: repoPath,
     stdio: 'ignore',
   });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], {
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], {
     cwd: repoPath,
     stdio: 'ignore',
   });

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-test-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-test-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
@@ -15,14 +15,14 @@ export function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-export function gitManagerEnv(registryPath: string): NodeJS.ProcessEnv {
+export function gitWorktreeManagerEnv(registryPath: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    GIT_MANAGER_REGISTRY_PATH: registryPath,
+    GIT_WORKTREE_MANAGER_REGISTRY_PATH: registryPath,
   };
 }
 
-export function runGitManager(
+export function runGitWorktreeManager(
   args: string[],
   env: NodeJS.ProcessEnv,
 ): SpawnSyncReturns<string> {
@@ -35,11 +35,11 @@ export function runGitManager(
 export function initGitRepo(path: string, branch = 'master'): void {
   mkdirSync(path, { recursive: true });
   execFileSync('git', ['init', '-b', branch], { cwd: path, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], {
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], {
     cwd: path,
     stdio: 'ignore',
   });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], {
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], {
     cwd: path,
     stdio: 'ignore',
   });

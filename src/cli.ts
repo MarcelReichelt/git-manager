@@ -5,7 +5,7 @@ import { mergeIntoMaster, updateFromMaster } from './merge.js';
 import { createWorktree, removeWorktree } from './worktrees.js';
 
 const program = new Command();
-program.name('git-manager');
+program.name('git-worktree-manager');
 
 program
   .command('add')

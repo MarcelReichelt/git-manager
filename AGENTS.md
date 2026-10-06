@@ -2,6 +2,13 @@
 
 The chat follows the user's language. Comments, code, issues, commits, and pull requests are English.
 
+## Name
+
+The project is git-worktree-manager. It was renamed from git-manager.
+docs/research/, .cursor/plans/, and .scratch/ still use the old name.
+Do not rename them. The app does not read or write the old config paths
+or the GIT_MANAGER_* environment variables.
+
 ## Agent skills
 
 ### Issue tracker

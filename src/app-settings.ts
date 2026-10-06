@@ -47,7 +47,7 @@ export interface RepositoryAppearance {
 
 export function resolveAppSettingsPath(env?: NodeJS.ProcessEnv): string {
   const settingsEnv = runtimeEnv(env);
-  return settingsEnv.GIT_MANAGER_APP_SETTINGS_PATH ?? join(homedir(), '.config', 'git-manager', 'app-settings.json');
+  return settingsEnv.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? join(homedir(), '.config', 'git-worktree-manager', 'app-settings.json');
 }
 
 export function createLayoutForRepository(
@@ -123,7 +123,7 @@ export function saveRepositoryLayoutMode(
   repoPath: string,
   mode: 'workspaces' | 'sibling',
 ): void {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   mkdirSync(dirname(configPath), { recursive: true });
   const current = readRepositoryConfig(configPath);
   const layout = isRecord(current.layout) ? { ...current.layout } : {};
@@ -342,7 +342,7 @@ function sidebarText(value: unknown): SidebarText {
 }
 
 function repositoryAppearance(repoPath: string): Record<string, unknown> {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   if (!existsSync(configPath)) {
     return {};
   }
@@ -357,7 +357,7 @@ function writeRepositoryAppearance(
   repoPath: string,
   update: (appearance: Record<string, unknown>) => void,
 ): void {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   mkdirSync(dirname(configPath), { recursive: true });
   const current = readRepositoryConfig(configPath);
   const appearance = isRecord(current.appearance) ? { ...current.appearance } : {};
@@ -367,7 +367,7 @@ function writeRepositoryAppearance(
 }
 
 function clearRepositoryAppearanceKey(repoPath: string, key: string): void {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   if (!existsSync(configPath)) {
     return;
   }
@@ -386,7 +386,7 @@ function clearRepositoryAppearanceKey(repoPath: string, key: string): void {
 }
 
 function readRepositoryLayoutMode(repoPath: string): string | undefined {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   if (!existsSync(configPath)) {
     return undefined;
   }

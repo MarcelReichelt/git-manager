@@ -4,14 +4,14 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   git,
-  gitManagerEnv,
+  gitWorktreeManagerEnv,
   initGitRepo,
   makeTempDir,
   removeTemp,
-  runGitManager,
+  runGitWorktreeManager,
 } from './run.js';
 
-describe('git-manager worktree create', () => {
+describe('git-worktree-manager worktree create', () => {
   const roots: string[] = [];
 
   afterEach(() => {
@@ -21,18 +21,18 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates a worktree under .workspaces', () => {
-    const root = makeTempDir('git-manager-workspaces-');
+    const root = makeTempDir('git-worktree-manager-workspaces-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
 
-    const added = runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
+    const added = runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
     expect(added.status).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -45,20 +45,20 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates a sibling worktree next to the repository', () => {
-    const root = makeTempDir('git-manager-sibling-');
+    const root = makeTempDir('git-worktree-manager-sibling-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
 
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
-    const added = runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    const added = runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env);
     expect(added.status).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -70,18 +70,41 @@ describe('git-manager worktree create', () => {
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(false);
   });
 
+  it('creates under .workspaces when only the old config directory is present', () => {
+    const root = makeTempDir('git-worktree-manager-old-config-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const env = gitWorktreeManagerEnv(registryPath);
+
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+
+    const created = runGitWorktreeManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+
+    expect(existsSync(resolve(repoPath, '.workspaces', 'login'))).toBe(true);
+    expect(existsSync(resolve(root, 'login'))).toBe(false);
+  });
+
   it('creates feature/foo in a feature-foo folder without renaming the branch', () => {
-    const root = makeTempDir('git-manager-sanitize-');
+    const root = makeTempDir('git-worktree-manager-sanitize-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'feature/foo']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
 
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'feature/foo', '--repo', 'Harbor'],
       env,
     );
@@ -93,15 +116,15 @@ describe('git-manager worktree create', () => {
   });
 
   it('stops when that folder already exists and leaves git unchanged', () => {
-    const root = makeTempDir('git-manager-exists-');
+    const root = makeTempDir('git-worktree-manager-exists-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
     const checkout = join(repoPath, '.workspaces', 'login');
@@ -110,7 +133,7 @@ describe('git-manager worktree create', () => {
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
     const branchesBefore = git(repoPath, ['branch', '--list']);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -123,21 +146,21 @@ describe('git-manager worktree create', () => {
   });
 
   it('uses the layout mode from the repository config when that key is set', () => {
-    const root = makeTempDir('git-manager-config-layout-');
+    const root = makeTempDir('git-worktree-manager-config-layout-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       '[layout]\nmode = "sibling"\n',
     );
-    const env = gitManagerEnv(registryPath);
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -150,7 +173,7 @@ describe('git-manager worktree create', () => {
   });
 
   it('fetches a remote-only branch before the create hook runs', () => {
-    const root = makeTempDir('git-manager-fetch-');
+    const root = makeTempDir('git-worktree-manager-fetch-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const remotePath = join(root, 'origin.git');
@@ -165,8 +188,8 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['remote', 'add', 'origin', remotePath]);
     git(repoPath, ['push', '-u', 'origin', 'master']);
     execFileSync('git', ['clone', remotePath, otherPath], { stdio: 'ignore' });
-    git(otherPath, ['config', 'user.name', 'git-manager test']);
-    git(otherPath, ['config', 'user.email', 'test@git-manager.local']);
+    git(otherPath, ['config', 'user.name', 'git-worktree-manager test']);
+    git(otherPath, ['config', 'user.email', 'test@git-worktree-manager.local']);
     git(otherPath, ['checkout', '-b', 'feature']);
     writeFileSync(join(otherPath, 'feature.txt'), 'from remote\n');
     git(otherPath, ['add', 'feature.txt']);
@@ -185,9 +208,9 @@ describe('git-manager worktree create', () => {
         '',
       ].join('\n'),
     );
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       '[hooks.pre_worktree_create]\ncommands = ["node hooks/mark.mjs"]\n',
     );
 
@@ -198,12 +221,12 @@ describe('git-manager worktree create', () => {
       }),
     ).toThrow();
 
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'feature', '--repo', 'Harbor'],
       env,
     );
@@ -219,7 +242,7 @@ describe('git-manager worktree create', () => {
   });
 
   it('leaves no worktree when a TypeScript plugin returns abort', () => {
-    const root = makeTempDir('git-manager-abort-');
+    const root = makeTempDir('git-worktree-manager-abort-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
@@ -238,18 +261,18 @@ describe('git-manager worktree create', () => {
         '',
       ].join('\n'),
     );
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       '[hooks]\nmodules = ["plugins/abort.ts"]\n',
     );
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -261,7 +284,7 @@ describe('git-manager worktree create', () => {
   });
 
   it('runs a shell command and a TypeScript plugin when creating a worktree', () => {
-    const root = makeTempDir('git-manager-both-hooks-');
+    const root = makeTempDir('git-worktree-manager-both-hooks-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
@@ -287,9 +310,9 @@ describe('git-manager worktree create', () => {
         '',
       ].join('\n'),
     );
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       [
         '[hooks]',
         'modules = ["plugins/mark.ts"]',
@@ -299,12 +322,12 @@ describe('git-manager worktree create', () => {
         '',
       ].join('\n'),
     );
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -315,24 +338,24 @@ describe('git-manager worktree create', () => {
   });
 
   it('copies .env into the worktree as a file that can be edited', () => {
-    const root = makeTempDir('git-manager-copy-');
+    const root = makeTempDir('git-worktree-manager-copy-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     writeFileSync(join(repoPath, '.env'), 'SECRET=1\n');
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       '[copy]\nfiles = [".env"]\n',
     );
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
-    const created = runGitManager(
+    const created = runGitWorktreeManager(
       ['worktree', 'create', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -346,43 +369,43 @@ describe('git-manager worktree create', () => {
   });
 
   it('lists only the repository after a worktree is created', () => {
-    const root = makeTempDir('git-manager-list-after-create-');
+    const root = makeTempDir('git-worktree-manager-list-after-create-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
     expect(
-      runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
     ).toBe(0);
 
-    const listed = runGitManager(['list'], env);
+    const listed = runGitWorktreeManager(['list'], env);
     expect(listed.stdout).toBe(`Harbor\t${resolve(repoPath)}\n`);
   });
 
   it('removes the worktree and leaves the branch', () => {
-    const root = makeTempDir('git-manager-remove-');
+    const root = makeTempDir('git-worktree-manager-remove-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     expect(
-      runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
     ).toBe(0);
     const checkout = resolve(repoPath, '.workspaces', 'login');
     expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
 
-    const removed = runGitManager(
+    const removed = runGitWorktreeManager(
       ['worktree', 'remove', 'login', '--repo', 'Harbor'],
       env,
     );
@@ -395,17 +418,17 @@ describe('git-manager worktree create', () => {
   });
 
   it('does not remove the primary checkout', () => {
-    const root = makeTempDir('git-manager-remove-primary-');
+    const root = makeTempDir('git-worktree-manager-remove-primary-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
 
-    const removed = runGitManager(
+    const removed = runGitWorktreeManager(
       ['worktree', 'remove', 'master', '--repo', 'Harbor'],
       env,
     );
@@ -415,7 +438,7 @@ describe('git-manager worktree create', () => {
   });
 
   it('leaves an existing workspaces checkout in place when the app default becomes Sibling', () => {
-    const root = makeTempDir('git-manager-app-default-stays-');
+    const root = makeTempDir('git-worktree-manager-app-default-stays-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
@@ -424,12 +447,12 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['branch', 'login']);
     git(repoPath, ['branch', 'notes']);
     const env = {
-      ...gitManagerEnv(registryPath),
-      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+      ...gitWorktreeManagerEnv(registryPath),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath,
     };
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
     expect(created.status).toBe(0);
     const existing = resolve(repoPath, '.workspaces', 'login');
     expect(existsSync(existing)).toBe(true);
@@ -437,7 +460,7 @@ describe('git-manager worktree create', () => {
 
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
 
-    const next = runGitManager(['worktree', 'create', 'notes', '--repo', 'Harbor'], env);
+    const next = runGitWorktreeManager(['worktree', 'create', 'notes', '--repo', 'Harbor'], env);
     expect(next.status).toBe(0);
     expect(existsSync(existing)).toBe(true);
     expect(git(existing, ['branch', '--show-current'])).toBe('login');
@@ -448,23 +471,23 @@ describe('git-manager worktree create', () => {
   });
 
   it('uses the repository Workspaces layout when the app default is Sibling', () => {
-    const root = makeTempDir('git-manager-repo-workspaces-');
+    const root = makeTempDir('git-worktree-manager-repo-workspaces-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
     const env = {
-      ...gitManagerEnv(registryPath),
-      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+      ...gitWorktreeManagerEnv(registryPath),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath,
     };
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
     expect(created.status).toBe(0);
     const checkout = resolve(repoPath, '.workspaces', 'login');
     expect(existsSync(checkout)).toBe(true);
@@ -473,23 +496,23 @@ describe('git-manager worktree create', () => {
   });
 
   it('uses the repository Sibling layout when the app default is Workspaces', () => {
-    const root = makeTempDir('git-manager-repo-sibling-');
+    const root = makeTempDir('git-worktree-manager-repo-sibling-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
     writeFileSync(settingsPath, '{"defaultLayout":"workspaces"}\n');
     const env = {
-      ...gitManagerEnv(registryPath),
-      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+      ...gitWorktreeManagerEnv(registryPath),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath,
     };
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
     expect(created.status).toBe(0);
     const checkout = resolve(root, 'login');
     expect(existsSync(checkout)).toBe(true);
@@ -498,24 +521,24 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates nothing when the repository layout mode is unsupported', () => {
-    const root = makeTempDir('git-manager-unsupported-layout-');
+    const root = makeTempDir('git-worktree-manager-unsupported-layout-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
     const env = {
-      ...gitManagerEnv(registryPath),
-      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+      ...gitWorktreeManagerEnv(registryPath),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath,
     };
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
 
-    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(1);
     expect(created.stderr).toContain('Unsupported layout: custom');
@@ -525,24 +548,24 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates nothing when the repository layout mode is not text', () => {
-    const root = makeTempDir('git-manager-unsupported-layout-number-');
+    const root = makeTempDir('git-worktree-manager-unsupported-layout-number-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     const settingsPath = join(root, 'app-settings.json');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'login']);
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = 1\n');
     writeFileSync(settingsPath, '{"defaultLayout":"sibling"}\n');
     const env = {
-      ...gitManagerEnv(registryPath),
-      GIT_MANAGER_APP_SETTINGS_PATH: settingsPath,
+      ...gitWorktreeManagerEnv(registryPath),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath,
     };
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
 
-    const created = runGitManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(1);
     expect(created.stderr).toContain('Unsupported layout: 1');
@@ -552,7 +575,7 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates a local branch when the name is not on the remote', () => {
-    const root = makeTempDir('git-manager-new-local-');
+    const root = makeTempDir('git-worktree-manager-new-local-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const remotePath = join(root, 'origin.git');
@@ -569,10 +592,10 @@ describe('git-manager worktree create', () => {
     git(repoPath, ['add', 'local.txt']);
     git(repoPath, ['commit', '-m', 'local only']);
     const head = git(repoPath, ['rev-parse', 'HEAD']);
-    const env = gitManagerEnv(registryPath);
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(0);
     expect(created.stderr).not.toContain('Command failed');
@@ -585,16 +608,16 @@ describe('git-manager worktree create', () => {
   });
 
   it('creates a new local branch with a slash in the name when there is no remote', () => {
-    const root = makeTempDir('git-manager-new-local-slash-');
+    const root = makeTempDir('git-worktree-manager-new-local-slash-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     const head = git(repoPath, ['rev-parse', 'HEAD']);
-    const env = gitManagerEnv(registryPath);
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
 
-    const created = runGitManager(['worktree', 'create', 'feature/foo', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'feature/foo', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(0);
     const checkout = resolve(repoPath, '.workspaces', 'feature-foo');
@@ -605,17 +628,17 @@ describe('git-manager worktree create', () => {
   });
 
   it('does not create a local branch when fetch fails for another reason', () => {
-    const root = makeTempDir('git-manager-fetch-unreadable-');
+    const root = makeTempDir('git-worktree-manager-fetch-unreadable-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['remote', 'add', 'origin', join(root, 'missing.git')]);
-    const env = gitManagerEnv(registryPath);
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
     const branchesBefore = git(repoPath, ['branch', '--list']);
 
-    const created = runGitManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', 'test', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(1);
     expect(created.stderr).toContain('does not appear to be a git repository');
@@ -625,16 +648,16 @@ describe('git-manager worktree create', () => {
   });
 
   it('asks for a branch name when the name is empty', () => {
-    const root = makeTempDir('git-manager-empty-branch-');
+    const root = makeTempDir('git-worktree-manager-empty-branch-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
-    const env = gitManagerEnv(registryPath);
-    expect(runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status).toBe(0);
     const worktreesBefore = git(repoPath, ['worktree', 'list']);
 
-    const created = runGitManager(['worktree', 'create', ' ', '--repo', 'Harbor'], env);
+    const created = runGitWorktreeManager(['worktree', 'create', ' ', '--repo', 'Harbor'], env);
 
     expect(created.status).toBe(1);
     expect(created.stderr).toContain('Enter a branch name');

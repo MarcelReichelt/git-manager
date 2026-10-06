@@ -1,13 +1,13 @@
 export type FolderBrowser = () => Promise<string | null>;
 
 interface FolderBrowserHost {
-  gitManager?: {
+  gitWorktreeManager?: {
     browseForFolder?: () => Promise<string | null>;
   };
 }
 
 async function hostFolderBrowser(): Promise<string | null> {
-  const browse = (globalThis as FolderBrowserHost).gitManager?.browseForFolder;
+  const browse = (globalThis as FolderBrowserHost).gitWorktreeManager?.browseForFolder;
   if (!browse) {
     return null;
   }

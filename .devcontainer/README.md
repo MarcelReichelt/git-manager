@@ -1,6 +1,6 @@
 # Dev Container
 
-Run and test `git-manager` in a clean **Linux** environment from Windows, so
+Run and test `git-worktree-manager` in a clean **Linux** environment from Windows, so
 POSIX paths, `~/.local/bin`, and the native `better-sqlite3` and `node-pty`
 builds behave the same way they do for a Linux user.
 
@@ -32,7 +32,7 @@ node dist/cli.js --help
 
 # Or install the global command (lands in ~/.local/bin, already on PATH)
 yarn link:global
-git-manager --help
+git-worktree-manager --help
 
 # Desktop window (needs a display). A new terminal is in-app.
 # App settings can choose tmux when tmux is on PATH.
@@ -47,4 +47,4 @@ yarn test
 - `node_modules` lives in a named Docker volume, so the Linux-built native
   binaries never clash with the Windows `node_modules` on your host.
 - No registry token is needed: all dependencies resolve from the public npm
-  registry (the private `@git-manager` scope is only used for publishing).
+  registry (the private `@git-worktree-manager` scope is only used for publishing).

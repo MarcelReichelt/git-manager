@@ -1,13 +1,13 @@
-appId: dev.mreichelt.git-manager
-productName: git-manager
-executableName: git-manager
+appId: dev.mreichelt.git-worktree-manager
+productName: "Git Worktree Manager"
+executableName: git-worktree-manager
 copyright: Copyright © 2026 Murakai
 directories:
   output: release
 extraMetadata:
   main: src/desktop/electron-main.mjs
   author: Murakai
-  desktopName: git-manager.desktop
+  desktopName: git-worktree-manager.desktop
 npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
@@ -51,7 +51,7 @@ linux:
   target:
     - AppImage
     - deb
-  executableName: git-manager
+  executableName: git-worktree-manager
   syncDesktopName: true
   maintainer: MarcelReichelt <marcelreichelt91@gmail.com>
   category: Development
@@ -69,16 +69,17 @@ mac:
   category: public.app-category.developer-tools
   icon: src/desktop/app-icon.png
 appImage:
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}
 deb:
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  packageName: git-worktree-manager
+  artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: ${productName}-${version}-${os}-${arch}-setup.${ext}
+  artifactName: git-worktree-manager-${version}-${os}-${arch}-setup.${ext}
 portable:
-  artifactName: ${productName}-${version}-${os}-${arch}-portable.${ext}
+  artifactName: git-worktree-manager-${version}-${os}-${arch}-portable.${ext}
 dmg:
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}
+artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}

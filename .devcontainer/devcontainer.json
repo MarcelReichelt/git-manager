@@ -1,5 +1,5 @@
 {
-  "name": "git-manager (Linux dev)",
+  "name": "git-worktree-manager (Linux dev)",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -9,7 +9,7 @@
   // in an isolated volume so it never collides with the Windows host's
   // node_modules that is bind-mounted alongside the source.
   "mounts": [
-    "source=git-manager-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+    "source=git-worktree-manager-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
   ],
 
   // Put the globally linked CLI (yarn link:global -> ~/.local/bin) on PATH.

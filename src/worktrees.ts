@@ -29,7 +29,7 @@ function folderName(branch: string): string {
 }
 
 function readRepoConfig(repoPath: string): RepoConfig {
-  const configPath = join(repoPath, '.git-manager', 'config.toml');
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
   if (!existsSync(configPath)) {
     return {};
   }

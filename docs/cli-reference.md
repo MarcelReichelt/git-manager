@@ -20,4 +20,4 @@ The registry stores each repository's path and display name. Layout is not a reg
 
 `--into-master` requires the primary checkout to be on `master`. Otherwise the error is `Primary checkout is on <branch>, not master`.
 
-`git-manager <command> --help` prints the flags for one command.
+`git-worktree-manager <command> --help` prints the flags for one command.

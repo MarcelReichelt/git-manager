@@ -1996,7 +1996,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private oldSessionRepo: string | null = null;
   private readonly repositoryWorkspaces = new Map<string, RepositoryWorkspace>();
   private readonly appSettingsEnv: NodeJS.ProcessEnv = {
-    GIT_MANAGER_APP_SETTINGS_PATH: resolveAppSettingsPath(),
+    GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: resolveAppSettingsPath(),
   };
   private persistOpenTabs = false;
   readonly terminalFont = signal(this.initialSettings.terminalFont);

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,13 +10,13 @@ import { addRepository, listRepositories, renameRepository, resolveRegistryPath 
 
 describe('registry schema', () => {
   const roots: string[] = [];
-  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
 
   afterEach(() => {
     if (previousRegistryPath === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
     for (const root of roots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
@@ -24,7 +24,7 @@ describe('registry schema', () => {
   });
 
   it('opens an empty registry when the file was created before display_name existed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-old-registry-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-old-registry-'));
     roots.push(root);
     const registryPath = join(root, 'registry.db');
     const db = new Database(registryPath);
@@ -45,7 +45,7 @@ describe('registry schema', () => {
     ).run('Harbor', '/repos/harbor', '/repos/harbor', 'main', 'in-place', '2020-01-01T00:00:00.000Z');
     db.close();
 
-    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = registryPath;
 
     expect(listRepositories()).toEqual([]);
 
@@ -56,7 +56,7 @@ describe('registry schema', () => {
   });
 
   it('replaces an older registry and adds a registered repository', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-legacy-registry-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-legacy-registry-'));
     roots.push(root);
     const registryPath = join(root, 'registry.db');
     const db = new Database(registryPath);
@@ -83,7 +83,7 @@ describe('registry schema', () => {
     mkdirSync(repoPath);
     execFileSync('git', ['init', '-b', 'main'], { cwd: repoPath, stdio: 'ignore' });
 
-    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = registryPath;
 
     expect(listRepositories()).toEqual([]);
     expect(existsSync(`${registryPath}-wal`)).toBe(false);
@@ -110,32 +110,38 @@ describe('registry schema', () => {
     expect(() => renameRepository(join(root, 'missing'), 'Missing')).toThrow('Repository is not registered');
   });
 
-  it('reads GIT_MANAGER_REGISTRY_PATH from the running process when no env is passed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-registry-path-'));
+  it('reads GIT_WORKTREE_MANAGER_REGISTRY_PATH from the running process when no env is passed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-registry-path-'));
     roots.push(root);
     const registryPath = join(root, 'registry.db');
-    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = registryPath;
 
     expect(resolveRegistryPath()).toBe(registryPath);
+  });
+
+  it('ignores GIT_MANAGER_REGISTRY_PATH', () => {
+    expect(resolveRegistryPath({ GIT_MANAGER_REGISTRY_PATH: '/old/registry.db' })).toBe(
+      join(homedir(), '.config', 'git-worktree-manager', 'registry.db'),
+    );
   });
 });
 
 describe('registry path in the desktop bundle', () => {
   const roots: string[] = [];
-  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
 
   afterEach(() => {
     if (previousRegistryPath === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
     for (const root of roots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('keeps GIT_MANAGER_REGISTRY_PATH when process.env is inlined', async () => {
+  it('keeps GIT_WORKTREE_MANAGER_REGISTRY_PATH when process.env is inlined', async () => {
     const root = mkdtempSync(join(process.cwd(), '.tmp-registry-bundle-'));
     roots.push(root);
     const outfile = join(root, 'registry.mjs');
@@ -154,7 +160,7 @@ describe('registry path in the desktop bundle', () => {
       },
     });
     const registryPath = join(root, 'registry.db');
-    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = registryPath;
     const bundled = (await import(pathToFileURL(outfile).href)) as {
       resolveRegistryPath: () => string;
     };

@@ -73,12 +73,12 @@ describe('git remotes', () => {
 });
 
 function initRepo(roots: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-remotes-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-remotes-'));
   roots.push(root);
   const repoPath = join(root, 'repo');
   execFileSync('git', ['init', '-b', 'master', repoPath], { stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repoPath, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repoPath, stdio: 'ignore' });
   writeFileSync(join(repoPath, 'README.md'), '# repo\n');
   execFileSync('git', ['add', '.'], { cwd: repoPath, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repoPath, stdio: 'ignore' });

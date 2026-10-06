@@ -7,19 +7,19 @@ import { readAppSettings } from '../src/app-settings';
 import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
 process.env.GIT_TERMINAL_PROMPT = '0';
 
 function createRepo(): { root: string; repo: string } {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-terminal-colors-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminal-colors-'));
   const repo = join(root, 'billing');
   mkdirSync(repo);
   execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repo, stdio: 'ignore' });
   writeFileSync(join(repo, 'README'), 'hi\n');
   execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
@@ -85,7 +85,7 @@ async function waitFor(check: () => boolean): Promise<void> {
 describe('terminal font and colors', () => {
   let root = '';
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
-  const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+  const previousSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -95,9 +95,9 @@ describe('terminal font and colors', () => {
     fixture?.destroy();
     fixture = undefined;
     if (previousSettingsPath === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
     }
     if (root) {
       for (const name of listTmuxSessions()) {
@@ -113,7 +113,7 @@ describe('terminal font and colors', () => {
   it('chooses the terminal font family in App settings', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
@@ -139,7 +139,7 @@ describe('terminal font and colors', () => {
   it('chooses a terminal background from the dark swatches or a custom color', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
@@ -220,7 +220,7 @@ describe('terminal font and colors', () => {
   it('chooses a terminal foreground of Original, White, or a custom color', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
@@ -261,7 +261,7 @@ describe('terminal font and colors', () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     writeFileSync(
       settingsPath,
       `${JSON.stringify({
@@ -288,7 +288,7 @@ describe('terminal font and colors', () => {
   it('paints an open terminal with a new background and leaves the header #252526', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -316,7 +316,7 @@ describe('terminal font and colors', () => {
   it('paints an open terminal with a new foreground and keeps the ANSI colors', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -343,7 +343,7 @@ describe('terminal font and colors', () => {
   it('uses the chosen font family, with monospace as the fallback, on an open terminal', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -371,7 +371,7 @@ describe('terminal font and colors', () => {
   it('paints an open shell with the terminal font and colors', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo, 'win32');
 
     clickBranch(fixture, 'feature');
@@ -400,7 +400,7 @@ describe('terminal font and colors', () => {
   it('resets the terminal colors on an open terminal and leaves the chosen font', async () => {
     const repo = createRepo();
     root = repo.root;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(root, 'app-settings.json');
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');

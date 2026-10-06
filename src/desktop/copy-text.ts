@@ -1,7 +1,7 @@
 export type TextCopy = (text: string) => void;
 
 interface CopyHost {
-  gitManager?: {
+  gitWorktreeManager?: {
     copyText?: (text: string) => void;
   };
   navigator?: {
@@ -13,7 +13,7 @@ interface CopyHost {
 
 function hostCopy(text: string): void {
   const host = globalThis as CopyHost;
-  const copy = host.gitManager?.copyText;
+  const copy = host.gitWorktreeManager?.copyText;
   if (copy) {
     copy(text);
     return;

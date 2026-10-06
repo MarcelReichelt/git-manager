@@ -21,7 +21,7 @@ describe('listBranches', () => {
   });
 
   it('keeps remote-tracking refs until prune runs', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const origin = join(root, 'origin.git');
@@ -39,7 +39,7 @@ describe('listBranches', () => {
   });
 
   it('lists main first when the remote default branch changed from master and the stored HEAD still says master', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = switchedDefaultRepository(root);
 
@@ -49,7 +49,7 @@ describe('listBranches', () => {
   });
 
   it('lists main ahead of a master worktree when the remote default branch is main', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = switchedDefaultRepository(root);
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'master'), 'master']);
@@ -65,7 +65,7 @@ describe('listBranches', () => {
   });
 
   it('lists main first when the only remote is not named origin', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = switchedDefaultRepository(root, 'upstream');
 
@@ -75,7 +75,7 @@ describe('listBranches', () => {
   });
 
   it('asks again for the remote default branch when the repository is opened again', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const origin = join(root, 'origin.git');
@@ -100,7 +100,7 @@ describe('listBranches', () => {
   });
 
   it('keeps the stored default branch when the remote cannot be asked', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     initGitRepo(repoPath);
@@ -114,7 +114,7 @@ describe('listBranches', () => {
   });
 
   it('lists the checked out branches when the remote default branch has no local branch', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const origin = join(root, 'origin.git');
@@ -135,7 +135,7 @@ describe('listBranches', () => {
   });
 
   it('keeps the stored default branch until the remote is asked', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = switchedDefaultRepository(root);
 
@@ -143,7 +143,7 @@ describe('listBranches', () => {
   });
 
   it('counts a renamed path once and reads untracked line counts from the file', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     initGitRepo(repoPath);
@@ -163,7 +163,7 @@ describe('listBranches', () => {
   });
 
   it('counts commits against the default branch when a branch has no upstream', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     initGitRepo(repoPath);
@@ -178,7 +178,7 @@ describe('listBranches', () => {
   });
 
   it('reports ahead and behind for a branch that matches its upstream', () => {
-    const root = makeTempDir('git-manager-list-branches-');
+    const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const origin = join(root, 'origin.git');

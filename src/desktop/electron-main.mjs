@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { registerShellIpc } from './shell-main.mjs';
 
-app.setName('git-manager');
+app.setName('Git Worktree Manager');
 registerShellIpc();
 
 ipcMain.handle('browse-for-folder', async (event) => {
@@ -57,7 +57,7 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: 'git-manager',
+    title: 'Git Worktree Manager',
     icon: join(import.meta.dirname, 'app-icon.png'),
     frame: false,
     transparent: true,
@@ -78,7 +78,7 @@ function createWindow() {
 }
 
 function watchDesktopSmoke(window) {
-  if (process.env.GIT_MANAGER_DESKTOP_SMOKE !== '1') {
+  if (process.env.GIT_WORKTREE_MANAGER_DESKTOP_SMOKE !== '1') {
     return;
   }
   const timer = setTimeout(() => {

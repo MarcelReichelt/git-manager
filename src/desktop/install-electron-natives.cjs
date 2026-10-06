@@ -21,7 +21,7 @@ function electronNativeFile(filename, directory = nativeDir, existsSync = fs.exi
 
 function installElectronNatives(directory = nativeDir) {
   const current = Module._extensions['.node'];
-  if (current && current.gitManagerElectronNatives) {
+  if (current && current.gitWorktreeManagerElectronNatives) {
     return;
   }
   function loadElectronNative(module, filename) {
@@ -31,7 +31,7 @@ function installElectronNatives(directory = nativeDir) {
     }
     return current(module, filename);
   }
-  loadElectronNative.gitManagerElectronNatives = true;
+  loadElectronNative.gitWorktreeManagerElectronNatives = true;
   Module._extensions['.node'] = loadElectronNative;
 }
 

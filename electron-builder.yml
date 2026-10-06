@@ -51,7 +51,6 @@ linux:
   target:
     - AppImage
     - deb
-  packageName: git-worktree-manager
   executableName: git-worktree-manager
   syncDesktopName: true
   maintainer: MarcelReichelt <marcelreichelt91@gmail.com>
@@ -72,6 +71,7 @@ mac:
 appImage:
   artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}
 deb:
+  packageName: git-worktree-manager
   artifactName: git-worktree-manager-${version}-${os}-${arch}.${ext}
 nsis:
   oneClick: false

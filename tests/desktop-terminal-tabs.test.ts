@@ -419,6 +419,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
 
     clickIcon(fixture, 'terminal-split-button');
@@ -445,6 +446,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
 
     clickIcon(fixture, 'terminal-split-button');

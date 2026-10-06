@@ -527,6 +527,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
@@ -545,6 +546,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     clickControl(fixture, 'Split');
     await waitFor(() => visiblePaneCount(fixture!) === 2);
@@ -564,6 +566,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     clickControl(fixture, 'Maximize terminal');
 

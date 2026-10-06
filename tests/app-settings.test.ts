@@ -67,7 +67,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -85,7 +84,7 @@ describe('app settings', () => {
     expect(readAppSettings(env).terminalRowHeight).toBe(360);
     expect(readAppSettings(env).changesFileWidth).toBe(180);
     expect(readAppSettings(env).commitFileWidth).toBe(160);
-    expect(readAppSettings(env).terminalExpanded).toBe(false);
+    expect('terminalExpanded' in readAppSettings(env)).toBe(false);
 
     writeFileSync(
       settingsPath,
@@ -96,14 +95,14 @@ describe('app settings', () => {
     expect(readAppSettings(env).terminalRowHeight).toBe(240);
     expect(readAppSettings(env).changesFileWidth).toBe(240);
     expect(readAppSettings(env).commitFileWidth).toBe(240);
-    expect(readAppSettings(env).terminalExpanded).toBe(true);
+    expect('terminalExpanded' in readAppSettings(env)).toBe(false);
   });
 
   it('saves the arrangement together and omits the share when it is unset', () => {
     const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    writeFileSync(settingsPath, '{"theme":"mint","terminalMode":"tmux","changesShare":0.25}\n');
+    writeFileSync(settingsPath, '{"theme":"mint","terminalMode":"tmux","changesShare":0.25,"terminalExpanded":false}\n');
     const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveArrangement(
@@ -112,7 +111,6 @@ describe('app settings', () => {
         terminalRowHeight: 320,
         changesFileWidth: 180,
         commitFileWidth: 160,
-        terminalExpanded: false,
       },
       env,
     );
@@ -123,11 +121,10 @@ describe('app settings', () => {
       terminalRowHeight: 320,
       changesFileWidth: 180,
       commitFileWidth: 160,
-      terminalExpanded: false,
     });
     expect(readAppSettings(env).changesShare).toBeNull();
     expect(readAppSettings(env).terminalRowHeight).toBe(320);
-    expect(readAppSettings(env).terminalExpanded).toBe(false);
+    expect('terminalExpanded' in readAppSettings(env)).toBe(false);
 
     saveArrangement(
       {
@@ -135,7 +132,6 @@ describe('app settings', () => {
         terminalRowHeight: 240,
         changesFileWidth: 240,
         commitFileWidth: 240,
-        terminalExpanded: true,
       },
       env,
     );
@@ -201,7 +197,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -244,7 +239,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -288,7 +282,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -320,7 +313,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -555,7 +547,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -597,7 +588,6 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 

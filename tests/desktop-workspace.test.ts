@@ -949,7 +949,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -996,7 +995,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });
@@ -5365,6 +5363,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5376,7 +5376,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 320,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
 
     fixture.destroy();
@@ -5386,6 +5385,8 @@ describe('desktop workspace', () => {
     again.detectChanges();
     const againBody = again.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(againBody, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(again.nativeElement);
+    again.detectChanges();
     window.dispatchEvent(new Event('resize'));
     again.detectChanges();
 
@@ -5462,6 +5463,8 @@ describe('desktop workspace', () => {
 
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
     doubleClickDivider(fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement);
     fixture.detectChanges();
 
@@ -5488,7 +5491,7 @@ describe('desktop workspace', () => {
     const settingsPath = join(repoPath, '..', 'app-settings.json');
     writeFileSync(
       settingsPath,
-      '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240,"terminalExpanded":true}\n',
+      '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240}\n',
     );
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     const fixture = await renderRepository(repoPath);
@@ -5498,6 +5501,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 248 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
     window.dispatchEvent(new Event('resize'));
     fixture.detectChanges();
 
@@ -5528,6 +5533,8 @@ describe('desktop workspace', () => {
     small.detectChanges();
     const smallBody = small.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(smallBody, 'clientHeight', { configurable: true, value: 150 });
+    dockTerminalSection(small.nativeElement);
+    small.detectChanges();
     window.dispatchEvent(new Event('resize'));
     small.detectChanges();
 
@@ -5549,6 +5556,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     fixture.detectChanges();
@@ -5587,6 +5596,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     commitsSplit.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
@@ -5604,6 +5615,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 448 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 100 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5623,6 +5636,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 0 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5642,6 +5657,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5749,6 +5766,8 @@ describe('desktop workspace', () => {
     try {
       fixture.nativeElement.querySelector('[data-branch="master"]').click();
       fixture.detectChanges();
+      dockTerminalSection(fixture.nativeElement);
+      fixture.detectChanges();
 
       const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
       const body = split.parentElement as HTMLElement;
@@ -5774,6 +5793,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
     try {
       fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+      dockTerminalSection(fixture.nativeElement);
       fixture.detectChanges();
 
       const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -6156,7 +6177,7 @@ describe('desktop workspace', () => {
     process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
-    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').click();
     fixture.detectChanges();
@@ -6280,6 +6301,8 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
 
     const menu = openRepositoryTabMenu(fixture, 'Pier');
     menu.querySelector('[data-testid="repository-tab-settings"]').click();
@@ -6400,6 +6423,8 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
 
     openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
     fixture.detectChanges();
@@ -6493,6 +6518,75 @@ describe('desktop workspace', () => {
     expect(repositoryTabNames(fixture)).toEqual(['Pier']);
   });
 
+  it('keeps each worktree terminal section on its repository tab', async () => {
+    registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+    const height = terminalSectionHeight(body);
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
+    await waitForTerminal(() => terminalPaneText(fixture).includes('$') || terminalPaneText(fixture).includes('#'));
+    fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')).toHaveLength(1);
+
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
+    expect(terminalSectionHeight(fixture.nativeElement.querySelector('.sheet-body') as HTMLElement)).toBe(height);
+    fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').getAttribute('aria-label')).toBe(
+      'Restore terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')).toHaveLength(1);
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
+
   it('ends the closed repository tab in-app terminal and leaves the selected repository terminal running', async () => {
     const { pier, quay } = registerPair();
     const feature = join(pier, '.workspaces', 'feature');
@@ -6500,11 +6594,15 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Pier');
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
     await waitForTerminal(() => shellProcessesIn(feature).length >= 1);
     const pierShells = shellProcessesIn(feature);
     openRepositoryCard(fixture);
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
     fixture.detectChanges();
     await waitForTerminal(() => shellProcessesIn(quay).length >= 1);
     const quayShells = shellProcessesIn(quay);
@@ -6538,11 +6636,15 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Pier');
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
     await waitForTerminal(() => sessionsForBranch(pier, 'feature').length === 1);
     const pierSession = sessionsForBranch(pier, 'feature')[0] ?? '';
     openRepositoryCard(fixture);
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
     fixture.detectChanges();
     await waitForTerminal(() => sessionsForBranch(quay, 'master').length === 1);
     const quaySession = sessionsForBranch(quay, 'master')[0] ?? '';
@@ -6596,12 +6698,16 @@ describe('desktop workspace', () => {
     await openLiveRepository(first, 'Pier');
     first.nativeElement.querySelector('[data-branch="feature"]').click();
     first.detectChanges();
+    startTerminal(first.nativeElement);
+    first.detectChanges();
     await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
     submitTerminalCommand(first.nativeElement, 'echo pier-before-quit');
     await waitForTerminal(() => terminalPaneText(first).includes('pier-before-quit'));
     openRepositoryCard(first);
     await openLiveRepository(first, 'Quay');
     first.nativeElement.querySelector('[data-branch="master"]').click();
+    first.detectChanges();
+    startTerminal(first.nativeElement);
     first.detectChanges();
     await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
     submitTerminalCommand(first.nativeElement, 'echo quay-before-quit');
@@ -6825,6 +6931,21 @@ async function untilVisible(
 
 function paneTrack(element: HTMLElement, property: 'gridTemplateColumns' | 'gridTemplateRows'): number {
   return Number.parseFloat(element.style[property]);
+}
+
+function dockTerminalSection(root: ParentNode): void {
+  const button = root.querySelector('[data-testid="terminal-collapse"]');
+  if (button instanceof HTMLElement && button.getAttribute('aria-label') === 'Expand terminal') {
+    button.click();
+  }
+}
+
+function startTerminal(root: ParentNode): void {
+  const button = root.querySelector('[data-testid="terminal-new"]');
+  if (!(button instanceof HTMLElement)) {
+    throw new Error('New is not shown');
+  }
+  button.click();
 }
 
 function terminalSectionHeight(body: HTMLElement): number {

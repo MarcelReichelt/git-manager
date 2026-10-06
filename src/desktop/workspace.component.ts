@@ -2028,9 +2028,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly changesShare = signal<number | null>(this.initialSettings.changesShare);
   readonly commitFileWidth = signal(this.initialSettings.commitFileWidth);
   readonly terminalRowHeight = signal(this.initialSettings.terminalRowHeight);
-  readonly terminalExpanded = signal(this.initialSettings.terminalExpanded);
+  private readonly terminalSectionByBranch = signal<Record<string, TerminalSection>>({});
+  readonly terminalExpanded = computed(() => this.sectionFor(this.selectedBranchName()) !== 'collapsed');
   private arrangedTerminalRowHeight = this.initialSettings.terminalRowHeight;
-  readonly terminalMaximized = signal(false);
+  readonly terminalMaximized = computed(() => this.sectionFor(this.selectedBranchName()) === 'maximized');
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
@@ -2334,6 +2335,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       terminalsByBranch: this.terminalsByBranch(),
       worktreePath: this.worktreePath(),
       branches: this.realBranches(),
+      terminalSectionByBranch: this.terminalSectionByBranch(),
     });
   }
 
@@ -2579,6 +2581,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const previous = this.snapshotBranchView();
     this.selectedBranchName.set(name);
+    if (!this.terminalMaximized()) {
+      this.maximizedBodyHeight.set(null);
+    }
     this.clearLoadedBranch();
     this.contentLoading.set(true);
     this.runWhenPainted(() => {
@@ -2725,13 +2730,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   newTerminal(): void {
+    const branch = this.selectedBranchName();
     const terminal = this.spawnTerminal();
-    if (!terminal) {
+    if (!terminal || !branch) {
       return;
     }
     const tab = this.makeTab([terminal]);
     this.updateSelected((state) => withNewTab(state, tab));
-    this.terminalExpanded.set(true);
+    if (this.sectionFor(branch) !== 'maximized') {
+      this.setSection(branch, 'docked');
+    }
     this.closeTerminalMenu();
   }
 
@@ -3050,16 +3058,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   toggleTerminalRow(): void {
-    this.captureChangesShare();
-    if (this.terminalMaximized() || this.terminalExpanded()) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return;
+    }
+    const keepShare = this.changesShare() !== null;
+    if (this.sectionFor(branch) === 'collapsed') {
+      this.setSection(branch, 'docked');
     } else {
-      this.terminalExpanded.set(true);
-      this.ensureTerminal();
+      this.setSection(branch, 'collapsed');
     }
     this.fitDockedTerminal();
-    this.applyChangesShare();
+    if (keepShare) {
+      this.applyChangesShare();
+    } else {
+      this.rememberChangesShare();
+    }
     this.persistArrangement();
   }
 
@@ -3155,22 +3169,48 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       terminalRowHeight: this.arrangedTerminalRowHeight,
       changesFileWidth: this.changesFileWidth(),
       commitFileWidth: this.commitFileWidth(),
-      terminalExpanded: this.terminalExpanded(),
     });
   }
 
-  toggleTerminalMaximize(): void {
-    if (this.terminalMaximized()) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(true);
+  private sectionFor(branch: string | null): TerminalSection {
+    if (!branch) {
+      return 'collapsed';
+    }
+    return this.terminalSectionByBranch()[branch] ?? 'collapsed';
+  }
+
+  private setSection(branch: string, section: TerminalSection): void {
+    this.terminalSectionByBranch.update((current) => {
+      if (section === 'collapsed') {
+        if (!(branch in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[branch];
+        return next;
+      }
+      if (current[branch] === section) {
+        return current;
+      }
+      return { ...current, [branch]: section };
+    });
+    if (branch === this.selectedBranchName() && section !== 'maximized') {
       this.maximizedBodyHeight.set(null);
-      this.fitDockedTerminal();
-      this.applyChangesShare();
-      this.persistArrangement();
+    }
+  }
+
+  toggleTerminalMaximize(): void {
+    const branch = this.selectedBranchName();
+    if (!branch) {
       return;
     }
-    this.terminalMaximized.set(true);
-    this.terminalExpanded.set(true);
+    if (this.sectionFor(branch) === 'maximized') {
+      this.setSection(branch, 'docked');
+      this.fitDockedTerminal();
+      this.applyChangesShare();
+      return;
+    }
+    this.setSection(branch, 'maximized');
     this.captureMaximizedBody();
   }
 
@@ -3819,18 +3859,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  private ensureTerminal(): void {
-    const branch = this.selectedBranchName();
-    if (!branch) {
-      return;
-    }
-    const existing = this.terminalsByBranch()[branch];
-    if (existing && existing.tabs.length > 0) {
-      return;
-    }
-    this.openTerminals(branch);
-  }
-
   private openTerminals(branch: string): void {
     const repo = this.effectivePath();
     if (!repo) {
@@ -3852,17 +3880,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (sessionsForBranch(repo, branch).length > 0) {
       this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
-      return;
     }
-    if (!this.terminalExpanded()) {
-      return;
-    }
-    const terminal = this.spawnTerminal();
-    if (!terminal) {
-      return;
-    }
-    const tab = this.makeTab([terminal]);
-    this.storeBranch(branch, { tabs: [tab], focusedTabId: tab.id });
   }
 
   private adoptTmuxSessions(repo: string, branch: string, cwd: string): WorktreeTerminalView {
@@ -3876,8 +3894,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private clearTerminals(): void {
     this.worktreePath.set('');
     this.terminalsByBranch.set({});
+    this.terminalSectionByBranch.set({});
+    this.maximizedBodyHeight.set(null);
     this.closeTerminalMenu();
     this.renaming.set(null);
+  }
+
+  private collapseWorktreesWithoutTerminals(): void {
+    const branches = new Set(Object.keys(this.terminalsByBranch()));
+    const selected = this.selectedBranchName();
+    if (selected) {
+      branches.add(selected);
+    }
+    for (const branch of branches) {
+      if (this.terminalCount(branch) === 0) {
+        this.setSection(branch, 'collapsed');
+      }
+    }
   }
 
   private spawnTerminal(): TerminalView | null {
@@ -3932,9 +3965,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!kill && mode !== 'none' && branch) {
       this.adoptOpenSessions(branch);
     }
-    if (mode !== 'none' && branch && this.terminalCount(branch) === 0) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    if (mode !== 'none') {
+      this.collapseWorktreesWithoutTerminals();
     }
   }
 
@@ -4059,9 +4091,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private collapseIfEmpty(branch: string, state: WorktreeTerminalView): void {
-    if (branch === this.selectedBranchName() && state.tabs.length === 0) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    if (state.tabs.length === 0) {
+      this.setSection(branch, 'collapsed');
     }
   }
 
@@ -4090,9 +4121,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
             }
             if (plan.terminals) {
               this.terminalsByBranch.set(plan.terminals.next);
-              if (plan.terminals.collapse) {
-                this.terminalMaximized.set(false);
-                this.terminalExpanded.set(false);
+              for (const branch of plan.terminals.collapsedBranches) {
+                this.setSection(branch, 'collapsed');
               }
             }
           });
@@ -4105,7 +4135,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private planTerminalRefresh(): {
     sessions: TmuxSessionRecord[] | null;
-    terminals: { next: Record<string, WorktreeTerminalView>; collapse: boolean } | null;
+    terminals: { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null;
   } {
     const snapshots = this.shouldWatchTmux() ? listTmuxSessionSnapshots() : null;
     let sessions: TmuxSessionRecord[] | null = null;
@@ -4118,8 +4148,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const bySession = new Map(snapshots?.map((snapshot) => [snapshot.name, snapshot]) ?? []);
     const current = this.terminalsByBranch();
     let next = current;
-    let collapse = false;
-    const selected = this.selectedBranchName();
+    const collapsedBranches: string[] = [];
     for (const [branch, state] of Object.entries(current)) {
       for (const tab of state.tabs) {
         for (const terminal of tab.terminals) {
@@ -4132,8 +4161,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
             const result = withoutTerminal(latest, tab.id, terminal.id);
             next = { ...next, [branch]: result.state };
             stopTerminal(terminal);
-            if (branch === selected && result.state.tabs.length === 0) {
-              collapse = true;
+            if (result.state.tabs.length === 0) {
+              collapsedBranches.push(branch);
             }
             continue;
           }
@@ -4145,7 +4174,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     return {
       sessions,
-      terminals: next === current ? null : { next, collapse },
+      terminals: next === current ? null : { next, collapsedBranches },
     };
   }
 
@@ -4220,6 +4249,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
+      if (!this.terminalMaximized()) {
+        this.maximizedBodyHeight.set(null);
+      }
       this.realBranches.set(saved.branches);
       this.claimOldSessions(tab.path, saved.branches);
       this.rememberTmuxSessions();
@@ -4319,6 +4352,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
+      if (!this.terminalMaximized()) {
+        this.maximizedBodyHeight.set(null);
+      }
       this.closeTerminalMenu();
       this.renaming.set(null);
     } else {
@@ -4599,11 +4636,14 @@ const terminalHeaderHeight = 36;
 const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
 
+type TerminalSection = 'collapsed' | 'docked' | 'maximized';
+
 interface RepositoryWorkspace {
   view: BranchViewSnapshot;
   terminalsByBranch: Record<string, WorktreeTerminalView>;
   worktreePath: string;
   branches: SampleBranch[];
+  terminalSectionByBranch: Record<string, TerminalSection>;
 }
 
 interface BranchViewSnapshot {

@@ -22,10 +22,12 @@ import {
   type RepositoryRemote,
 } from '../remotes.js';
 import { copyText } from './copy-text';
+import { OverlayScroll } from './overlay-scrollbar';
 
 @Component({
   selector: 'gm-repository-settings',
   standalone: true,
+  imports: [OverlayScroll],
   styles: [
     `
 :host {
@@ -467,7 +469,7 @@ button, input { font: inherit; color: inherit; }
     <ng-template #settingsDialog>
     @if (settingsOpen()) {
       <div data-testid="repository-settings-dialog" role="dialog" aria-label="Repository settings" (click)="dismissSettingsFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Repository settings</h2>
           <label>
             Location
@@ -600,7 +602,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (addRemoteOpen()) {
       <div data-testid="add-remote-dialog" role="dialog" aria-label="Add remote" (click)="dismissAddRemoteFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Add remote</h2>
           <label>
             Name
@@ -622,7 +624,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (editingRemote()) {
       <div data-testid="change-remote-dialog" role="dialog" aria-label="Edit remote" (click)="dismissChangeRemoteFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Edit remote</h2>
           <label>
             Name

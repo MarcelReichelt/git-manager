@@ -15,7 +15,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## When the work lands
 
-Comment on the issue, then close it, in the same turn as the commit. The comment names the branch and the commit. The issue stays open only when an acceptance criterion is still unmet. A follow-up is a new issue. An open `ready-for-agent` issue means the work is not done.
+Comment on the issue in the same turn as the commit. The comment names the branch, the commit, and the pull request. Leave the issue open. The pull request body includes `Closes #<n>` for that issue, and the issue closes when that pull request merges. An unmet acceptance criterion stays off that `Closes` line. A follow-up is a new issue. An open `ready-for-agent` issue means the work is not done.
 
 ## Pull requests as a triage surface
 
@@ -71,7 +71,7 @@ gh label create agent-failed --description "The last agent run failed. Leave it 
 
 **Claim.** Re-read with `gh issue view <n> --json labels,title`. When `claimed-by-agent` is already present, skip. Otherwise `gh issue edit <n> --remove-label ready-for-agent --add-label claimed-by-agent`, and on a retry add `--remove-label agent-failed`. Then `gh issue comment <n>` that the run has started.
 
-**Success.** After the issue is closed, `gh issue edit <n> --remove-label claimed-by-agent`.
+**Success.** When the pull request lists `Closes #<n>`, `gh issue edit <n> --remove-label claimed-by-agent`. Leave the issue open. Leave `ready-for-agent` off. The issue closes when that pull request merges.
 
 **Failure.** For a still-open issue whose build failed: `gh issue edit <n> --remove-label claimed-by-agent --add-label "ready-for-agent,agent-failed"`, then comment the reason, the branch, and the commits.
 

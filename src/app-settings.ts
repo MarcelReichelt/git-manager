@@ -22,7 +22,6 @@ export interface AppSettings {
   terminalRowHeight: number;
   changesFileWidth: number;
   commitFileWidth: number;
-  terminalExpanded: boolean;
 }
 
 const originalSidebarColor = '#1a3c2b';
@@ -104,7 +103,6 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
     terminalRowHeight: readPixels(stored.terminalRowHeight, defaultTerminalRowHeight),
     changesFileWidth: readPixels(stored.changesFileWidth, defaultChangesFileWidth),
     commitFileWidth: readPixels(stored.commitFileWidth, defaultCommitFileWidth),
-    terminalExpanded: typeof stored.terminalExpanded === 'boolean' ? stored.terminalExpanded : true,
   };
 }
 
@@ -226,7 +224,6 @@ export function saveArrangement(
     terminalRowHeight: number;
     changesFileWidth: number;
     commitFileWidth: number;
-    terminalExpanded: boolean;
   },
   env?: NodeJS.ProcessEnv,
 ): void {
@@ -241,7 +238,7 @@ export function saveArrangement(
   current.terminalRowHeight = arrangement.terminalRowHeight;
   current.changesFileWidth = arrangement.changesFileWidth;
   current.commitFileWidth = arrangement.commitFileWidth;
-  current.terminalExpanded = arrangement.terminalExpanded;
+  delete current.terminalExpanded;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 

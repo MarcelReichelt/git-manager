@@ -271,6 +271,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
 
@@ -295,6 +296,7 @@ describe('branch terminal', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
 
     expect(tabNames(fixture)).toHaveLength(1);
@@ -347,6 +349,7 @@ describe('branch terminal', () => {
     expect(terminalCount(fixture, 'feature')).toBeNull();
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     clickControl(fixture, 'New');
@@ -370,6 +373,7 @@ describe('branch terminal', () => {
 
     expect(terminalCount(fixture, 'feature')).toBeNull();
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     expect(visiblePaneCount(fixture)).toBe(1);
@@ -393,11 +397,13 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo, 'win32');
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     submitCommand(fixture.nativeElement, 'pwd');
     await waitFor(() => paneText(fixture!).includes(feature));
 
     clickBranch(fixture, 'master');
+    clickControl(fixture, 'New');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     submitCommand(fixture.nativeElement, 'pwd');
     await waitFor(() => {
@@ -421,6 +427,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     execFileSync(tmuxBinary(), ['kill-session', '-t', session], { stdio: 'ignore', env: tmuxEnv() });
@@ -439,6 +446,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     execFileSync(tmuxBinary(), ['new-session', '-d', '-s', `${session}extra`, '-c', root], {
@@ -446,6 +454,7 @@ describe('branch terminal', () => {
       env: tmuxEnv(),
     });
     clickBranch(fixture, 'master');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'master') === '1');
 
     fixture.detectChanges();
@@ -487,6 +496,7 @@ describe('branch terminal', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     fixture.nativeElement.querySelector('[data-testid="changed-file"]').click();
     fixture.detectChanges();
@@ -511,11 +521,67 @@ describe('branch terminal', () => {
     expect(row.parentElement?.style.gridTemplateRows).toMatch(/minmax\(0, 1fr\) 8px \d+px/);
   });
 
+  it('fills the content width so no background shows to the right of an open terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const chrome = sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement;
+    const pane = sheet.querySelector('[data-testid="terminal-pane"]') as HTMLElement;
+    const split = sheet.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+
+    expect(contentRightGap(chrome, sheet)).toBe(0);
+    expect(contentRightGap(pane, sheet)).toBe(0);
+    expect(contentRightGap(split, sheet)).toBe(0);
+  });
+
+  it('fills the content width when a tab has two terminals side by side', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    clickControl(fixture, 'Split');
+    await waitFor(() => visiblePaneCount(fixture!) === 2);
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const panes = [...sheet.querySelectorAll('[data-testid="terminal-pane"]')] as HTMLElement[];
+    const rightPane = panes[1];
+
+    expect(panes).toHaveLength(2);
+    expect(contentRightGap(rightPane!, sheet)).toBe(0);
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement, sheet)).toBe(0);
+  });
+
+  it('fills the content width while the terminal section is maximized', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    clickControl(fixture, 'Maximize terminal');
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe('Restore terminal');
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement, sheet)).toBe(0);
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-pane"]') as HTMLElement, sheet)).toBe(0);
+  });
+
   it('resizes the terminal row from the horizontal splitter and keeps that height across worktrees', async () => {
     const repo = createRepo();
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -528,6 +594,9 @@ describe('branch terminal', () => {
     expect(after).toBe(before + 80);
 
     clickBranch(fixture, 'master');
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    clickCollapse(fixture);
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     const again = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
     expect(terminalRowHeight(again.parentElement as HTMLElement)).toBe(after);
@@ -538,6 +607,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     clickCollapse(fixture);
@@ -557,6 +627,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]') as HTMLElement;
@@ -587,6 +658,7 @@ describe('branch terminal', () => {
     writeFileSync(join(repo.repo, '.workspaces', 'feature', 'notes.txt'), 'changed\n');
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     fixture.nativeElement.querySelector('[data-testid="changed-file"]').click();
     fixture.detectChanges();
@@ -639,6 +711,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -677,6 +750,7 @@ describe('branch terminal', () => {
     writeFileSync(join(repo.repo, '.workspaces', 'feature', 'notes.txt'), 'changed\n');
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
     fixture.nativeElement.querySelector('[data-testid="changed-file"]').click();
     fixture.detectChanges();
@@ -719,6 +793,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -755,6 +830,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     clickControl(fixture, 'Maximize terminal');
@@ -779,6 +855,7 @@ describe('branch terminal', () => {
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     clickControl(fixture, 'Maximize terminal');
@@ -787,13 +864,16 @@ describe('branch terminal', () => {
     fixture.destroy();
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    await waitFor(() => visiblePaneCount(fixture) === 1);
+    fixture.detectChanges();
 
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
       'Maximize terminal',
     );
     expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
   it('restores the last terminal row height when the row expands', async () => {
@@ -801,6 +881,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -823,6 +904,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).length === 1);
 
     clickControl(fixture, 'New');
@@ -854,6 +936,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     expect(runningCount(fixture)).toBeNull();
@@ -875,6 +958,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     clickCollapse(fixture);
@@ -891,6 +975,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
     clickCollapse(fixture);
 
@@ -906,11 +991,35 @@ describe('branch terminal', () => {
     expect(terminalCount(fixture, 'master')).toBeNull();
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
 
+    clickControl(fixture, 'Maximize terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    clickBranch(fixture, 'feature');
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(runningCount(fixture)).toBe('1');
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+
     clickCollapse(fixture);
-    await waitFor(() => terminalCount(fixture!, 'master') === '1');
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
     expect(visiblePaneCount(fixture)).toBe(1);
     expect(terminalCount(fixture, 'feature')).toBe('1');
+
+    clickControl(fixture, 'Maximize terminal');
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    clickBranch(fixture, 'master');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
+      'Restore terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(terminalCount(fixture, 'master')).toBeNull();
   });
 
   it('shows a running tmux session when a collapsed row selects that worktree', async () => {
@@ -934,11 +1043,11 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'feature')).toHaveLength(1);
   });
 
-  it('restores a collapsed section and starts a shell only when it is expanded', async () => {
+  it('starts one terminal when an empty terminal section expands', async () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
-    writeFileSync(settingsPath, '{"terminalExpanded":false,"terminalRowHeight":300}\n');
+    writeFileSync(settingsPath, '{"terminalRowHeight":300}\n');
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
 
@@ -953,10 +1062,27 @@ describe('branch terminal', () => {
 
     clickCollapse(fixture);
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(visiblePaneCount(fixture)).toBe(1);
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(tabNames(fixture)).toHaveLength(1);
     expect(terminalRowHeight(
       (fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement).parentElement as HTMLElement,
     )).toBe(300);
+  });
+
+  it('starts one tmux session when an empty terminal section expands', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    before = listTmuxSessions();
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    clickCollapse(fixture);
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
+
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
   });
 
   it('leaves the saved arrangement in place when the terminal section is maximized', async () => {
@@ -966,11 +1092,12 @@ describe('branch terminal', () => {
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     clickCollapse(fixture);
     const collapsed = readFileSync(settingsPath, 'utf8');
-    expect(JSON.parse(collapsed).terminalExpanded).toBe(false);
+    expect(JSON.parse(collapsed).terminalExpanded).toBeUndefined();
 
     clickControl(fixture, 'Maximize terminal');
     expect(readFileSync(settingsPath, 'utf8')).toBe(collapsed);
@@ -990,24 +1117,27 @@ describe('branch terminal', () => {
     expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
-  it('saves the section as expanded when maximize is restored', async () => {
+  it('restores the docked section for this worktree without saving it', async () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
 
     clickCollapse(fixture);
+    const collapsed = readFileSync(settingsPath, 'utf8');
     clickControl(fixture, 'Maximize terminal');
-    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalExpanded).toBe(false);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalExpanded).toBeUndefined();
 
     clickControl(fixture, 'Restore terminal');
 
-    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalExpanded).toBe(true);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(collapsed);
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).terminalMaximized).toBeUndefined();
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
   });
 
   it('collapses the terminal row when the last terminal is killed', async () => {
@@ -1015,6 +1145,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
 
@@ -1028,11 +1159,12 @@ describe('branch terminal', () => {
     expect(runningCount(fixture)).toBeNull();
   });
 
-  it('starts a terminal when a collapsed row with none is opened', async () => {
+  it('starts one terminal from New on a collapsed empty section', async () => {
     const repo = createRepo();
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -1043,6 +1175,13 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
 
     clickCollapse(fixture);
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+
+    clickControl(fixture, 'Kill');
+    await waitFor(() => terminalCount(fixture!, 'feature') === null);
+    clickControl(fixture, 'New');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
@@ -1058,6 +1197,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).length === 1 && /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
     clickControl(fixture, 'New');
     await waitFor(
@@ -1078,6 +1218,7 @@ describe('branch terminal', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
 
     const pane = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]') as HTMLElement;
@@ -1107,6 +1248,7 @@ describe('branch terminal', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-row"]')).toBeNull();
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
@@ -1149,6 +1291,34 @@ function clickCollapse(fixture: ComponentFixture<WorkspaceComponent>): void {
   }
   button.click();
   fixture.detectChanges();
+}
+
+function contentRightGap(element: HTMLElement, sheet: HTMLElement): number {
+  const elementBox = element.getBoundingClientRect();
+  const sheetBox = sheet.getBoundingClientRect();
+  if (sheetBox.width > 0 && elementBox.width > 0) {
+    return sheetBox.right - elementBox.right;
+  }
+
+  let gap = 0;
+  let current: HTMLElement | null = element;
+  while (current && current !== sheet) {
+    gap += cssPx(getComputedStyle(current).marginRight);
+    const parent = current.parentElement;
+    if (!(parent instanceof HTMLElement)) {
+      break;
+    }
+    const parentStyle = getComputedStyle(parent);
+    gap += cssPx(parentStyle.paddingRight);
+    gap += cssPx(parentStyle.borderRightWidth);
+    current = parent;
+  }
+  return gap;
+}
+
+function cssPx(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function terminalRowHeight(element: HTMLElement): number {

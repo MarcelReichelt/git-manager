@@ -949,7 +949,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 
@@ -996,7 +995,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });
@@ -3990,8 +3988,184 @@ describe('desktop workspace', () => {
       blockBottom(fixture.nativeElement.querySelector('[data-testid="changes"]')),
     );
     const summary = fixture.nativeElement.querySelector('.branch-heading p');
-    expect(summary.textContent.trim()).toBe('30 commits · 0 changed files');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
     expect(summary.textContent).not.toContain('commits only on this branch');
+  });
+
+  it('shows the count of commits that are not on the default branch when only the first page is loaded', async () => {
+    const repoPath = createLongFeatureRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const list = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const subjects = commitSubjects(list);
+    expect(subjects).toHaveLength(30);
+    expect(subjects[0]).toBe('Feature 31');
+    expect(subjects[29]).toBe('Feature 02');
+    expect(subjects).not.toContain('Feature 01');
+    expect(subjects).not.toContain('init');
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent.trim()).toBe(
+      '31 commits · 0 changed files',
+    );
+  });
+
+  it('shows the changed-file count until the commit total is known', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    writeFileSync(join(repoPath, 'note.txt'), 'unsaved\n');
+    const fixture = await renderRepository(repoPath);
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => {
+      queued.push(task);
+    });
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      queued.shift()?.();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      const subjects = commitSubjects(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+      expect(subjects).toHaveLength(30);
+      expect(subjects).not.toContain('init');
+
+      queued.shift()?.();
+      fixture.detectChanges();
+      expect(summary.textContent.trim()).toBe('31 commits · 1 changed files');
+    } finally {
+      setAfterPaintScheduler((task) => {
+        task();
+      });
+      for (const task of queued.splice(0)) {
+        task();
+      }
+    }
+  });
+
+  it('shows the changed-file count on another branch until the commit total is known', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repoPath, 'feature.txt'), 'feature\n');
+    git(repoPath, ['add', 'feature.txt']);
+    git(repoPath, ['commit', '-m', 'Add the feature note']);
+    git(repoPath, ['checkout', 'master']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    writeFileSync(join(repoPath, '.workspaces', 'feature', 'feature.txt'), 'feature\nextra\n');
+    const fixture = await renderRepository(repoPath);
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => {
+      queued.push(task);
+    });
+    try {
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      queued.shift()?.();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      expect(
+        [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')].map(
+          (commit) => commit.getAttribute('data-subject'),
+        ),
+      ).toEqual(['Add the feature note']);
+      expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+
+      queued.shift()?.();
+      fixture.detectChanges();
+      expect(summary.textContent.trim()).toBe('1 commits · 1 changed files');
+    } finally {
+      setAfterPaintScheduler((task) => {
+        task();
+      });
+      for (const task of queued.splice(0)) {
+        task();
+      }
+    }
+  });
+
+  it('keeps the commit count while further pages load', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+
+    const list = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+
+    expect(commitSubjects(list).at(-1)).toBe('init');
+    expect(commitSubjects(list).filter((subject) => subject === 'init')).toEqual(['init']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+  });
+
+  it('loads the next page of commits that are not on the default branch when the list is scrolled to the end', async () => {
+    const repoPath = createLongFeatureRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const list = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+    scrollCommitList(list, { scrollTop: 0, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list)).not.toContain('Feature 01');
+    expect(commitSubjects(list)).not.toContain('init');
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    const subjects = commitSubjects(list);
+    expect(subjects[0]).toBe('Feature 31');
+    expect(subjects.at(-1)).toBe('Feature 01');
+    expect(subjects).not.toContain('init');
+    expect(subjects.filter((subject) => subject === 'Feature 01')).toEqual(['Feature 01']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list).filter((subject) => subject === 'Feature 01')).toEqual(['Feature 01']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+  });
+
+  it('shows zero commits when that branch has no commits that are not on the default branch', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent.trim()).toBe(
+      '0 commits · 0 changed files',
+    );
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')).toHaveLength(
+      0,
+    );
+  });
+
+  it('leaves the commit count out when the total cannot be read', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    writeFileSync(join(repoPath, 'note.txt'), 'unsaved\n');
+    const fixture = await renderRepository(repoPath);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${commitCountFailureDir(roots)}:${previousPath ?? ''}`;
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      const subjects = commitSubjects(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+      expect(subjects).toHaveLength(30);
+      expect(subjects[0]).toBe('Record 30');
+      expect(subjects).not.toContain('init');
+    } finally {
+      process.env.PATH = previousPath;
+    }
   });
 
   it('lists commits that are not on main when main is the default branch', async () => {
@@ -5051,7 +5225,7 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(sheet).overflowY).toBe('hidden');
   });
 
-  it('keeps a scrollbar inside the content sheet corners', async () => {
+  it('clips overlay scrollbars inside the content sheet corners', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -5062,12 +5236,12 @@ describe('desktop workspace', () => {
 
     let sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
     expectContentSheetCorners(sheet);
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
 
     fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
     fixture.detectChanges();
     sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
 
     openRepositoryCard(fixture);
     fixture.detectChanges();
@@ -5078,7 +5252,7 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-branch="main"]').click();
     fixture.detectChanges();
     sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
-    expectScrollingRegionsInset(sheet);
+    expectOverlayScrollbarsClipped(sheet);
   });
 
   it('scrolls the branch list inside the sidebar', async () => {
@@ -5093,6 +5267,168 @@ describe('desktop workspace', () => {
     expect(Number.parseFloat(style.minHeight)).toBe(0);
     expect(Number.parseFloat(style.flexGrow)).toBeGreaterThan(0);
     expect(branchList.parentElement).toBe(sidebar);
+  });
+
+  it('shows a thin overlay scrollbar on the branch list while the pointer is over it and while it scrolls', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]') as HTMLElement;
+    expect(getComputedStyle(branchList).scrollbarWidth).toBe('none');
+    expect(getComputedStyle(branchList).scrollbarGutter).not.toBe('stable');
+    expect(branchList.parentElement?.tagName).toBe('ASIDE');
+
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    expect(thumb).not.toBeNull();
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    const thumbStyle = getComputedStyle(thumb);
+    expect(thumbStyle.position).toBe('absolute');
+    expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
+    expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
+    expect(thumb.style.height).toBe('25px');
+    expect(thumb.style.transform).toBe('translateY(0px)');
+
+    vi.useFakeTimers();
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 100 });
+    branchList.dispatchEvent(new Event('scroll'));
+    expect(thumb.style.transform).toBe('translateY(25px)');
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    branchList.dispatchEvent(new Event('pointerleave'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    branchList.dispatchEvent(new Event('pointerenter'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    branchList.dispatchEvent(new Event('pointerleave'));
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+
+    branchList.dispatchEvent(new Event('scroll'));
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('drags the branch list overlay scrollbar', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]') as HTMLElement;
+    installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+    branchList.dispatchEvent(new Event('pointerenter'));
+    const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    thumb.dispatchEvent(new PointerEvent('pointerdown', { clientY: 10, bubbles: true }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientY: 40, bubbles: true }));
+    expect(branchList.scrollTop).toBe(120);
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  });
+
+  it('shows a thin overlay scrollbar on changes, commits, the diff, and commit files', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="changed-files"]'));
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="branch-commits"]'));
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="diff"]'));
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the login form"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="commit-files"]'));
+
+    openRepositoryCard(fixture);
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="switching-overlay"] [data-testid="repository"][data-name="Atlas"]')
+      .click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="main"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+  });
+
+  it('shows a thin overlay scrollbar on dialogs', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"] .dialog-panel'),
+    );
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    await expectOverlayScrollbar(
+      fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"] .dialog-panel'),
+    );
+
+    const repoPath = createRepositoryWithDeletedRemoteBranches(roots);
+    const live = await renderRepository(repoPath);
+    live.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    live.detectChanges();
+    await expectOverlayScrollbar(live.nativeElement.querySelector('[data-testid="create-branch-options"]'));
+  });
+
+  it('leaves the terminal scrollbar unchanged', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-testid="branch-row"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('[data-testid="terminal-row"]');
+    expect(row).not.toBeNull();
+    expect(row.querySelector('[data-testid="overlay-scrollbar"]')).toBeNull();
+    expect(row.querySelector('.overlay-scroll')).toBeNull();
+    const viewport = fixture.nativeElement.querySelector('.xterm-viewport');
+    if (viewport instanceof HTMLElement) {
+      expect(viewport.classList.contains('overlay-scroll')).toBe(false);
+      expect(viewport.style.scrollbarWidth).not.toBe('none');
+    }
+    const style = document.getElementById('gm-overlay-scrollbar');
+    expect(style?.textContent ?? '').not.toContain('xterm');
   });
 
   it('scrolls the changes inside their own region', async () => {
@@ -5365,6 +5701,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5376,7 +5714,6 @@ describe('desktop workspace', () => {
       terminalRowHeight: 320,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
 
     fixture.destroy();
@@ -5386,6 +5723,8 @@ describe('desktop workspace', () => {
     again.detectChanges();
     const againBody = again.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(againBody, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(again.nativeElement);
+    again.detectChanges();
     window.dispatchEvent(new Event('resize'));
     again.detectChanges();
 
@@ -5462,6 +5801,8 @@ describe('desktop workspace', () => {
 
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
     doubleClickDivider(fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement);
     fixture.detectChanges();
 
@@ -5488,7 +5829,7 @@ describe('desktop workspace', () => {
     const settingsPath = join(repoPath, '..', 'app-settings.json');
     writeFileSync(
       settingsPath,
-      '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240,"terminalExpanded":true}\n',
+      '{"changesShare":0.5,"terminalRowHeight":400,"changesFileWidth":240,"commitFileWidth":240}\n',
     );
     process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     const fixture = await renderRepository(repoPath);
@@ -5498,6 +5839,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 248 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
     window.dispatchEvent(new Event('resize'));
     fixture.detectChanges();
 
@@ -5528,6 +5871,8 @@ describe('desktop workspace', () => {
     small.detectChanges();
     const smallBody = small.nativeElement.querySelector('.sheet-body') as HTMLElement;
     Object.defineProperty(smallBody, 'clientHeight', { configurable: true, value: 150 });
+    dockTerminalSection(small.nativeElement);
+    small.detectChanges();
     window.dispatchEvent(new Event('resize'));
     small.detectChanges();
 
@@ -5549,6 +5894,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     fixture.detectChanges();
@@ -5587,6 +5934,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     commitsSplit.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
@@ -5604,6 +5953,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 448 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 100 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5623,6 +5974,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 0 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5642,6 +5995,8 @@ describe('desktop workspace', () => {
     const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
     const commitsSplit = fixture.nativeElement.querySelector('[data-testid="commits-split"]') as HTMLElement;
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
 
     dragDivider(commitsSplit, { x: 400, y: 200 }, { x: 400, y: 220 });
     const terminalSplit = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -5749,6 +6104,8 @@ describe('desktop workspace', () => {
     try {
       fixture.nativeElement.querySelector('[data-branch="master"]').click();
       fixture.detectChanges();
+      dockTerminalSection(fixture.nativeElement);
+      fixture.detectChanges();
 
       const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
       const body = split.parentElement as HTMLElement;
@@ -5774,6 +6131,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
     try {
       fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+      dockTerminalSection(fixture.nativeElement);
       fixture.detectChanges();
 
       const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
@@ -6156,7 +6515,7 @@ describe('desktop workspace', () => {
     process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
     const fixture = await renderRepository(repoPath);
-    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').click();
     fixture.detectChanges();
@@ -6280,6 +6639,8 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
 
     const menu = openRepositoryTabMenu(fixture, 'Pier');
     menu.querySelector('[data-testid="repository-tab-settings"]').click();
@@ -6400,6 +6761,8 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
 
     openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]').click();
     fixture.detectChanges();
@@ -6493,6 +6856,75 @@ describe('desktop workspace', () => {
     expect(repositoryTabNames(fixture)).toEqual(['Pier']);
   });
 
+  it('keeps each worktree terminal section on its repository tab', async () => {
+    registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 648 });
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+    const height = terminalSectionHeight(body);
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
+    await waitForTerminal(() => terminalPaneText(fixture).includes('$') || terminalPaneText(fixture).includes('#'));
+    fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')).toHaveLength(1);
+
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
+    expect(terminalSectionHeight(fixture.nativeElement.querySelector('.sheet-body') as HTMLElement)).toBe(height);
+    fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]').getAttribute('aria-label')).toBe(
+      'Restore terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')).toHaveLength(1);
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-collapse"]').getAttribute('aria-label')).toBe(
+      'Expand terminal',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
+
   it('ends the closed repository tab in-app terminal and leaves the selected repository terminal running', async () => {
     const { pier, quay } = registerPair();
     const feature = join(pier, '.workspaces', 'feature');
@@ -6500,11 +6932,15 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Pier');
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
     await waitForTerminal(() => shellProcessesIn(feature).length >= 1);
     const pierShells = shellProcessesIn(feature);
     openRepositoryCard(fixture);
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
     fixture.detectChanges();
     await waitForTerminal(() => shellProcessesIn(quay).length >= 1);
     const quayShells = shellProcessesIn(quay);
@@ -6538,11 +6974,15 @@ describe('desktop workspace', () => {
     await openLiveRepository(fixture, 'Pier');
     fixture.nativeElement.querySelector('[data-branch="feature"]').click();
     fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
+    fixture.detectChanges();
     await waitForTerminal(() => sessionsForBranch(pier, 'feature').length === 1);
     const pierSession = sessionsForBranch(pier, 'feature')[0] ?? '';
     openRepositoryCard(fixture);
     await openLiveRepository(fixture, 'Quay');
     fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    startTerminal(fixture.nativeElement);
     fixture.detectChanges();
     await waitForTerminal(() => sessionsForBranch(quay, 'master').length === 1);
     const quaySession = sessionsForBranch(quay, 'master')[0] ?? '';
@@ -6596,12 +7036,16 @@ describe('desktop workspace', () => {
     await openLiveRepository(first, 'Pier');
     first.nativeElement.querySelector('[data-branch="feature"]').click();
     first.detectChanges();
+    startTerminal(first.nativeElement);
+    first.detectChanges();
     await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
     submitTerminalCommand(first.nativeElement, 'echo pier-before-quit');
     await waitForTerminal(() => terminalPaneText(first).includes('pier-before-quit'));
     openRepositoryCard(first);
     await openLiveRepository(first, 'Quay');
     first.nativeElement.querySelector('[data-branch="master"]').click();
+    first.detectChanges();
+    startTerminal(first.nativeElement);
     first.detectChanges();
     await waitForTerminal(() => terminalPaneText(first).includes('$') || terminalPaneText(first).includes('#'));
     submitTerminalCommand(first.nativeElement, 'echo quay-before-quit');
@@ -6827,6 +7271,21 @@ function paneTrack(element: HTMLElement, property: 'gridTemplateColumns' | 'grid
   return Number.parseFloat(element.style[property]);
 }
 
+function dockTerminalSection(root: ParentNode): void {
+  const button = root.querySelector('[data-testid="terminal-collapse"]');
+  if (button instanceof HTMLElement && button.getAttribute('aria-label') === 'Expand terminal') {
+    button.click();
+  }
+}
+
+function startTerminal(root: ParentNode): void {
+  const button = root.querySelector('[data-testid="terminal-new"]');
+  if (!(button instanceof HTMLElement)) {
+    throw new Error('New is not shown');
+  }
+  button.click();
+}
+
 function terminalSectionHeight(body: HTMLElement): number {
   const match = /(\d+)px\s*$/.exec(body.style.gridTemplateRows);
   if (!match?.[1]) {
@@ -7009,39 +7468,67 @@ function expectContentSheetCorners(sheet: HTMLElement): void {
   expect(style.overflow).toBe('hidden');
 }
 
-function expectScrollingRegionsInset(sheet: HTMLElement): void {
-  const regions = scrollingRegions(sheet);
-  expect(regions.length).toBeGreaterThan(0);
-  for (const region of regions) {
-    expect(scrollingRegionRightInset(region, sheet)).toBeGreaterThan(0);
+function expectOverlayScrollbarsClipped(sheet: HTMLElement): void {
+  expect(Number.parseFloat(getComputedStyle(sheet).paddingRight) || 0).toBe(0);
+  const scrollbars = [...sheet.querySelectorAll('[data-testid="overlay-scrollbar"]')];
+  expect(scrollbars.length).toBeGreaterThan(0);
+  for (const scrollbar of scrollbars) {
+    expect(sheet.contains(scrollbar)).toBe(true);
+    expect(getComputedStyle(scrollbar).position).toBe('absolute');
   }
 }
 
-function scrollingRegions(sheet: HTMLElement): HTMLElement[] {
-  return [...sheet.querySelectorAll<HTMLElement>('*')].filter((element) => {
-    const overflowY = getComputedStyle(element).overflowY;
-    return overflowY === 'auto' || overflowY === 'scroll';
+async function expectOverlayScrollbar(region: HTMLElement | null): Promise<void> {
+  expect(region).toBeInstanceOf(HTMLElement);
+  if (!(region instanceof HTMLElement)) {
+    return;
+  }
+  expect(getComputedStyle(region).scrollbarWidth).toBe('none');
+  expect(getComputedStyle(region).scrollbarGutter).not.toBe('stable');
+  installScrollMetrics(region, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+  region.dispatchEvent(new Event('pointerenter'));
+  const thumb = region.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+  expect(thumb).not.toBeNull();
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+
+  installScrollMetrics(region, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
+  region.dispatchEvent(new Event('pointerenter'));
+  expect(thumb.classList.contains('is-visible')).toBe(true);
+  const thumbStyle = getComputedStyle(thumb);
+  expect(thumbStyle.position).toBe('absolute');
+  expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
+  expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
+
+  vi.useFakeTimers();
+  region.dispatchEvent(new Event('pointerleave'));
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+  region.dispatchEvent(new Event('scroll'));
+  expect(thumb.classList.contains('is-visible')).toBe(true);
+  await vi.advanceTimersByTimeAsync(700);
+  expect(thumb.classList.contains('is-visible')).toBe(false);
+  vi.useRealTimers();
+}
+
+function installScrollMetrics(
+  element: HTMLElement,
+  metrics: { clientHeight: number; scrollHeight: number; scrollTop: number },
+): void {
+  let scrollTop = metrics.scrollTop;
+  Object.defineProperty(element, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
   });
-}
-
-function scrollingRegionRightInset(region: HTMLElement, sheet: HTMLElement): number {
-  const regionStyle = getComputedStyle(region);
-  const sheetStyle = getComputedStyle(sheet);
-  const paddingRight = Math.max(
-    Number.parseFloat(regionStyle.paddingRight) || 0,
-    Number.parseFloat(sheetStyle.paddingRight) || 0,
-  );
-  const marginRight = Number.parseFloat(regionStyle.marginRight) || 0;
-  if (paddingRight > 0 || marginRight > 0) {
-    return Math.max(paddingRight, marginRight);
-  }
-
-  const regionBox = region.getBoundingClientRect();
-  const sheetBox = sheet.getBoundingClientRect();
-  if (sheetBox.width > 0 && regionBox.width < sheetBox.width) {
-    return sheetBox.width - regionBox.width;
-  }
-  return 0;
+  Object.defineProperty(element, 'scrollHeight', {
+    configurable: true,
+    get: () => metrics.scrollHeight,
+  });
+  Object.defineProperty(element, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value: number) => {
+      scrollTop = value;
+    },
+  });
 }
 
 function scrollCommitList(
@@ -7054,6 +7541,37 @@ function scrollCommitList(
     list.scrollTop = metrics.scrollTop;
   }
   list.dispatchEvent(new Event('scroll'));
+}
+
+function commitCountFailureDir(roots: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'git-worktree-manager-count-fail-'));
+  roots.push(dir);
+  writeFileSync(
+    join(dir, 'git'),
+    `#!/bin/sh
+if [ "$1" = "rev-list" ] && [ "$2" = "--count" ]; then
+  echo "count failed" >&2
+  exit 1
+fi
+exec /usr/bin/git "$@"
+`,
+    { mode: 0o755 },
+  );
+  return dir;
+}
+
+function createLongFeatureRepository(roots: string[]): string {
+  const repoPath = createEmptyRepository(roots);
+  git(repoPath, ['checkout', '-b', 'feature']);
+  for (let number = 1; number <= 31; number += 1) {
+    const label = String(number).padStart(2, '0');
+    writeFileSync(join(repoPath, 'note.txt'), `${label}\n`);
+    git(repoPath, ['add', 'note.txt']);
+    commitWithDate(repoPath, `Feature ${label}`, number);
+  }
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+  return repoPath;
 }
 
 function createLongHistoryRepository(roots: string[]): string {

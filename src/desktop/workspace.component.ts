@@ -60,6 +60,7 @@ import { browseForFolder } from './folder-browser';
 import { runAfterPaint } from './after-paint';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
+import { OverlayScroll } from './overlay-scrollbar';
 import {
   TerminalHost,
   adoptedTmuxTerminal,
@@ -110,6 +111,8 @@ import {
   listWorktreeBranches,
   refreshOpenRepositoryRemotes,
   pinDefaultBranch,
+  countBranchCommits,
+  countCommitsOnlyOnBranch,
   readChangedFiles,
   readCommitFileDiff,
   readCommitFiles,
@@ -251,7 +254,7 @@ const sampleCard: CardRepository[] = [
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [NgTemplateOutlet, TerminalHost, RepositorySettings],
+  imports: [NgTemplateOutlet, TerminalHost, RepositorySettings, OverlayScroll],
   styleUrl: './workspace-rail.css',
   host: {
     '[style.--forest]': 'paintedSidebarColor()',
@@ -996,7 +999,7 @@ button, input { font: inherit; color: inherit; }
               (displayNameChanged)="renameOpenRepository($event)"
             ></gm-repository-settings>
           </p>
-          <ul data-testid="branch-list">
+          <ul data-testid="branch-list" gmOverlayScroll>
             @for (branch of branches(); track branch.name) {
               <li
                 class="branch-row"
@@ -1124,7 +1127,11 @@ button, input { font: inherit; color: inherit; }
                 </button>
               </div>
               <p>
-                {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
+                @if (headingCommitCount() !== null) {
+                  {{ headingCommitCount() }} commits · {{ visibleFiles().length }} changed files
+                } @else {
+                  {{ visibleFiles().length }} changed files
+                }
               </p>
             </header>
             }
@@ -1134,7 +1141,7 @@ button, input { font: inherit; color: inherit; }
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
             <h3>Changes</h3>
-            <ul data-testid="changed-files">
+            <ul data-testid="changed-files" gmOverlayScroll>
               @for (file of visibleFiles(); track file.path) {
                 <li
                   data-testid="changed-file"
@@ -1168,7 +1175,7 @@ button, input { font: inherit; color: inherit; }
             <div data-testid="commits">
             @if (branchIsDefault()) {
               <h3>Commits</h3>
-              <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
+              <ul data-testid="recent-commits" gmOverlayScroll (scroll)="onCommitsScroll($event)">
                 @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1183,7 +1190,7 @@ button, input { font: inherit; color: inherit; }
               </ul>
             } @else {
               <h3>Commits only on this branch</h3>
-              <ul data-testid="branch-commits">
+              <ul data-testid="branch-commits" gmOverlayScroll (scroll)="onCommitsScroll($event)">
                 @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1212,7 +1219,7 @@ button, input { font: inherit; color: inherit; }
               (dblclick)="equalizeContentColumns($event)"
             ></div>
             @if (showingCommit() && visibleCommitFiles().length > 0) {
-              <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
+              <ul class="commit-files" data-testid="commit-files" gmOverlayScroll [style.width.px]="commitFileWidth()">
                 @for (file of visibleCommitFiles(); track file.path) {
                   <li
                     data-testid="changed-file"
@@ -1244,7 +1251,7 @@ button, input { font: inherit; color: inherit; }
               ></div>
             }
             @if (diffText()) {
-              <pre data-testid="diff">{{ diffText() }}</pre>
+              <pre data-testid="diff" gmOverlayScroll>{{ diffText() }}</pre>
             } @else {
               <p data-testid="empty-diff">No diff for this file</p>
             }
@@ -1465,8 +1472,6 @@ button, input { font: inherit; color: inherit; }
                               aria-orientation="vertical"
                               tabindex="0"
                               (pointerdown)="beginPaneSplit($event)"
-                              (pointermove)="movePaneSplit($event)"
-                              (pointerup)="endPaneSplit($event)"
                               (dblclick)="equalizePaneSplit()"
                             ></div>
                           }
@@ -1509,7 +1514,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (createDialogOpen()) {
       <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree" (click)="dismissCreateFromBackdrop($event)">
-        <section class="dialog-panel" [attr.aria-busy]="branchNamesLoading() || creatingWorktree() ? true : null" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll [attr.aria-busy]="branchNamesLoading() || creatingWorktree() ? true : null" (click)="$event.stopPropagation()">
           <h2>Create worktree</h2>
           <label>
             New branch
@@ -1532,6 +1537,7 @@ button, input { font: inherit; color: inherit; }
               <ul
                 id="create-branch-options"
                 data-testid="create-branch-options"
+                gmOverlayScroll
                 role="listbox"
                 aria-labelledby="existing-branches-heading"
               >
@@ -1562,7 +1568,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (mergeDialogBranch()) {
       <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master" (click)="dismissMergeFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Merge into master</h2>
           @if (branchActivity()?.label === 'Merging into master') {
             <p data-testid="merge-activity">Merging into master</p>
@@ -1588,7 +1594,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (appSettingsOpen()) {
       <div data-testid="app-settings-dialog" role="dialog" aria-label="App settings" (click)="dismissAppSettingsFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>App settings</h2>
           <h3 data-testid="default-layout-heading">Default layout</h3>
           <label>
@@ -1819,7 +1825,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (oldSessionChoices().length > 0) {
       <div data-testid="old-session-dialog" role="dialog" aria-label="Old tmux sessions" (click)="dismissOldSessionsFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Old tmux sessions</h2>
           <p>These sessions were created before a branch was recorded, and each name matches more than one branch.</p>
           @for (session of oldSessionChoices(); track session.name) {
@@ -1839,7 +1845,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (pendingTerminalMode() !== null) {
       <div data-testid="terminal-mode-dialog" role="dialog" aria-label="Terminal mode" (click)="dismissTerminalModeFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Terminal mode</h2>
           <p>Keep the terminals that are still running, or kill them?</p>
           <div class="dialog-actions">
@@ -1852,7 +1858,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository" (click)="dismissAddFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Add repository</h2>
           <label>
             Location
@@ -1969,7 +1975,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedRecentCommits = signal<BranchCommit[]>([]);
-  readonly recentHistoryComplete = signal(false);
+  readonly commitListComplete = signal(false);
+  readonly commitTotal = signal<number | null>(null);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly appSettingsOpen = signal(false);
@@ -2028,9 +2035,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly changesShare = signal<number | null>(this.initialSettings.changesShare);
   readonly commitFileWidth = signal(this.initialSettings.commitFileWidth);
   readonly terminalRowHeight = signal(this.initialSettings.terminalRowHeight);
-  readonly terminalExpanded = signal(this.initialSettings.terminalExpanded);
+  private readonly terminalSectionByBranch = signal<Record<string, TerminalSection>>({});
+  readonly terminalExpanded = computed(() => this.sectionFor(this.selectedBranchName()) !== 'collapsed');
   private arrangedTerminalRowHeight = this.initialSettings.terminalRowHeight;
-  readonly terminalMaximized = signal(false);
+  readonly terminalMaximized = computed(() => this.sectionFor(this.selectedBranchName()) === 'maximized');
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
@@ -2141,9 +2149,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     return (this.selectedBranch()?.commits ?? []).filter((commit) => !commit.onDefaultBranch);
   });
-  readonly summaryCommitCount = computed(() =>
-    this.branchIsDefault() ? this.visibleRecentCommits().length : this.visibleCommits().length,
-  );
+  readonly headingCommitCount = computed((): number | null => {
+    if (this.effectivePath() === null) {
+      return this.branchIsDefault() ? this.visibleRecentCommits().length : this.visibleCommits().length;
+    }
+    return this.commitTotal();
+  });
   readonly showingCommit = computed(() => {
     if (this.selectedCommitSubject() === null) {
       return false;
@@ -2334,6 +2345,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       terminalsByBranch: this.terminalsByBranch(),
       worktreePath: this.worktreePath(),
       branches: this.realBranches(),
+      terminalSectionByBranch: this.terminalSectionByBranch(),
     });
   }
 
@@ -2579,6 +2591,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const previous = this.snapshotBranchView();
     this.selectedBranchName.set(name);
+    if (!this.terminalMaximized()) {
+      this.maximizedBodyHeight.set(null);
+    }
     this.clearLoadedBranch();
     this.contentLoading.set(true);
     this.runWhenPainted(() => {
@@ -2593,12 +2608,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  onRecentCommitsScroll(event: Event): void {
+  onCommitsScroll(event: Event): void {
     const list = event.currentTarget as HTMLElement;
     if (list.scrollTop + list.clientHeight < list.scrollHeight) {
       return;
     }
-    if (this.recentHistoryComplete()) {
+    if (this.commitListComplete()) {
       return;
     }
     const path = this.effectivePath();
@@ -2606,10 +2621,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!path || !branch) {
       return;
     }
-    const page = readRecentCommits(path, branch, this.loadedRecentCommits().length);
-    this.loadedRecentCommits.update((current) => [...current, ...page]);
+    const onDefault = this.branchIsDefault();
+    const page = onDefault
+      ? readRecentCommits(path, branch, this.loadedRecentCommits().length)
+      : readCommitsOnlyOnBranch(path, branch, this.loadedCommits().length);
+    if (onDefault) {
+      this.loadedRecentCommits.update((current) => [...current, ...page]);
+    } else {
+      this.loadedCommits.update((current) => [...current, ...page]);
+    }
     if (page.length < recentCommitPageSize) {
-      this.recentHistoryComplete.set(true);
+      this.commitListComplete.set(true);
     }
   }
 
@@ -2725,13 +2747,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   newTerminal(): void {
+    const branch = this.selectedBranchName();
     const terminal = this.spawnTerminal();
-    if (!terminal) {
+    if (!terminal || !branch) {
       return;
     }
     const tab = this.makeTab([terminal]);
     this.updateSelected((state) => withNewTab(state, tab));
-    this.terminalExpanded.set(true);
+    if (this.sectionFor(branch) !== 'maximized') {
+      this.setSection(branch, 'docked');
+    }
     this.closeTerminalMenu();
   }
 
@@ -2915,8 +2940,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       origin: tab.splitRatio,
       tabId: tab.id,
     };
+    this.captureSplit(event);
   }
 
+  @HostListener('document:pointermove', ['$event'])
   movePaneSplit(event: PointerEvent): void {
     const drag = this.paneSplitDrag;
     if (!drag || drag.pointerId !== event.pointerId || drag.width <= 0) {
@@ -2929,6 +2956,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }));
   }
 
+  @HostListener('document:pointerup', ['$event'])
   endPaneSplit(event: PointerEvent): void {
     if (this.paneSplitDrag?.pointerId === event.pointerId) {
       this.paneSplitDrag = null;
@@ -3050,16 +3078,26 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   toggleTerminalRow(): void {
-    this.captureChangesShare();
-    if (this.terminalMaximized() || this.terminalExpanded()) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    const branch = this.selectedBranchName();
+    if (!branch) {
+      return;
+    }
+    const expanding = this.sectionFor(branch) === 'collapsed';
+    const keepShare = this.changesShare() !== null;
+    if (expanding) {
+      this.setSection(branch, 'docked');
+      if (this.terminalCount(branch) === 0) {
+        this.newTerminal();
+      }
     } else {
-      this.terminalExpanded.set(true);
-      this.ensureTerminal();
+      this.setSection(branch, 'collapsed');
     }
     this.fitDockedTerminal();
-    this.applyChangesShare();
+    if (keepShare) {
+      this.applyChangesShare();
+    } else {
+      this.rememberChangesShare();
+    }
     this.persistArrangement();
   }
 
@@ -3155,22 +3193,48 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       terminalRowHeight: this.arrangedTerminalRowHeight,
       changesFileWidth: this.changesFileWidth(),
       commitFileWidth: this.commitFileWidth(),
-      terminalExpanded: this.terminalExpanded(),
     });
   }
 
-  toggleTerminalMaximize(): void {
-    if (this.terminalMaximized()) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(true);
+  private sectionFor(branch: string | null): TerminalSection {
+    if (!branch) {
+      return 'collapsed';
+    }
+    return this.terminalSectionByBranch()[branch] ?? 'collapsed';
+  }
+
+  private setSection(branch: string, section: TerminalSection): void {
+    this.terminalSectionByBranch.update((current) => {
+      if (section === 'collapsed') {
+        if (!(branch in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[branch];
+        return next;
+      }
+      if (current[branch] === section) {
+        return current;
+      }
+      return { ...current, [branch]: section };
+    });
+    if (branch === this.selectedBranchName() && section !== 'maximized') {
       this.maximizedBodyHeight.set(null);
-      this.fitDockedTerminal();
-      this.applyChangesShare();
-      this.persistArrangement();
+    }
+  }
+
+  toggleTerminalMaximize(): void {
+    const branch = this.selectedBranchName();
+    if (!branch) {
       return;
     }
-    this.terminalMaximized.set(true);
-    this.terminalExpanded.set(true);
+    if (this.sectionFor(branch) === 'maximized') {
+      this.setSection(branch, 'docked');
+      this.fitDockedTerminal();
+      this.applyChangesShare();
+      return;
+    }
+    this.setSection(branch, 'maximized');
     this.captureMaximizedBody();
   }
 
@@ -3819,18 +3883,6 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  private ensureTerminal(): void {
-    const branch = this.selectedBranchName();
-    if (!branch) {
-      return;
-    }
-    const existing = this.terminalsByBranch()[branch];
-    if (existing && existing.tabs.length > 0) {
-      return;
-    }
-    this.openTerminals(branch);
-  }
-
   private openTerminals(branch: string): void {
     const repo = this.effectivePath();
     if (!repo) {
@@ -3852,17 +3904,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (sessionsForBranch(repo, branch).length > 0) {
       this.storeBranch(branch, this.adoptTmuxSessions(repo, branch, cwd));
-      return;
     }
-    if (!this.terminalExpanded()) {
-      return;
-    }
-    const terminal = this.spawnTerminal();
-    if (!terminal) {
-      return;
-    }
-    const tab = this.makeTab([terminal]);
-    this.storeBranch(branch, { tabs: [tab], focusedTabId: tab.id });
   }
 
   private adoptTmuxSessions(repo: string, branch: string, cwd: string): WorktreeTerminalView {
@@ -3876,8 +3918,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private clearTerminals(): void {
     this.worktreePath.set('');
     this.terminalsByBranch.set({});
+    this.terminalSectionByBranch.set({});
+    this.maximizedBodyHeight.set(null);
     this.closeTerminalMenu();
     this.renaming.set(null);
+  }
+
+  private collapseWorktreesWithoutTerminals(): void {
+    const branches = new Set(Object.keys(this.terminalsByBranch()));
+    const selected = this.selectedBranchName();
+    if (selected) {
+      branches.add(selected);
+    }
+    for (const branch of branches) {
+      if (this.terminalCount(branch) === 0) {
+        this.setSection(branch, 'collapsed');
+      }
+    }
   }
 
   private spawnTerminal(): TerminalView | null {
@@ -3932,9 +3989,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!kill && mode !== 'none' && branch) {
       this.adoptOpenSessions(branch);
     }
-    if (mode !== 'none' && branch && this.terminalCount(branch) === 0) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    if (mode !== 'none') {
+      this.collapseWorktreesWithoutTerminals();
     }
   }
 
@@ -4059,9 +4115,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private collapseIfEmpty(branch: string, state: WorktreeTerminalView): void {
-    if (branch === this.selectedBranchName() && state.tabs.length === 0) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
+    if (state.tabs.length === 0) {
+      this.setSection(branch, 'collapsed');
     }
   }
 
@@ -4090,9 +4145,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
             }
             if (plan.terminals) {
               this.terminalsByBranch.set(plan.terminals.next);
-              if (plan.terminals.collapse) {
-                this.terminalMaximized.set(false);
-                this.terminalExpanded.set(false);
+              for (const branch of plan.terminals.collapsedBranches) {
+                this.setSection(branch, 'collapsed');
               }
             }
           });
@@ -4105,7 +4159,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private planTerminalRefresh(): {
     sessions: TmuxSessionRecord[] | null;
-    terminals: { next: Record<string, WorktreeTerminalView>; collapse: boolean } | null;
+    terminals: { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null;
   } {
     const snapshots = this.shouldWatchTmux() ? listTmuxSessionSnapshots() : null;
     let sessions: TmuxSessionRecord[] | null = null;
@@ -4118,8 +4172,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const bySession = new Map(snapshots?.map((snapshot) => [snapshot.name, snapshot]) ?? []);
     const current = this.terminalsByBranch();
     let next = current;
-    let collapse = false;
-    const selected = this.selectedBranchName();
+    const collapsedBranches: string[] = [];
     for (const [branch, state] of Object.entries(current)) {
       for (const tab of state.tabs) {
         for (const terminal of tab.terminals) {
@@ -4132,8 +4185,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
             const result = withoutTerminal(latest, tab.id, terminal.id);
             next = { ...next, [branch]: result.state };
             stopTerminal(terminal);
-            if (branch === selected && result.state.tabs.length === 0) {
-              collapse = true;
+            if (result.state.tabs.length === 0) {
+              collapsedBranches.push(branch);
             }
             continue;
           }
@@ -4145,7 +4198,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     return {
       sessions,
-      terminals: next === current ? null : { next, collapse },
+      terminals: next === current ? null : { next, collapsedBranches },
     };
   }
 
@@ -4220,6 +4273,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
+      if (!this.terminalMaximized()) {
+        this.maximizedBodyHeight.set(null);
+      }
       this.realBranches.set(saved.branches);
       this.claimOldSessions(tab.path, saved.branches);
       this.rememberTmuxSessions();
@@ -4319,6 +4376,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
+      if (!this.terminalMaximized()) {
+        this.maximizedBodyHeight.set(null);
+      }
       this.closeTerminalMenu();
       this.renaming.set(null);
     } else {
@@ -4419,7 +4480,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedFiles.set([]);
     this.loadedCommits.set([]);
     this.loadedRecentCommits.set([]);
-    this.recentHistoryComplete.set(true);
+    this.commitListComplete.set(true);
+    this.commitTotal.set(null);
   }
 
   private snapshotBranchView(): BranchViewSnapshot {
@@ -4430,7 +4492,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       files: this.loadedFiles(),
       commits: this.loadedCommits(),
       recentCommits: this.loadedRecentCommits(),
-      recentComplete: this.recentHistoryComplete(),
+      commitListComplete: this.commitListComplete(),
+      commitTotal: this.commitTotal(),
       commitFiles: this.loadedCommitFiles(),
       diff: this.loadedDiff(),
     };
@@ -4443,7 +4506,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedFiles.set(snapshot.files);
     this.loadedCommits.set(snapshot.commits);
     this.loadedRecentCommits.set(snapshot.recentCommits);
-    this.recentHistoryComplete.set(snapshot.recentComplete);
+    this.commitListComplete.set(snapshot.commitListComplete);
+    this.commitTotal.set(snapshot.commitTotal);
     this.loadedCommitFiles.set(snapshot.commitFiles);
     this.loadedDiff.set(snapshot.diff);
   }
@@ -4458,17 +4522,34 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedDiff.set(null);
     this.loadedCommitFiles.set([]);
     this.loadedFiles.set(readChangedFiles(path, name));
-    if (this.branchIsDefault()) {
+    this.commitTotal.set(null);
+    const onDefault = this.branchIsDefault();
+    const page = onDefault ? readRecentCommits(path, name) : readCommitsOnlyOnBranch(path, name);
+    if (onDefault) {
       this.loadedCommits.set([]);
-      const page = readRecentCommits(path, name);
       this.loadedRecentCommits.set(page);
-      this.recentHistoryComplete.set(page.length < recentCommitPageSize);
     } else {
       this.loadedRecentCommits.set([]);
-      this.recentHistoryComplete.set(true);
-      this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+      this.loadedCommits.set(page);
     }
+    this.commitListComplete.set(page.length < recentCommitPageSize);
     this.openTerminals(name);
+    this.scheduleCommitTotal(path, name);
+  }
+
+  private scheduleCommitTotal(path: string, name: string): void {
+    this.runWhenPainted(() => {
+      if (this.effectivePath() !== path || this.selectedBranchName() !== name) {
+        return;
+      }
+      const total = this.branchIsDefault()
+        ? countBranchCommits(path, name)
+        : countCommitsOnlyOnBranch(path, name);
+      if (this.effectivePath() !== path || this.selectedBranchName() !== name || total === undefined) {
+        return;
+      }
+      this.commitTotal.set(total);
+    });
   }
 
   private rememberTmuxSessions(): void {
@@ -4599,11 +4680,14 @@ const terminalHeaderHeight = 36;
 const headingMinHeight = 44;
 const terminalPaneHeaderHeight = 22;
 
+type TerminalSection = 'collapsed' | 'docked' | 'maximized';
+
 interface RepositoryWorkspace {
   view: BranchViewSnapshot;
   terminalsByBranch: Record<string, WorktreeTerminalView>;
   worktreePath: string;
   branches: SampleBranch[];
+  terminalSectionByBranch: Record<string, TerminalSection>;
 }
 
 interface BranchViewSnapshot {
@@ -4613,7 +4697,8 @@ interface BranchViewSnapshot {
   files: ChangedFile[];
   commits: BranchCommit[];
   recentCommits: BranchCommit[];
-  recentComplete: boolean;
+  commitListComplete: boolean;
+  commitTotal: number | null;
   commitFiles: ChangedFile[];
   diff: string | null;
 }

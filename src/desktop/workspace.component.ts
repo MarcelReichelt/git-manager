@@ -1465,8 +1465,6 @@ button, input { font: inherit; color: inherit; }
                               aria-orientation="vertical"
                               tabindex="0"
                               (pointerdown)="beginPaneSplit($event)"
-                              (pointermove)="movePaneSplit($event)"
-                              (pointerup)="endPaneSplit($event)"
                               (dblclick)="equalizePaneSplit()"
                             ></div>
                           }
@@ -2923,8 +2921,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       origin: tab.splitRatio,
       tabId: tab.id,
     };
+    this.captureSplit(event);
   }
 
+  @HostListener('document:pointermove', ['$event'])
   movePaneSplit(event: PointerEvent): void {
     const drag = this.paneSplitDrag;
     if (!drag || drag.pointerId !== event.pointerId || drag.width <= 0) {
@@ -2937,6 +2937,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }));
   }
 
+  @HostListener('document:pointerup', ['$event'])
   endPaneSplit(event: PointerEvent): void {
     if (this.paneSplitDrag?.pointerId === event.pointerId) {
       this.paneSplitDrag = null;

@@ -413,6 +413,67 @@ describe('terminal tabs', () => {
     expect(readFileSync(settingsPath, 'utf8')).toBe(before);
   });
 
+  it('keeps moving the split when the pointer leaves the splitter', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
+
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 2);
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]') as HTMLElement;
+    Object.defineProperty(split.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 200 });
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
+    const before = readFileSync(settingsPath, 'utf8');
+    split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0, pointerId: 1 }));
+    document.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 150, clientY: 40, pointerId: 1 }),
+    );
+    fixture.detectChanges();
+
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.75', '0.25']);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(before);
+  });
+
+  it('stops moving the split when the pointer button is released away from the splitter', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
+
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 2);
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]') as HTMLElement;
+    Object.defineProperty(split.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 200 });
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
+    const before = readFileSync(settingsPath, 'utf8');
+    split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0, pointerId: 1 }));
+    document.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 150, clientY: 40, pointerId: 1 }),
+    );
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 150, clientY: 40, pointerId: 1 }));
+    document.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 180, clientY: 40, pointerId: 1 }),
+    );
+    fixture.detectChanges();
+
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.75', '0.25']);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(before);
+
+    split.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(before);
+  });
+
   it('counts both terminals in a split tab and hides the count at zero', async () => {
     const repo = createRepo();
     root = repo.root;

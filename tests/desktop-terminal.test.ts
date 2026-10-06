@@ -542,12 +542,9 @@ describe('branch terminal', () => {
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
     const panes = [...sheet.querySelectorAll('[data-testid="terminal-pane"]')] as HTMLElement[];
     const rightPane = panes[1];
-    if (!rightPane) {
-      throw new Error('The side-by-side terminal is not shown');
-    }
 
     expect(panes).toHaveLength(2);
-    expect(contentRightGap(rightPane, sheet)).toBe(0);
+    expect(contentRightGap(rightPane!, sheet)).toBe(0);
     expect(contentRightGap(sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement, sheet)).toBe(0);
   });
 

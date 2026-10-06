@@ -11,6 +11,7 @@ import { resetTextCopy, setTextCopy } from '../src/desktop/copy-text';
 import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
 import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
+import { whenRemoteRefreshIdle } from '../src/branches';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { readAppSettings } from '../src/app-settings';
 import { addRepository, findRepository, unregisterRepository } from '../src/registry';
@@ -77,6 +78,7 @@ describe('desktop workspace', () => {
     apply?.(fixture);
     fixture.detectChanges();
     await fixture.whenStable();
+    await whenRemoteRefreshIdle();
     fixture.detectChanges();
     return fixture;
   }
@@ -146,6 +148,7 @@ describe('desktop workspace', () => {
     button.click();
     fixture.detectChanges();
     await fixture.whenStable();
+    await whenRemoteRefreshIdle();
     fixture.detectChanges();
   }
 
@@ -5873,6 +5876,7 @@ describe('desktop workspace', () => {
 
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
     fixture.detectChanges();
+    await whenRemoteRefreshIdle();
 
     expect(hasRef(pier, 'refs/remotes/origin/stale')).toBe(false);
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('data-path')).toBe(

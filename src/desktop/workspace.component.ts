@@ -95,18 +95,20 @@ import {
   claimUniqueLegacySessions,
   killTmuxSession,
   listTmuxSessionRecords,
+  listTmuxSessionSnapshots,
   rememberSessionBranch,
   sessionsForBranch,
   tmuxOnPath,
   type OldSessionChoice,
   type TmuxSessionRecord,
+  type TmuxSessionSnapshot,
 } from './tmux-sessions';
 import {
+  ensureGitRepository,
   listBranches,
   listRemoteBranchesWithoutWorktree,
   listWorktreeBranches,
-  pruneRemoteTrackingRefs,
-  refreshRemoteHead,
+  refreshOpenRepositoryRemotes,
   pinDefaultBranch,
   readChangedFiles,
   readCommitFileDiff,
@@ -1976,16 +1978,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly contentColorSwatches = contentSwatches;
   readonly terminalBackgroundSwatches = terminalBackgroundSwatchList;
   readonly terminalForegroundSwatches = terminalForegroundSwatchList;
-  readonly sidebarColor = signal(readAppSettings().sidebarColor);
-  readonly sidebarText = signal<SidebarText>(readAppSettings().sidebarText);
-  readonly paintedSidebarColor = signal(readAppSettings().sidebarColor);
-  readonly paintedSidebarText = signal<SidebarText>(readAppSettings().sidebarText);
+  private readonly initialSettings = readAppSettings();
+  readonly sidebarColor = signal(this.initialSettings.sidebarColor);
+  readonly sidebarText = signal<SidebarText>(this.initialSettings.sidebarText);
+  readonly paintedSidebarColor = signal(this.initialSettings.sidebarColor);
+  readonly paintedSidebarText = signal<SidebarText>(this.initialSettings.sidebarText);
   readonly paintedSidebarTextColor = computed(() => (this.paintedSidebarText() === 'black' ? '#000000' : '#ffffff'));
-  readonly contentColor = signal(readAppSettings().contentColor);
-  readonly ideCommand = signal(readAppSettings().ideCommand);
-  readonly terminalMode = signal<TerminalMode>(readAppSettings().terminalMode);
-  readonly shellCommand = signal(readAppSettings().shellCommand);
-  readonly shellCommandDraft = signal(readAppSettings().shellCommand);
+  readonly contentColor = signal(this.initialSettings.contentColor);
+  readonly ideCommand = signal(this.initialSettings.ideCommand);
+  readonly terminalMode = signal<TerminalMode>(this.initialSettings.terminalMode);
+  readonly shellCommand = signal(this.initialSettings.shellCommand);
+  readonly shellCommandDraft = signal(this.initialSettings.shellCommand);
   readonly shellCommandEditing = signal(false);
   readonly pendingTerminalMode = signal<TerminalMode | null>(null);
   readonly oldSessionChoices = signal<OldSessionChoice[]>([]);
@@ -1996,10 +1999,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     GIT_MANAGER_APP_SETTINGS_PATH: resolveAppSettingsPath(),
   };
   private persistOpenTabs = false;
-  readonly terminalFont = signal(readAppSettings().terminalFont);
+  readonly terminalFont = signal(this.initialSettings.terminalFont);
   readonly terminalFontFamily = computed(() => `${this.terminalFont()}, monospace`);
-  readonly terminalBackground = signal(readAppSettings().terminalBackground);
-  readonly terminalForeground = signal(readAppSettings().terminalForeground);
+  readonly terminalBackground = signal(this.initialSettings.terminalBackground);
+  readonly terminalForeground = signal(this.initialSettings.terminalForeground);
   readonly createDialogOpen = signal(false);
   readonly createBranchName = signal('');
   readonly createBranchOptions = signal<string[]>([]);
@@ -2020,18 +2023,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly chipSeparator = ' · ';
   readonly terminalDisplayName = formatTerminalName;
   readonly terminalHostTitle = formatHostTitle;
-  readonly changesFileWidth = signal(readAppSettings().changesFileWidth);
+  readonly changesFileWidth = signal(this.initialSettings.changesFileWidth);
   readonly changesPaneHeight = signal(280);
-  readonly changesShare = signal<number | null>(readAppSettings().changesShare);
-  readonly commitFileWidth = signal(readAppSettings().commitFileWidth);
-  readonly terminalRowHeight = signal(readAppSettings().terminalRowHeight);
-  readonly terminalExpanded = signal(readAppSettings().terminalExpanded);
-  private arrangedTerminalRowHeight = readAppSettings().terminalRowHeight;
+  readonly changesShare = signal<number | null>(this.initialSettings.changesShare);
+  readonly commitFileWidth = signal(this.initialSettings.commitFileWidth);
+  readonly terminalRowHeight = signal(this.initialSettings.terminalRowHeight);
+  readonly terminalExpanded = signal(this.initialSettings.terminalExpanded);
+  private arrangedTerminalRowHeight = this.initialSettings.terminalRowHeight;
   readonly terminalMaximized = signal(false);
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
   private commandPoll: ReturnType<typeof setInterval> | null = null;
+  private remoteFollow = 0;
   private paneSplitDrag: {
     pointerId: number;
     startX: number;
@@ -2095,7 +2099,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
+  private readonly defaultBranchEpoch = signal(0);
   readonly defaultBranchName = computed(() => {
+    this.defaultBranchEpoch();
     const path = this.effectivePath();
     if (path !== null) {
       return readDefaultBranch(path);
@@ -2195,16 +2201,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       if (name !== null) {
         this.appendRepositoryTab(path, name);
       }
-      pruneRemoteTrackingRefs(path);
-      refreshRemoteHead(path);
+      this.followRemote(path);
     } else if (this.persistOpenTabs) {
       this.restoreOpenRepositoryTabs();
     }
     this.refreshBranches();
     this.applyOpenRepositoryAppearance();
-    this.commandPoll = setInterval(() => {
-      this.zone.run(() => this.refreshTerminalCommands());
-    }, 250);
+    this.startCommandPoll();
   }
 
   ngAfterViewInit(): void {
@@ -2218,6 +2221,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   ngOnDestroy(): void {
+    this.remoteFollow += 1;
     this.rememberOpenRepositoryTabs();
     if (this.commandPoll !== null) {
       clearInterval(this.commandPoll);
@@ -2341,10 +2345,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     this.runWhenPainted(() => {
       try {
-        pruneRemoteTrackingRefs(path);
-        refreshRemoteHead(path);
+        ensureGitRepository(path);
         this.finishChoose(name, path);
         this.openingRepository.set(null);
+        this.followRemote(path);
       } catch (error) {
         this.openingRepository.set(null);
         if (whenOpenFails) {
@@ -4072,8 +4076,46 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return null;
   }
 
-  private refreshTerminalCommands(): void {
-    this.rememberTmuxSessions();
+  private startCommandPoll(): void {
+    this.zone.runOutsideAngular(() => {
+      this.commandPoll = setInterval(() => {
+        try {
+          const plan = this.planTerminalRefresh();
+          if (plan.sessions === null && plan.terminals === null) {
+            return;
+          }
+          this.zone.run(() => {
+            if (plan.sessions) {
+              this.tmuxSessionRecords.set(plan.sessions);
+            }
+            if (plan.terminals) {
+              this.terminalsByBranch.set(plan.terminals.next);
+              if (plan.terminals.collapse) {
+                this.terminalMaximized.set(false);
+                this.terminalExpanded.set(false);
+              }
+            }
+          });
+        } catch {
+          // The next poll retries the terminal inspection.
+        }
+      }, 250);
+    });
+  }
+
+  private planTerminalRefresh(): {
+    sessions: TmuxSessionRecord[] | null;
+    terminals: { next: Record<string, WorktreeTerminalView>; collapse: boolean } | null;
+  } {
+    const snapshots = this.shouldWatchTmux() ? listTmuxSessionSnapshots() : null;
+    let sessions: TmuxSessionRecord[] | null = null;
+    if (snapshots) {
+      const next = snapshots.map((snapshot) => ({ name: snapshot.name, branch: snapshot.branch }));
+      if (!sameSessionRecords(this.tmuxSessionRecords(), next)) {
+        sessions = next;
+      }
+    }
+    const bySession = new Map(snapshots?.map((snapshot) => [snapshot.name, snapshot]) ?? []);
     const current = this.terminalsByBranch();
     let next = current;
     let collapse = false;
@@ -4085,7 +4127,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
           if (!latest || !branchHasTerminal(latest, terminal.id)) {
             continue;
           }
-          const live = liveTerminal(terminal);
+          const live = terminalLiveness(terminal, snapshots === null ? null : bySession);
           if (!live.alive) {
             const result = withoutTerminal(latest, tab.id, terminal.id);
             next = { ...next, [branch]: result.state };
@@ -4101,13 +4143,42 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         }
       }
     }
-    if (next !== current) {
-      this.terminalsByBranch.set(next);
+    return {
+      sessions,
+      terminals: next === current ? null : { next, collapse },
+    };
+  }
+
+  private shouldWatchTmux(): boolean {
+    if (this.activeTerminalMode() === 'tmux') {
+      return true;
     }
-    if (collapse) {
-      this.terminalMaximized.set(false);
-      this.terminalExpanded.set(false);
-    }
+    return Object.values(this.terminalsByBranch()).some((state) =>
+      state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.host === 'tmux')),
+    );
+  }
+
+  private followRemote(path: string): void {
+    const follow = ++this.remoteFollow;
+    void refreshOpenRepositoryRemotes(path).then((updated) => {
+      if (!updated || follow !== this.remoteFollow || this.effectivePath() !== path) {
+        return;
+      }
+      this.zone.run(() => {
+        try {
+          const previous = this.defaultBranchName();
+          this.defaultBranchEpoch.update((value) => value + 1);
+          const next = this.defaultBranchName();
+          this.refreshBranches();
+          const selected = this.selectedBranchName();
+          if (previous !== next && selected !== null) {
+            this.loadBranchContent(selected);
+          }
+        } catch (error) {
+          this.workspaceError.set(errorText(error));
+        }
+      });
+    });
   }
 
   private closeTerminalMenu(): void {
@@ -4556,6 +4627,32 @@ interface TerminalMenuState {
 
 function branchHasTerminal(state: WorktreeTerminalView, terminalId: string): boolean {
   return state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.id === terminalId));
+}
+
+function terminalLiveness(
+  terminal: Pick<TerminalView, 'host' | 'id' | 'session'>,
+  bySession: Map<string, TmuxSessionSnapshot> | null,
+): { alive: boolean; command: string } {
+  if (terminal.host === 'tmux' && bySession) {
+    const snapshot = bySession.get(terminal.session);
+    if (!snapshot) {
+      return { alive: false, command: '' };
+    }
+    return { alive: true, command: snapshot.command };
+  }
+  return liveTerminal(terminal);
+}
+
+function sameSessionRecords(
+  current: readonly TmuxSessionRecord[],
+  next: readonly TmuxSessionRecord[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every(
+      (session, index) => session.name === next[index]?.name && session.branch === next[index]?.branch,
+    )
+  );
 }
 
 function hostPlatform(): string {

@@ -55,6 +55,15 @@ function clickBranch(fixture: ComponentFixture<WorkspaceComponent>, name: string
   fixture.detectChanges();
 }
 
+function startTerminal(fixture: ComponentFixture<WorkspaceComponent>): void {
+  const button = fixture.nativeElement.querySelector('[data-testid="terminal-new"]');
+  if (!(button instanceof HTMLElement)) {
+    throw new Error('New is not shown');
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
 function paneBackground(pane: HTMLElement): string {
   return pane.getAttribute('style') ?? '';
 }
@@ -274,6 +283,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('.xterm-scrollable-element') !== null);
     fixture.detectChanges();
 
@@ -292,6 +302,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('[data-testid="terminal-pane"]') !== null);
     fixture.detectChanges();
 
@@ -320,6 +331,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('[data-testid="terminal-pane"]') !== null);
     fixture.detectChanges();
 
@@ -347,6 +359,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('[data-testid="terminal-pane"]') !== null);
     fixture.detectChanges();
 
@@ -375,6 +388,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo, 'win32');
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('.xterm-scrollable-element') !== null);
     fixture.detectChanges();
 
@@ -404,6 +418,7 @@ describe('terminal font and colors', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    startTerminal(fixture);
     await waitFor(() => fixture!.nativeElement.querySelector('.xterm-scrollable-element') !== null);
     fixture.detectChanges();
 
@@ -447,7 +462,6 @@ describe('terminal font and colors', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
-      terminalExpanded: true,
     });
   });
 });

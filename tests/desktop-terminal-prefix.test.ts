@@ -776,6 +776,7 @@ describe('branch tmux session prefix', () => {
     expect(terminalCount(fixture, 'feature-foo')).toBeNull();
 
     clickBranch(fixture, 'feature/foo');
+    clickTestId(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature/foo').length === 1);
     expect(sessionsForBranch(repo.repo, 'feature/foo')).toEqual([slash[0]]);
     expect(sessionsForBranch(repo.repo, 'feature-foo')).toEqual([]);
@@ -797,6 +798,7 @@ describe('branch tmux session prefix', () => {
     expect(terminalCount(fixture, 'feature-foo')).toBeNull();
 
     clickBranch(fixture, 'feature-foo');
+    clickTestId(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature-foo').length === 1);
     expect(sessionsForBranch(repo.repo, 'feature-foo')).toEqual([hyphen[0]]);
     expect(sessionsForBranch(repo.repo, 'feature/foo')).toEqual(slash);
@@ -851,12 +853,14 @@ describe('branch tmux session prefix', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature/foo');
+    clickTestId(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(harbor.repo, 'feature/foo').length === 1);
     const harborSession = `gm_${repoHash(harbor.repo)}_feature/foo_1`;
     expect(sessionsForBranch(harbor.repo, 'feature/foo')).toEqual([harborSession]);
 
     switchRepository(fixture, 'Atlas');
     clickBranch(fixture, 'feature');
+    clickTestId(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(atlas.repo, 'feature').length === 1);
     const atlasSession = `gm_${repoHash(atlas.repo)}_feature_1`;
     expect(sessionsForBranch(atlas.repo, 'feature')).toEqual([atlasSession]);

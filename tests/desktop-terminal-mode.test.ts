@@ -350,6 +350,7 @@ describe('terminal mode', () => {
     closeSettings(fixture);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneTitles(fixture!).length === 1);
 
     expect(paneTitles(fixture)).toEqual(['in-app terminal']);
@@ -372,6 +373,7 @@ describe('terminal mode', () => {
     expect(readAppSettings().shellCommand).toBe(shell);
     closeSettings(fixture);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).some((name) => name.includes('login-shell')));
 
     expect(tabNames(fixture)).toEqual(['1 login-shell']);
@@ -391,6 +393,7 @@ describe('terminal mode', () => {
     expect(workspaceError(fixture)).toBeNull();
     closeSettings(fixture);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => workspaceError(fixture!)?.includes('Could not start /bin/bash -l') === true);
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
 
@@ -398,6 +401,7 @@ describe('terminal mode', () => {
     setShellCommand(fixture, shell);
     closeSettings(fixture);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).some((name) => name.includes('my shell')));
     expect(workspaceError(fixture)).toBeNull();
     expect(tabNames(fixture)).toEqual(['1 my shell']);
@@ -413,6 +417,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes('CONFIG-LOADED'));
 
     const argv = shellArguments(worktreePath(repo.repo)).filter((args) => args[0] === '/bin/bash');
@@ -428,6 +433,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 login-shell'));
 
     expect(paneTitles(fixture)).toEqual(['in-app terminal']);
@@ -441,6 +447,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 bash'));
 
     expect(workspaceError(fixture)).toBeNull();
@@ -457,6 +464,7 @@ describe('terminal mode', () => {
     closeSettings(fixture);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => workspaceError(fixture!) !== null);
 
     expect(workspaceError(fixture)).toContain('missing-shell');
@@ -470,6 +478,7 @@ describe('terminal mode', () => {
     const shell = copyLoginShell(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 bash'));
 
     openSettings(fixture);
@@ -490,6 +499,7 @@ describe('terminal mode', () => {
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneTitles(fixture!).length === 1);
 
     clickControl(fixture, 'New');
@@ -511,6 +521,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
     expect(workspaceError(fixture)).toBeNull();
     expect(paneTitles(fixture)).toEqual(['tmux session']);
@@ -534,6 +545,7 @@ describe('terminal mode', () => {
     expect(modeInput(dialog, 'tmux').disabled).toBe(false);
     closeSettings(fixture);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
 
     expect(paneTitles(fixture)).toEqual(['tmux session']);
@@ -569,6 +581,7 @@ describe('terminal mode', () => {
     expect(modeInput(dialog, 'tmux').disabled).toBe(true);
     closeSettings(fixture);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneTitles(fixture!).length === 1);
 
     expect(paneTitles(fixture)).toEqual(['in-app terminal']);
@@ -582,6 +595,7 @@ describe('terminal mode', () => {
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     fixture.destroy();
@@ -590,6 +604,10 @@ describe('terminal mode', () => {
     writeSettings(repo.root, { terminalMode: 'terminal' });
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    fixture.detectChanges();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(paneTitles(fixture)).toEqual([]);
+    clickCollapse(fixture);
     await waitFor(() => paneTitles(fixture!).length === 1);
 
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([session]);
@@ -601,6 +619,7 @@ describe('terminal mode', () => {
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 bash'));
     openSettings(fixture);
     clickMode(fixture, 'tmux');
@@ -652,7 +671,7 @@ describe('terminal mode', () => {
     expect(readAppSettings().terminalMode).toBe('terminal');
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     closeSettings(fixture);
-    clickCollapse(fixture);
+    clickControl(fixture, 'New');
     await waitFor(() => paneTitles(fixture!).length === 1);
 
     expect(paneTitles(fixture)).toEqual(['in-app terminal']);
@@ -670,6 +689,7 @@ describe('terminal mode', () => {
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 bash'));
     openSettings(fixture);
     clickMode(fixture, 'tmux');
@@ -690,6 +710,7 @@ describe('terminal mode', () => {
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     openSettings(fixture);
@@ -730,10 +751,12 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(harbor.repo, 'feature').length === 1);
     const harborSession = sessionsForBranch(harbor.repo, 'feature')[0] ?? '';
     switchRepository(fixture, 'Atlas');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(atlas.repo, 'feature').length === 1);
     submitCommand(fixture.nativeElement, 'pwd');
     await waitFor(() => paneText(fixture!).includes(worktreePath(atlas.repo)));
@@ -756,6 +779,7 @@ describe('terminal mode', () => {
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
     await waitFor(() => paneText(fixture!).includes(' $'));
@@ -780,6 +804,7 @@ describe('terminal mode', () => {
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneTitles(fixture!).length === 1);
     openSettings(fixture);
     clickMode(fixture, 'tmux');
@@ -789,7 +814,7 @@ describe('terminal mode', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(paneTitles(fixture)).toEqual([]);
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
-    clickCollapse(fixture);
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
 
     expect(paneTitles(fixture)).toEqual(['tmux session']);
@@ -801,6 +826,7 @@ describe('terminal mode', () => {
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => tabNames(fixture!).includes('1 bash'));
     openSettings(fixture);
     clickMode(fixture, 'tmux');
@@ -836,6 +862,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     submitCommand(fixture.nativeElement, 'echo inappmarker');
     await waitFor(() => paneText(fixture!).includes('inappmarker'));
@@ -852,6 +879,7 @@ describe('terminal mode', () => {
     expect(paneText(fixture)).not.toContain('inappmarker');
     expect(harborShells()).toHaveLength(1);
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     expect(paneText(fixture)).not.toContain('inappmarker');
     expect(harborShells()).toHaveLength(1);
@@ -870,6 +898,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(harbor.repo, 'feature').length === 1);
     const session = sessionsForBranch(harbor.repo, 'feature')[0] ?? '';
     await waitFor(() => paneText(fixture!).includes(' $'));
@@ -877,6 +906,7 @@ describe('terminal mode', () => {
     await waitFor(() => paneText(fixture!).includes('keptsession'));
     switchRepository(fixture, 'Atlas');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => sessionsForBranch(atlas.repo, 'feature').length === 1);
 
     expect(hasSession(session)).toBe(true);
@@ -901,6 +931,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     submitCommand(fixture.nativeElement, 'echo harbormarker');
     await waitFor(() => paneText(fixture!).includes('harbormarker'));
@@ -914,6 +945,7 @@ describe('terminal mode', () => {
     );
     expect(paneText(fixture)).not.toContain('harbormarker');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     submitCommand(fixture.nativeElement, 'echo atlasmarker');
     await waitFor(() => paneText(fixture!).includes('atlasmarker'));
@@ -949,6 +981,7 @@ describe('terminal mode', () => {
     fixture = await renderWorkspace(null, { liveRegistry: true });
     chooseRepository(fixture, 'Harbor');
     clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
     await waitFor(() => paneText(fixture!).includes(' $'));
     submitCommand(fixture.nativeElement, 'echo inappmarker');
     await waitFor(() => paneText(fixture!).includes('inappmarker'));

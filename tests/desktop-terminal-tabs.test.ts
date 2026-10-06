@@ -288,6 +288,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!).length === 1);
 
     for (const [testId, label] of [
@@ -323,6 +324,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
     const first = tabNames(fixture)[0] ?? '';
 
@@ -347,6 +349,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
     const original = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
 
@@ -383,6 +386,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => sessionsForBranch(repo.repo, 'feature').length === 1);
 
     clickIcon(fixture, 'terminal-split-button');
@@ -414,6 +418,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => terminalCount(fixture!, 'feature') === '1');
 
     clickIcon(fixture, 'terminal-split-button');
@@ -436,6 +441,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
 
     const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
@@ -455,6 +461,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!).length === 1);
     clickIcon(fixture, 'terminal-split-button');
     await waitFor(() => paneHeaders(fixture!).length === 2);
@@ -490,6 +497,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
     clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!).length === 2);
@@ -525,6 +533,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => /^\d+ \S+/.test(tabNames(fixture!)[0] ?? ''));
     renameFrom(fixture, fixture.nativeElement.querySelector('[data-testid="terminal-tab"]')!, 'left');
     clickIcon(fixture, 'terminal-new');
@@ -556,6 +565,7 @@ describe('terminal tabs', () => {
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
     const session = sessionsForBranch(repo.repo, 'feature')[0] ?? '';
 
@@ -583,6 +593,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
 
     const tab = () => fixture!.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
@@ -662,6 +673,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo, 'linux', false);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
 
     const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
@@ -695,6 +707,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
     clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!).length === 2);
@@ -747,6 +760,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
     const tab = () => fixture!.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
     expect(tab().querySelector('[data-testid="terminal-tab-name"]')).toBeNull();
@@ -830,6 +844,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
     const tab = () => fixture!.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
     clickIcon(fixture, 'terminal-split-button');
@@ -893,6 +908,7 @@ describe('terminal tabs', () => {
     root = repo.root;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
     await waitFor(() => tabNames(fixture!)[0] === '1 bash');
     clickIcon(fixture, 'terminal-split-button');
     await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 bash · bash');

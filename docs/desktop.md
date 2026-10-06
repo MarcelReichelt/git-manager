@@ -44,11 +44,13 @@ The dialog shows the layout create will use, such as `Workspaces, the app defaul
 
 The heading is the branch name. Click it to copy the name. IDE sits beside the name. It stays disabled until App settings has an IDE command. The command runs in the selected checkout. `{folder}` is replaced with that checkout path, quoted for the shell. A command without `{folder}` is left as it is and still runs with that checkout as its working directory. An empty checkout reports `No checkout for this branch`. A command that fails shows that error on the workspace.
 
+Under the branch name, the changed-file count shows as soon as the worktree opens. The commit count appears once the total for that list is known, and loading further pages does not change it. When the total cannot be read, the commit count stays absent.
+
 The default branch is the name stored in the remote's HEAD ref when that branch exists locally. The remote is `origin` when it exists, and otherwise the first remote. When that branch does not exist locally, or no HEAD ref is stored, the default branch is `master` or `main` when only one of those local branches exists. When both exist, it is whichever of them is checked out on the primary checkout, and `master` when the checkout is neither. When neither exists, it is the branch checked out on the primary checkout.
 
 Changes lists files in that checkout, with lines added and deleted. Click a file to show its diff.
 
-On the default branch, Commits is `git log` for that branch, 30 commits at a time, and scrolling the list loads the next page. On any other branch, the list is commits only on that branch, compared with the default branch. Click a commit to show the files it changed and the diff for the selected file.
+On the default branch, Commits is that branch's history, 30 commits at a time, and scrolling the list loads the next page. The heading total is that same history. On any other branch, the list and the heading total are the commits that are not on the default branch, 30 at a time, and scrolling the list loads the next page. Click a commit to show the files it changed and the diff for the selected file.
 
 Drag the splitters between the panes to resize them. Each region scrolls on its own.
 

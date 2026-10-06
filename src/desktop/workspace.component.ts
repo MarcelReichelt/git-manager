@@ -111,6 +111,8 @@ import {
   listWorktreeBranches,
   refreshOpenRepositoryRemotes,
   pinDefaultBranch,
+  countBranchCommits,
+  countCommitsOnlyOnBranch,
   readChangedFiles,
   readCommitFileDiff,
   readCommitFiles,
@@ -1125,7 +1127,11 @@ button, input { font: inherit; color: inherit; }
                 </button>
               </div>
               <p>
-                {{ summaryCommitCount() }} commits · {{ visibleFiles().length }} changed files
+                @if (headingCommitCount() !== null) {
+                  {{ headingCommitCount() }} commits · {{ visibleFiles().length }} changed files
+                } @else {
+                  {{ visibleFiles().length }} changed files
+                }
               </p>
             </header>
             }
@@ -1169,7 +1175,7 @@ button, input { font: inherit; color: inherit; }
             <div data-testid="commits">
             @if (branchIsDefault()) {
               <h3>Commits</h3>
-              <ul data-testid="recent-commits" gmOverlayScroll (scroll)="onRecentCommitsScroll($event)">
+              <ul data-testid="recent-commits" gmOverlayScroll (scroll)="onCommitsScroll($event)">
                 @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1184,7 +1190,7 @@ button, input { font: inherit; color: inherit; }
               </ul>
             } @else {
               <h3>Commits only on this branch</h3>
-              <ul data-testid="branch-commits" gmOverlayScroll>
+              <ul data-testid="branch-commits" gmOverlayScroll (scroll)="onCommitsScroll($event)">
                 @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1969,7 +1975,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedRecentCommits = signal<BranchCommit[]>([]);
-  readonly recentHistoryComplete = signal(false);
+  readonly commitListComplete = signal(false);
+  readonly commitTotal = signal<number | null>(null);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
   readonly appSettingsOpen = signal(false);
@@ -2142,9 +2149,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     return (this.selectedBranch()?.commits ?? []).filter((commit) => !commit.onDefaultBranch);
   });
-  readonly summaryCommitCount = computed(() =>
-    this.branchIsDefault() ? this.visibleRecentCommits().length : this.visibleCommits().length,
-  );
+  readonly headingCommitCount = computed((): number | null => {
+    if (this.effectivePath() === null) {
+      return this.branchIsDefault() ? this.visibleRecentCommits().length : this.visibleCommits().length;
+    }
+    return this.commitTotal();
+  });
   readonly showingCommit = computed(() => {
     if (this.selectedCommitSubject() === null) {
       return false;
@@ -2598,12 +2608,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  onRecentCommitsScroll(event: Event): void {
+  onCommitsScroll(event: Event): void {
     const list = event.currentTarget as HTMLElement;
     if (list.scrollTop + list.clientHeight < list.scrollHeight) {
       return;
     }
-    if (this.recentHistoryComplete()) {
+    if (this.commitListComplete()) {
       return;
     }
     const path = this.effectivePath();
@@ -2611,10 +2621,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!path || !branch) {
       return;
     }
-    const page = readRecentCommits(path, branch, this.loadedRecentCommits().length);
-    this.loadedRecentCommits.update((current) => [...current, ...page]);
+    const onDefault = this.branchIsDefault();
+    const page = onDefault
+      ? readRecentCommits(path, branch, this.loadedRecentCommits().length)
+      : readCommitsOnlyOnBranch(path, branch, this.loadedCommits().length);
+    if (onDefault) {
+      this.loadedRecentCommits.update((current) => [...current, ...page]);
+    } else {
+      this.loadedCommits.update((current) => [...current, ...page]);
+    }
     if (page.length < recentCommitPageSize) {
-      this.recentHistoryComplete.set(true);
+      this.commitListComplete.set(true);
     }
   }
 
@@ -4459,7 +4476,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedFiles.set([]);
     this.loadedCommits.set([]);
     this.loadedRecentCommits.set([]);
-    this.recentHistoryComplete.set(true);
+    this.commitListComplete.set(true);
+    this.commitTotal.set(null);
   }
 
   private snapshotBranchView(): BranchViewSnapshot {
@@ -4470,7 +4488,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       files: this.loadedFiles(),
       commits: this.loadedCommits(),
       recentCommits: this.loadedRecentCommits(),
-      recentComplete: this.recentHistoryComplete(),
+      commitListComplete: this.commitListComplete(),
+      commitTotal: this.commitTotal(),
       commitFiles: this.loadedCommitFiles(),
       diff: this.loadedDiff(),
     };
@@ -4483,7 +4502,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedFiles.set(snapshot.files);
     this.loadedCommits.set(snapshot.commits);
     this.loadedRecentCommits.set(snapshot.recentCommits);
-    this.recentHistoryComplete.set(snapshot.recentComplete);
+    this.commitListComplete.set(snapshot.commitListComplete);
+    this.commitTotal.set(snapshot.commitTotal);
     this.loadedCommitFiles.set(snapshot.commitFiles);
     this.loadedDiff.set(snapshot.diff);
   }
@@ -4498,17 +4518,34 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedDiff.set(null);
     this.loadedCommitFiles.set([]);
     this.loadedFiles.set(readChangedFiles(path, name));
-    if (this.branchIsDefault()) {
+    this.commitTotal.set(null);
+    const onDefault = this.branchIsDefault();
+    const page = onDefault ? readRecentCommits(path, name) : readCommitsOnlyOnBranch(path, name);
+    if (onDefault) {
       this.loadedCommits.set([]);
-      const page = readRecentCommits(path, name);
       this.loadedRecentCommits.set(page);
-      this.recentHistoryComplete.set(page.length < recentCommitPageSize);
     } else {
       this.loadedRecentCommits.set([]);
-      this.recentHistoryComplete.set(true);
-      this.loadedCommits.set(readCommitsOnlyOnBranch(path, name));
+      this.loadedCommits.set(page);
     }
+    this.commitListComplete.set(page.length < recentCommitPageSize);
     this.openTerminals(name);
+    this.scheduleCommitTotal(path, name);
+  }
+
+  private scheduleCommitTotal(path: string, name: string): void {
+    this.runWhenPainted(() => {
+      if (this.effectivePath() !== path || this.selectedBranchName() !== name) {
+        return;
+      }
+      const total = this.branchIsDefault()
+        ? countBranchCommits(path, name)
+        : countCommitsOnlyOnBranch(path, name);
+      if (this.effectivePath() !== path || this.selectedBranchName() !== name || total === undefined) {
+        return;
+      }
+      this.commitTotal.set(total);
+    });
   }
 
   private rememberTmuxSessions(): void {
@@ -4656,7 +4693,8 @@ interface BranchViewSnapshot {
   files: ChangedFile[];
   commits: BranchCommit[];
   recentCommits: BranchCommit[];
-  recentComplete: boolean;
+  commitListComplete: boolean;
+  commitTotal: number | null;
   commitFiles: ChangedFile[];
   diff: string | null;
 }

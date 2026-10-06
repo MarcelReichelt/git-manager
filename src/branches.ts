@@ -696,9 +696,38 @@ export function readRecentCommits(repoPath: string, branch: string, offset = 0):
   );
 }
 
-export function readCommitsOnlyOnBranch(repoPath: string, branch: string): BranchCommit[] {
+export function countBranchCommits(repoPath: string, branch: string): number | undefined {
+  return parseCommitCount(gitOptional(repoPath, ['rev-list', '--count', branch]));
+}
+
+export function readCommitsOnlyOnBranch(repoPath: string, branch: string, offset = 0): BranchCommit[] {
+  return parseCommitLog(
+    gitText(repoPath, [
+      'log',
+      '--format=%H%x09%s',
+      `--max-count=${recentCommitPageSize}`,
+      `--skip=${offset}`,
+      commitsOnlyOnBranchRevision(repoPath, branch),
+    ]),
+  );
+}
+
+export function countCommitsOnlyOnBranch(repoPath: string, branch: string): number | undefined {
+  return parseCommitCount(
+    gitOptional(repoPath, ['rev-list', '--count', commitsOnlyOnBranchRevision(repoPath, branch)]),
+  );
+}
+
+function commitsOnlyOnBranchRevision(repoPath: string, branch: string): string {
   const base = defaultBranchName(repoPath) ?? 'master';
-  return parseCommitLog(gitText(repoPath, ['log', '--format=%H%x09%s', `${base}..${branch}`]));
+  return `${base}..${branch}`;
+}
+
+function parseCommitCount(output: string | undefined): number | undefined {
+  if (output === undefined || !/^\d+$/.test(output)) {
+    return undefined;
+  }
+  return Number(output);
 }
 
 function parseCommitLog(output: string): BranchCommit[] {

@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "Nothing to survey the queue, or issue numbers, a parent, or a task"
 ---
 
-Work a confirmed set of tickets by claiming them and handing each group to `/implement-spec`, one group at a time. The confirmed set lands on one integration branch and one draft pull request. A parent is a handoff group. The branch belongs to the confirmed set.
+Work a confirmed set of tickets by claiming them and handing each group to `/implement-spec`, one group at a time. The confirmed set lands on one integration branch and one draft pull request. Merging that pull request closes the landed tickets. A parent is a handoff group. The branch belongs to the confirmed set.
 
 The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`. Claiming, releasing, the retry list, and the grab rule are the **Orchestrate implement** operations in that doc.
 
@@ -56,16 +56,17 @@ For each group, in order, start the next group only after the previous group has
 - Pass the integration branch. The sub-agent checks it out and builds on it.
 - When a failure comment names a branch, that branch is the integration branch. Tell the sub-agent to continue it.
 - Tell the sub-agent this run owns labels, so the sub-agent leaves `claimed-by-agent` in place.
-- Tell the sub-agent this run opens the one pull request. The sub-agent leaves that request to this run.
-- Wait for its report: the branch, the tip commit, which tickets closed, deferred Slop, and Standards judgement calls left unfixed.
+- Tell the sub-agent this run opens the one pull request and keeps it a draft. The sub-agent leaves that request to this run.
+- Tell the sub-agent to comment on each landed ticket with the branch and the commit, and to leave the ticket open. The pull request closes it on merge.
+- Wait for its report: the branch, the tip commit, which tickets landed, deferred Slop, and Standards judgement calls left unfixed.
 
-When the report says the tickets closed, remove `claimed-by-agent` from those issues before the next group starts.
+When the report says the tickets landed, remove `claimed-by-agent` from those issues before the next group starts. Leave the issues open. Leave `ready-for-agent` off.
 
-Once the integration branch has a commit the default branch lacks, open one draft pull request for that branch. Later groups push to the same branch. That pull request is the review surface for the whole set.
+Once the integration branch has a commit the default branch lacks, open one draft pull request for that branch. Its body lists `Closes #<n>` for each landed ticket. Later groups push to the same branch and the same pull request gains their `Closes` lines. That pull request is the review surface for the whole set. Merging it closes the landed tickets. The pull request stays a draft.
 
 A prose task is one sub-agent that calls the Skill tool with `implement`. It claims nothing. It uses the same integration branch and the same pull request.
 
-Completion: every group has a report, or a group has failed and step 6 has released this run's still-open claims. The work that landed is on the integration branch. One draft pull request points at that branch when the branch is ahead of the default branch.
+Completion: every group has a report, or a group has failed and step 6 has released this run's still-open claims. The work that landed is on the integration branch. One draft pull request points at that branch when the branch is ahead of the default branch, and its `Closes` lines name the landed tickets. Those tickets are still open.
 
 ### 6. Release
 
@@ -75,13 +76,13 @@ When a group fails, or the run stops, release every still-open issue this run cl
 - A group that had not started is restored to `ready-for-agent` with `claimed-by-agent` removed. Leave `agent-failed` off. The comment says the run stopped before the group started.
 - The draft pull request stays open for the groups that already landed.
 
-Completion: every issue this run claimed is closed, or it is open without `claimed-by-agent`.
+Completion: every issue this run claimed is open without `claimed-by-agent`, or it is open with `ready-for-agent` because the group was released. A landed ticket stays open until the pull request merges.
 
 ### 7. Brief
 
 Report:
 
-- **Landed:** the integration branch, the draft pull request, and each closed issue with the commit that closed it.
+- **Landed:** the integration branch, the draft pull request, and each ticket that pull request will close on merge, with the commit that landed it.
 - **Skipped:** already claimed, dropped by the user, blocked, specs, and groups released before they started.
 - **Still open:** failures, unmet acceptance criteria, deferred Slop, and Standards judgement calls the fixer left. For each, one next step.
 - **Retries:** the open `agent-failed` issues from step 1, plus any this run just failed.

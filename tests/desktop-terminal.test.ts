@@ -511,6 +511,61 @@ describe('branch terminal', () => {
     expect(row.parentElement?.style.gridTemplateRows).toMatch(/minmax\(0, 1fr\) 8px \d+px/);
   });
 
+  it('fills the content width so no background shows to the right of an open terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const chrome = sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement;
+    const pane = sheet.querySelector('[data-testid="terminal-pane"]') as HTMLElement;
+    const split = sheet.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+
+    expect(contentRightGap(chrome, sheet)).toBe(0);
+    expect(contentRightGap(pane, sheet)).toBe(0);
+    expect(contentRightGap(split, sheet)).toBe(0);
+  });
+
+  it('fills the content width when a tab has two terminals side by side', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    clickControl(fixture, 'Split');
+    await waitFor(() => visiblePaneCount(fixture!) === 2);
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const panes = [...sheet.querySelectorAll('[data-testid="terminal-pane"]')] as HTMLElement[];
+    const rightPane = panes[1];
+    if (!rightPane) {
+      throw new Error('The side-by-side terminal is not shown');
+    }
+
+    expect(panes).toHaveLength(2);
+    expect(contentRightGap(rightPane, sheet)).toBe(0);
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement, sheet)).toBe(0);
+  });
+
+  it('fills the content width while the terminal section is maximized', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    clickControl(fixture, 'Maximize terminal');
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe('Restore terminal');
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-header"]') as HTMLElement, sheet)).toBe(0);
+    expect(contentRightGap(sheet.querySelector('[data-testid="terminal-pane"]') as HTMLElement, sheet)).toBe(0);
+  });
+
   it('resizes the terminal row from the horizontal splitter and keeps that height across worktrees', async () => {
     const repo = createRepo();
     root = repo.root;
@@ -1149,6 +1204,34 @@ function clickCollapse(fixture: ComponentFixture<WorkspaceComponent>): void {
   }
   button.click();
   fixture.detectChanges();
+}
+
+function contentRightGap(element: HTMLElement, sheet: HTMLElement): number {
+  const elementBox = element.getBoundingClientRect();
+  const sheetBox = sheet.getBoundingClientRect();
+  if (sheetBox.width > 0 && elementBox.width > 0) {
+    return sheetBox.right - elementBox.right;
+  }
+
+  let gap = 0;
+  let current: HTMLElement | null = element;
+  while (current && current !== sheet) {
+    gap += cssPx(getComputedStyle(current).marginRight);
+    const parent = current.parentElement;
+    if (!(parent instanceof HTMLElement)) {
+      break;
+    }
+    const parentStyle = getComputedStyle(parent);
+    gap += cssPx(parentStyle.paddingRight);
+    gap += cssPx(parentStyle.borderRightWidth);
+    current = parent;
+  }
+  return gap;
+}
+
+function cssPx(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function terminalRowHeight(element: HTMLElement): number {

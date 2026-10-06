@@ -76,8 +76,35 @@ jobs:
           path: release-artifacts/*
           if-no-files-found: error
 
+  # Publish after every pack so the changelog is written once.
+  publish:
+    name: publish
+    needs: pack
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.pack.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: git-worktree-manager-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Require an installer
+        run: test -n "$(find release-artifacts -type f -print -quit)"
+
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: release-artifacts/*
-          generate_release_notes: true
+
+      - name: Write the changelog once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          body="$(gh release view "$tag" --json body --jq .body)"
+          if [ -n "$body" ]; then
+            echo "Release text is already set."
+            exit 0
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$tag" --jq .body > release-notes.md
+          gh release edit "$tag" --notes-file release-notes.md

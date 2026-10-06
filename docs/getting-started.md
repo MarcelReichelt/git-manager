@@ -44,7 +44,7 @@ The installers are written to `release/`.
 | Windows | setup exe and portable exe |
 | macOS | dmg and zip |
 
-git still has to be on `PATH`. On Linux and macOS the branch terminal can use `tmux`. A `v*` tag builds all three systems and attaches the installers to the GitHub release. The same workflow can be started by hand.
+git still has to be on `PATH`. On Linux and macOS the branch terminal can use `tmux`. A `v*` tag builds all three systems and attaches the installers to the GitHub release. An empty release text gets the changelog once. The same workflow can be started by hand.
 
 macOS and Windows packages are unsigned unless `CSC_LINK` points at a code-signing certificate. `CSC_IDENTITY_AUTO_DISCOVERY` stays off so a build without a certificate still finishes.
 

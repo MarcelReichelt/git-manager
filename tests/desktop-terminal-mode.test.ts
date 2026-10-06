@@ -15,7 +15,7 @@ import {
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-terminal-mode-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-terminal-mode-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
@@ -28,7 +28,7 @@ function worktreePath(repo: string): string {
 function writeSettings(root: string, settings: Record<string, string>): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, `${JSON.stringify(settings)}\n`);
-  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+  process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
 }
 
 function copyLoginShell(root: string, name = 'login-shell'): string {
@@ -289,11 +289,11 @@ describe('terminal mode', () => {
   beforeEach(() => {
     previousShell = process.env.SHELL;
     previousHome = process.env.HOME;
-    previousRegistry = process.env.GIT_MANAGER_REGISTRY_PATH;
-    previousSettings = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
-    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-mode-settings-'));
+    previousRegistry = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+    previousSettings = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-mode-settings-'));
     roots.push(settingsRoot);
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
     TestBed.resetTestingModule();
   });
 
@@ -320,19 +320,19 @@ describe('terminal mode', () => {
       process.env.HOME = previousHome;
     }
     if (previousRegistry === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistry;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistry;
     }
     if (previousSettings === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettings;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousSettings;
     }
   });
 
   it('offers None, Terminal, and Tmux, and Terminal is the default when tmux is installed', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
 
@@ -358,7 +358,7 @@ describe('terminal mode', () => {
   });
 
   it('edits the shell command from the Terminal option and stores a program path', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     const shell = copyLoginShell(repo.root);
     fixture = await renderWorkspace(repo.repo);
@@ -379,7 +379,7 @@ describe('terminal mode', () => {
   });
 
   it('stores a shell path with a space and reports a path that cannot start', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     const shell = copyLoginShell(repo.root, 'my shell');
     fixture = await renderWorkspace(repo.repo);
@@ -404,7 +404,7 @@ describe('terminal mode', () => {
   });
 
   it('starts an interactive shell so its config loads', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     const home = join(repo.root, 'home');
     mkdirSync(home);
@@ -422,7 +422,7 @@ describe('terminal mode', () => {
   });
 
   it('starts the login shell when the shell command is blank', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     process.env.SHELL = copyLoginShell(repo.root);
     fixture = await renderWorkspace(repo.repo);
@@ -435,7 +435,7 @@ describe('terminal mode', () => {
   });
 
   it('starts bash when the login shell cannot be started', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     process.env.SHELL = join(repo.root, 'missing-login-shell');
     fixture = await renderWorkspace(repo.repo);
@@ -448,7 +448,7 @@ describe('terminal mode', () => {
   });
 
   it('shows the workspace error when the shell path cannot start', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     const missing = join(repo.root, 'missing-shell');
     fixture = await renderWorkspace(repo.repo);
@@ -465,7 +465,7 @@ describe('terminal mode', () => {
   });
 
   it('leaves the current terminal running when the shell command changes', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     const shell = copyLoginShell(repo.root);
     fixture = await renderWorkspace(repo.repo);
@@ -486,7 +486,7 @@ describe('terminal mode', () => {
   });
 
   it('creates in-app terminals from New and Split in Terminal mode', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
@@ -502,7 +502,7 @@ describe('terminal mode', () => {
   });
 
   it('creates tmux sessions from New and Split in Tmux mode and ignores the shell command', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, {
       terminalMode: 'tmux',
@@ -525,7 +525,7 @@ describe('terminal mode', () => {
   });
 
   it('creates a tmux session when the platform is Windows and tmux is installed', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo, { platform: 'win32' });
@@ -540,7 +540,7 @@ describe('terminal mode', () => {
   });
 
   it('disables Tmux and explains that tmux is not installed', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo, { tmuxInstalled: false });
 
@@ -559,7 +559,7 @@ describe('terminal mode', () => {
   });
 
   it('behaves as Terminal mode when Tmux is saved and tmux is missing', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo, { tmuxInstalled: false });
@@ -577,7 +577,7 @@ describe('terminal mode', () => {
   });
 
   it('shows tmux sessions for the open repository while Terminal is selected', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
@@ -597,7 +597,7 @@ describe('terminal mode', () => {
   });
 
   it('keeps a running terminal on the strip and splits in the mode being entered', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
@@ -624,7 +624,7 @@ describe('terminal mode', () => {
   });
 
   it('removes the terminal section and starts nothing in None mode', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'none' });
     fixture = await renderWorkspace(repo.repo);
@@ -640,7 +640,7 @@ describe('terminal mode', () => {
   });
 
   it('changes mode with no prompt when the mode being left has no running terminal', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'none' });
     fixture = await renderWorkspace(repo.repo);
@@ -666,7 +666,7 @@ describe('terminal mode', () => {
   });
 
   it('leaves the mode and the terminals unchanged when the change is cancelled', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
@@ -685,7 +685,7 @@ describe('terminal mode', () => {
   });
 
   it('kills in-app terminals when leaving Terminal and leaves tmux sessions running', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
@@ -716,11 +716,11 @@ describe('terminal mode', () => {
   });
 
   it('kills the app tmux sessions for a repository that is not open and leaves other sessions', async () => {
-    const harbor = createRepo('git-manager-mode-harbor-');
-    const atlas = createRepo('git-manager-mode-atlas-');
+    const harbor = createRepo('git-worktree-manager-mode-harbor-');
+    const atlas = createRepo('git-worktree-manager-mode-atlas-');
     roots.push(harbor.root, atlas.root);
     writeSettings(harbor.root, { terminalMode: 'tmux' });
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     execFileSync(tmuxBinary(), ['new-session', '-d', '-s', 'outside-kept', '-c', harbor.root], {
@@ -751,7 +751,7 @@ describe('terminal mode', () => {
   });
 
   it('hides tmux sessions in None and shows them again on the same worktree', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     writeSettings(repo.root, { terminalMode: 'tmux' });
     fixture = await renderWorkspace(repo.repo);
@@ -776,7 +776,7 @@ describe('terminal mode', () => {
   });
 
   it('collapses the section when a mode change leaves the worktree with no terminals', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
@@ -797,7 +797,7 @@ describe('terminal mode', () => {
   });
 
   it('keeps the section expanded or collapsed when terminals remain', async () => {
-    const repo = createRepo('git-manager-mode-');
+    const repo = createRepo('git-worktree-manager-mode-');
     roots.push(repo.root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
@@ -827,10 +827,10 @@ describe('terminal mode', () => {
   });
 
   it('keeps in-app terminals when the repository changes and leaves tmux sessions running', async () => {
-    const harbor = createRepo('git-manager-mode-harbor-');
-    const atlas = createRepo('git-manager-mode-atlas-');
+    const harbor = createRepo('git-worktree-manager-mode-harbor-');
+    const atlas = createRepo('git-worktree-manager-mode-atlas-');
     roots.push(harbor.root, atlas.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     fixture = await renderWorkspace(null, { liveRegistry: true });
@@ -892,10 +892,10 @@ describe('terminal mode', () => {
   });
 
   it('keeps the selected branch and running terminals of every repository opened this launch', async () => {
-    const harbor = createRepo('git-manager-mode-harbor-');
-    const atlas = createRepo('git-manager-mode-atlas-');
+    const harbor = createRepo('git-worktree-manager-mode-harbor-');
+    const atlas = createRepo('git-worktree-manager-mode-atlas-');
     roots.push(harbor.root, atlas.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     fixture = await renderWorkspace(null, { liveRegistry: true });
@@ -940,10 +940,10 @@ describe('terminal mode', () => {
   });
 
   it('shows a failed open on the current workspace and leaves that workspace in place', async () => {
-    const harbor = createRepo('git-manager-mode-harbor-');
-    const atlas = createRepo('git-manager-mode-atlas-');
+    const harbor = createRepo('git-worktree-manager-mode-harbor-');
+    const atlas = createRepo('git-worktree-manager-mode-atlas-');
     roots.push(harbor.root, atlas.root);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(harbor.root, 'registry.db');
     addRepository(harbor.repo, 'Harbor');
     addRepository(atlas.repo, 'Atlas');
     fixture = await renderWorkspace(null, { liveRegistry: true });

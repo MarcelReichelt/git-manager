@@ -14,19 +14,19 @@ import {
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
-const emptyGitConfig = join(tmpdir(), 'git-manager-desktop-gitconfig');
+const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-desktop-gitconfig');
 writeFileSync(emptyGitConfig, '');
 process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
 process.env.GIT_CONFIG_SYSTEM = emptyGitConfig;
 process.env.GIT_TERMINAL_PROMPT = '0';
 
 function createRepo(): { root: string; repo: string } {
-  const root = mkdtempSync(join(tmpdir(), 'git-manager-terminal-'));
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminal-'));
   const repo = join(root, 'billing');
   mkdirSync(repo);
   execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repo, stdio: 'ignore' });
   writeFileSync(join(repo, 'README'), 'hi\n');
   execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
@@ -218,7 +218,7 @@ function helperTextareaRule(): CSSStyleDeclaration | null {
 function useTmuxMode(root: string): void {
   const settingsPath = join(root, 'app-settings.json');
   writeFileSync(settingsPath, '{"terminalMode":"tmux"}\n');
-  process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+  process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
 }
 
 describe('branch terminal', () => {
@@ -226,12 +226,12 @@ describe('branch terminal', () => {
   let settingsRoot = '';
   let before: string[] = [];
   let fixture: ComponentFixture<WorkspaceComponent> | undefined;
-  const previousSettingsPath = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+  const previousSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
-    settingsRoot = mkdtempSync(join(tmpdir(), 'git-manager-terminal-settings-'));
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+    settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminal-settings-'));
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
   });
 
   it('hides the terminal keyboard input', () => {
@@ -244,9 +244,9 @@ describe('branch terminal', () => {
     fixture?.destroy();
     fixture = undefined;
     if (previousSettingsPath === undefined) {
-      delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
     } else {
-      process.env.GIT_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousSettingsPath;
     }
     if (root) {
       for (const name of listTmuxSessions()) {
@@ -459,7 +459,7 @@ describe('branch terminal', () => {
   });
 
   it('treats tmux as missing when it is not on PATH', () => {
-    expect(tmuxOnPath('/tmp/git-manager-no-tmux')).toBeNull();
+    expect(tmuxOnPath('/tmp/git-worktree-manager-no-tmux')).toBeNull();
   });
 
   it('counts a tmux session for a worktree before that worktree is selected', async () => {
@@ -776,7 +776,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
@@ -939,7 +939,7 @@ describe('branch terminal', () => {
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"terminalExpanded":false,"terminalRowHeight":300}\n');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
 
     clickBranch(fixture, 'feature');
@@ -963,7 +963,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
@@ -994,7 +994,7 @@ describe('branch terminal', () => {
     const repo = createRepo();
     root = repo.root;
     const settingsPath = join(root, 'app-settings.json');
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
     await waitFor(() => visiblePaneCount(fixture!) === 1);

@@ -4,7 +4,7 @@ const { shellChannels } = require('./shell-channels.cjs');
 
 installElectronNatives();
 
-window.gitManager = {
+window.gitWorktreeManager = {
   browseForFolder() {
     return ipcRenderer.invoke('browse-for-folder');
   },

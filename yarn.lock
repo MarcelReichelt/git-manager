@@ -1175,9 +1175,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@git-manager/main@workspace:.":
+"@git-worktree-manager/main@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@git-manager/main@workspace:."
+  resolution: "@git-worktree-manager/main@workspace:."
   dependencies:
     "@analogjs/vite-plugin-angular": "npm:2.7.5"
     "@angular/build": "npm:22.2.0"
@@ -1215,7 +1215,7 @@ __metadata:
     zod: "npm:^3.24.2"
     zone.js: "npm:0.16.3"
   bin:
-    git-manager: ./dist/cli.js
+    git-worktree-manager: ./dist/cli.js
   languageName: unknown
   linkType: soft
 

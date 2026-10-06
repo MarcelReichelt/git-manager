@@ -32,8 +32,8 @@ interface ShellGrid {
 // The window process cannot create the worker node-pty needs on Windows.
 // The preload bridge starts the shell in the main process instead.
 function shellMainBridge(): ShellMainBridge | null {
-  const host = globalThis as { gitManager?: Partial<ShellMainBridge> };
-  const bridge = host.gitManager;
+  const host = globalThis as { gitWorktreeManager?: Partial<ShellMainBridge> };
+  const bridge = host.gitWorktreeManager;
   if (typeof bridge?.shellEnsure !== 'function' || typeof bridge.shellCommand !== 'function') {
     return null;
   }

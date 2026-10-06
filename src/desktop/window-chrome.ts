@@ -3,7 +3,7 @@ export type WindowAction = 'minimize' | 'maximize' | 'close' | 'drag';
 export type WindowChrome = (action: WindowAction) => void;
 
 interface WindowChromeHost {
-  gitManager?: {
+  gitWorktreeManager?: {
     minimizeWindow?: () => void;
     maximizeWindow?: () => void;
     closeWindow?: () => void;
@@ -12,23 +12,23 @@ interface WindowChromeHost {
 }
 
 function hostWindowChrome(action: WindowAction): void {
-  const gitManager = (globalThis as WindowChromeHost).gitManager;
-  if (!gitManager) {
+  const gitWorktreeManager = (globalThis as WindowChromeHost).gitWorktreeManager;
+  if (!gitWorktreeManager) {
     return;
   }
   if (action === 'minimize') {
-    gitManager.minimizeWindow?.();
+    gitWorktreeManager.minimizeWindow?.();
     return;
   }
   if (action === 'maximize') {
-    gitManager.maximizeWindow?.();
+    gitWorktreeManager.maximizeWindow?.();
     return;
   }
   if (action === 'drag') {
-    gitManager.dragWindow?.();
+    gitWorktreeManager.dragWindow?.();
     return;
   }
-  gitManager.closeWindow?.();
+  gitWorktreeManager.closeWindow?.();
 }
 
 let windowChrome: WindowChrome = hostWindowChrome;

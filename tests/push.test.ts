@@ -8,13 +8,13 @@ import { git, initGitRepo, makeTempDir, removeTemp } from './cli/run.js';
 
 describe('pushBranch', () => {
   const roots: string[] = [];
-  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
 
   afterEach(() => {
     if (previousRegistryPath === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
     for (const root of roots.splice(0)) {
       removeTemp(root);
@@ -22,7 +22,7 @@ describe('pushBranch', () => {
   });
 
   it('pushes a local-only branch to the first remote when origin is absent', () => {
-    const root = makeTempDir('git-manager-push-upstream-');
+    const root = makeTempDir('git-worktree-manager-push-upstream-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const remotePath = join(root, 'upstream.git');
@@ -33,7 +33,7 @@ describe('pushBranch', () => {
     git(repoPath, ['branch', 'test']);
     mkdirSync(join(repoPath, '.workspaces'), { recursive: true });
     git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'test'), 'test']);
-    process.env.GIT_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
     addRepository(repoPath, 'Harbor');
 
     pushBranch('Harbor', 'test');

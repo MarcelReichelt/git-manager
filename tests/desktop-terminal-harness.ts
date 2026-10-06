@@ -20,8 +20,8 @@ export function createRepository(
   const repo = join(root, 'billing');
   mkdirSync(repo);
   execFileSync('git', ['init', '-b', 'master'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.email', 'test@git-manager.local'], { cwd: repo, stdio: 'ignore' });
-  execFileSync('git', ['config', 'user.name', 'git-manager test'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repo, stdio: 'ignore' });
   writeFileSync(join(repo, 'README'), 'hi\n');
   execFileSync('git', ['add', 'README'], { cwd: repo, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });

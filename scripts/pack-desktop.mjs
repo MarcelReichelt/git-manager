@@ -33,16 +33,16 @@ function installerNames() {
 
 function unpackedExecutable() {
   const candidates = [
-    join(releaseDir, 'linux-unpacked', 'git-manager'),
-    join(releaseDir, 'win-unpacked', 'git-manager.exe'),
-    join(releaseDir, 'mac', 'git-manager.app', 'Contents', 'MacOS', 'git-manager'),
-    join(releaseDir, 'mac-arm64', 'git-manager.app', 'Contents', 'MacOS', 'git-manager'),
+    join(releaseDir, 'linux-unpacked', 'git-worktree-manager'),
+    join(releaseDir, 'win-unpacked', 'git-worktree-manager.exe'),
+    join(releaseDir, 'mac', 'git-worktree-manager.app', 'Contents', 'MacOS', 'git-worktree-manager'),
+    join(releaseDir, 'mac-arm64', 'git-worktree-manager.app', 'Contents', 'MacOS', 'git-worktree-manager'),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
 function runSmoke(binary) {
-  if (process.env.GIT_MANAGER_SKIP_DESKTOP_SMOKE === '1') {
+  if (process.env.GIT_WORKTREE_MANAGER_SKIP_DESKTOP_SMOKE === '1') {
     console.log('Skipping desktop smoke.');
     return;
   }
@@ -70,7 +70,7 @@ function runSmoke(binary) {
       timeout: 90000,
       env: {
         ...process.env,
-        GIT_MANAGER_DESKTOP_SMOKE: '1',
+        GIT_WORKTREE_MANAGER_DESKTOP_SMOKE: '1',
         ELECTRON_DISABLE_SANDBOX: '1',
       },
     },

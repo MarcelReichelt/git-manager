@@ -2,13 +2,13 @@
 
 ## npm install fails
 
-### `404 Not Found` for `@git-manager/main`
+### `404 Not Found` for `@git-worktree-manager/main`
 
-npm is querying the public registry. Point the `@git-manager` scope at the
+npm is querying the public registry. Point the `@git-worktree-manager` scope at the
 project registry (once per machine or user):
 
 ```bash
-npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+npm config set @git-worktree-manager:registry https://git.mreichelt.dev/git-worktree-manager/~npm/
 ```
 
 You can also add this to `~/.npmrc` or a project `.npmrc`.
@@ -50,7 +50,7 @@ produces a dmg and a zip. The packaged app still needs git on `PATH`.
 
 On Linux the pack launches the unpacked app once. That needs `xvfb-run` and
 the usual Electron libraries (GTK, NSS, and a sound library). Set
-`GIT_MANAGER_SKIP_DESKTOP_SMOKE=1` to pack without launching. A failed launch
+`GIT_WORKTREE_MANAGER_SKIP_DESKTOP_SMOKE=1` to pack without launching. A failed launch
 prints `desktop-smoke-timeout` or the native-module error. Rebuild with the
 same command after installing the missing library; the Electron binaries in
 `native/electron/` are reused while the Electron version is unchanged.
@@ -61,7 +61,7 @@ same command after installing the missing library; the Electron binaries in
 
 ## Not a git repository
 
-`git-manager add` and Add repository both require a git directory. The error is `Not a git repository: <path>`. In the dialog that message sits under Location, and Add repository stays disabled.
+`git-worktree-manager add` and Add repository both require a git directory. The error is `Not a git repository: <path>`. In the dialog that message sits under Location, and Add repository stays disabled.
 
 ## Repository not found
 

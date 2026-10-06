@@ -31,7 +31,7 @@ describe('desktop package', () => {
   });
 
   it('uses the unpacked Electron binary from inside an asar package', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-native-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-native-'));
     const asarDir = join(root, 'app.asar', 'native', 'electron');
     const unpackedDir = join(root, 'app.asar.unpacked', 'native', 'electron');
     mkdirSync(asarDir, { recursive: true });
@@ -45,7 +45,7 @@ describe('desktop package', () => {
   });
 
   it('keeps the Node binary when no Electron build is present', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-native-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-native-'));
     const requested = join(root, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
     mkdirSync(join(requested, '..'), { recursive: true });
     writeFileSync(requested, 'node');

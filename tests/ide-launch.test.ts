@@ -59,7 +59,7 @@ describe('IDE launch', () => {
   });
 
   it('runs the command in a shell whose working directory is the checkout', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-ide-launch-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-ide-launch-'));
     try {
       await launchIde('pwd > launched-cwd.txt', root);
       expect(readFileSync(join(root, 'launched-cwd.txt'), 'utf8').trim()).toBe(root);
@@ -69,7 +69,7 @@ describe('IDE launch', () => {
   });
 
   it('reports a shell failure from the default launcher', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-ide-launch-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-ide-launch-'));
     try {
       await expect(launchIde('exit 9', root)).rejects.toThrow('Command failed: exit 9');
     } finally {

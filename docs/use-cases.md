@@ -5,8 +5,8 @@
 Register the repository, then create a worktree. A new name creates a local branch. An existing local or remote branch is checked out:
 
 ```bash
-git-manager add --path ~/src/harbor --name Harbor
-git-manager worktree create feature/login --repo Harbor
+git-worktree-manager add --path ~/src/harbor --name Harbor
+git-worktree-manager worktree create feature/login --repo Harbor
 ```
 
 The command prints the checkout path. In the desktop window, Create worktree does the same thing, and the new checkout appears in the Worktrees sidebar.
@@ -14,7 +14,7 @@ The command prints the checkout path. In the desktop window, Create worktree doe
 ## Update a branch from master
 
 ```bash
-git-manager merge --repo Harbor --update-from-master feature/login
+git-worktree-manager merge --repo Harbor --update-from-master feature/login
 ```
 
 The desktop branch menu runs the same merge with Update from master. That merges `master` into the branch's worktree.
@@ -24,7 +24,7 @@ The desktop branch menu runs the same merge with Update from master. That merges
 The primary checkout is on `master`:
 
 ```bash
-git-manager merge --repo Harbor --into-master feature/login --squash
+git-worktree-manager merge --repo Harbor --into-master feature/login --squash
 ```
 
 The desktop Merge into master dialog has the same Squash checkbox. Omit `--squash` for a regular merge.
@@ -32,7 +32,7 @@ The desktop Merge into master dialog has the same Squash checkbox. Omit `--squas
 ## Remove the extra checkout
 
 ```bash
-git-manager worktree remove feature/login --repo Harbor
+git-worktree-manager worktree remove feature/login --repo Harbor
 ```
 
 The branch remains. The primary checkout is left in place. Remove worktree in the branch menu does the same thing.

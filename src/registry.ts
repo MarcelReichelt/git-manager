@@ -18,7 +18,7 @@ export interface RegisteredRepository {
 }
 
 export function resolveRegistryPath(env?: NodeJS.ProcessEnv): string {
-  return runtimeEnv(env).GIT_MANAGER_REGISTRY_PATH ?? join(homedir(), '.config', 'git-manager', 'registry.db');
+  return runtimeEnv(env).GIT_WORKTREE_MANAGER_REGISTRY_PATH ?? join(homedir(), '.config', 'git-worktree-manager', 'registry.db');
 }
 
 function openDatabase(env?: NodeJS.ProcessEnv): Database.Database {

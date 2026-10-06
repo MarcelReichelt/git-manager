@@ -9,14 +9,14 @@ Requires **Node.js 20+** and **git** on your `PATH`. The desktop window also nee
 One-time registry setup (per machine or user):
 
 ```bash
-npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
+npm config set @git-worktree-manager:registry https://git.mreichelt.dev/git-worktree-manager/~npm/
 ```
 
 Global install:
 
 ```bash
-npm install -g @git-manager/main
-git-manager --help
+npm install -g @git-worktree-manager/main
+git-worktree-manager --help
 ```
 
 ### From source
@@ -51,11 +51,11 @@ macOS and Windows packages are unsigned unless `CSC_LINK` points at a code-signi
 ## Register an existing repo
 
 ```bash
-git-manager add --path ~/src/harbor --name Harbor
-git-manager list
+git-worktree-manager add --path ~/src/harbor --name Harbor
+git-worktree-manager list
 ```
 
-The list is stored in `~/.config/git-manager/registry.db`. `GIT_MANAGER_REGISTRY_PATH` overrides that file. Each row is a path and a display name. Adding the same path again updates the display name.
+The list is stored in `~/.config/git-worktree-manager/registry.db`. `GIT_WORKTREE_MANAGER_REGISTRY_PATH` overrides that file. Each row is a path and a display name. Adding the same path again updates the display name.
 
 The desktop card does the same thing. **+** opens Add repository, where the path can be typed or chosen. See [Desktop](desktop.md).
 
@@ -69,10 +69,10 @@ With nothing selected, a centered card lists registered repositories. Choosing o
 
 ## Create a worktree
 
-Layout comes from that repository's `.git-manager/config.toml`. When `[layout].mode` is unset, create uses the app default. A new name creates a local branch at the primary checkout's current commit. An existing local branch is checked out as it is. A branch that exists only on a remote is fetched first.
+Layout comes from that repository's `.git-worktree-manager/config.toml`. When `[layout].mode` is unset, create uses the app default. A new name creates a local branch at the primary checkout's current commit. An existing local branch is checked out as it is. A branch that exists only on a remote is fetched first.
 
 ```bash
-git-manager worktree create feature --repo Harbor
+git-worktree-manager worktree create feature --repo Harbor
 ```
 
 The command prints the checkout path. The same action is Create worktree in the desktop sidebar.

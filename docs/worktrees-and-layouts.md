@@ -1,6 +1,6 @@
 # Worktrees and layouts
 
-Layout is a per-repository choice in `.git-manager/config.toml`. The registry does not store it. When `[layout].mode` is unset, create uses the app default.
+Layout is a per-repository choice in `.git-worktree-manager/config.toml`. The registry does not store it. When `[layout].mode` is unset, create uses the app default.
 
 ## Workspaces
 
@@ -9,7 +9,7 @@ my-repo/
 ├── .git/
 ├── .workspaces/
 │   └── feature-x/
-└── .git-manager/
+└── .git-worktree-manager/
     └── config.toml
 ```
 

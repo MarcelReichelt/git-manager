@@ -1,4 +1,4 @@
-# git-manager
+# git-worktree-manager
 
 A desktop workspace and Node CLI for one registered git repository at a time.
 
@@ -8,7 +8,7 @@ Requires **Node.js 20** or later.
 
 - Desktop window: centered repository card, checked-out worktrees, diffs, commits, and a terminal section
 - A new terminal is in-app. App settings can choose a tmux session, or no terminal section
-- Registry of path and display name in `~/.config/git-manager/registry.db`
+- Registry of path and display name in `~/.config/git-worktree-manager/registry.db`
 - Worktree create in the workspaces or sibling layout, from that repository's config, or the app default when the config sets no layout
 - A new name creates a local branch at the primary checkout's current commit. An existing local or remote branch is checked out
 - Merge into master or update from master, with squash, and worktree remove. The desktop branch menu can push a local-only branch
@@ -21,11 +21,11 @@ Requires **Node.js 20** or later.
 Requires **Node.js 20+** and **git** on your `PATH`.
 
 ```bash
-npm config set @git-manager:registry https://git.mreichelt.dev/git-manager/~npm/
-npm install -g @git-manager/main
+npm config set @git-worktree-manager:registry https://git.mreichelt.dev/git-worktree-manager/~npm/
+npm install -g @git-worktree-manager/main
 
-git-manager add --path ~/src/harbor --name Harbor
-git-manager list
+git-worktree-manager add --path ~/src/harbor --name Harbor
+git-worktree-manager list
 ```
 
 Open the desktop window from a checkout:
@@ -50,7 +50,7 @@ Clone the repo and use the local toolchain:
 ```bash
 yarn install
 yarn build
-yarn link:global   # installs ~/.local/bin/git-manager
+yarn link:global   # installs ~/.local/bin/git-worktree-manager
 yarn test              # unit and integration tests
 yarn test:watch        # watch mode
 yarn test:e2e          # CLI e2e tests (needs a running Gitea; see docker-compose.e2e.yml)
@@ -61,7 +61,7 @@ yarn test:e2e:docker   # full e2e stack in Docker (Gitea + runner)
 
 This project uses **Yarn 4 (Berry)** via the vendored release in `.yarn/releases/` (see `packageManager` in `package.json`).
 
-Hook modules are paths in `.git-manager/config.toml`. See [Plugins](docs/plugins.md).
+Hook modules are paths in `.git-worktree-manager/config.toml`. See [Plugins](docs/plugins.md).
 
 For a reproducible Linux dev environment (including from Windows via Docker), see [.devcontainer/README.md](.devcontainer/README.md).
 

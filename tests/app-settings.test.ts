@@ -34,13 +34,13 @@ import { addRepository, listRepositories } from '../src/registry.js';
 
 describe('app settings', () => {
   const roots: string[] = [];
-  const previousRegistryPath = process.env.GIT_MANAGER_REGISTRY_PATH;
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
 
   afterEach(() => {
     if (previousRegistryPath === undefined) {
-      delete process.env.GIT_MANAGER_REGISTRY_PATH;
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
     } else {
-      process.env.GIT_MANAGER_REGISTRY_PATH = previousRegistryPath;
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
     }
     for (const root of roots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
@@ -48,9 +48,9 @@ describe('app settings', () => {
   });
 
   it('uses Workspaces when the app settings file is missing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
 
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'workspaces',
@@ -72,14 +72,14 @@ describe('app settings', () => {
   });
 
   it('reads a stored arrangement and ignores a share, size, or collapsed flag that cannot be used', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","changesShare":0.25,"terminalRowHeight":360,"changesFileWidth":180,"commitFileWidth":160,"terminalExpanded":false}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).changesShare).toBe(0.25);
     expect(readAppSettings(env).terminalRowHeight).toBe(360);
@@ -100,11 +100,11 @@ describe('app settings', () => {
   });
 
   it('saves the arrangement together and omits the share when it is unset', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"theme":"mint","terminalMode":"tmux","changesShare":0.25}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveArrangement(
       {
@@ -145,14 +145,14 @@ describe('app settings', () => {
   });
 
   it('uses the original terminal colors and UbuntuMono Nerd Font Mono when those settings are not text', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"terminalBackground":1,"terminalForeground":false,"terminalFont":["UbuntuMono Nerd Font Mono"]}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).terminalBackground).toBe('#1e1e1e');
     expect(readAppSettings(env).terminalForeground).toBe('#d4d4d4');
@@ -160,9 +160,9 @@ describe('app settings', () => {
   });
 
   it('uses the original terminal colors and UbuntuMono Nerd Font Mono when app settings are missing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
 
     expect(readAppSettings(env).terminalBackground).toBe('#1e1e1e');
     expect(readAppSettings(env).terminalForeground).toBe('#d4d4d4');
@@ -170,21 +170,21 @@ describe('app settings', () => {
   });
 
   it('starts the IDE command empty when that key is missing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"defaultLayout":"sibling","sidebarColor":"#112233"}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).ideCommand).toBe('');
   });
 
   it('uses Workspaces when the app settings file is empty', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'workspaces',
@@ -205,23 +205,29 @@ describe('app settings', () => {
     });
   });
 
-  it('stores app settings at ~/.config/git-manager/app-settings.json unless the path is overridden', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+  it('stores app settings at ~/.config/git-worktree-manager/app-settings.json unless the path is overridden', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'custom', 'app-settings.json');
 
     expect(resolveAppSettingsPath({})).toBe(
-      join(homedir(), '.config', 'git-manager', 'app-settings.json'),
+      join(homedir(), '.config', 'git-worktree-manager', 'app-settings.json'),
     );
-    expect(resolveAppSettingsPath({ GIT_MANAGER_APP_SETTINGS_PATH: settingsPath })).toBe(settingsPath);
+    expect(resolveAppSettingsPath({ GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath })).toBe(settingsPath);
+  });
+
+  it('ignores GIT_MANAGER_APP_SETTINGS_PATH', () => {
+    expect(resolveAppSettingsPath({ GIT_MANAGER_APP_SETTINGS_PATH: '/old/app-settings.json' })).toBe(
+      join(homedir(), '.config', 'git-worktree-manager', 'app-settings.json'),
+    );
   });
 
   it('reads a stored sidebar color and keeps the original content color when that key is missing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"defaultLayout":"sibling","sidebarColor":"#112233"}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env)).toEqual({
       defaultLayout: 'sibling',
@@ -243,27 +249,27 @@ describe('app settings', () => {
   });
 
   it('reads the process environment when no env argument is passed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    const previous = process.env.GIT_MANAGER_APP_SETTINGS_PATH;
-    process.env.GIT_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    const previous = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
     try {
       saveDefaultLayout('sibling');
       expect(readAppSettings().defaultLayout).toBe('sibling');
     } finally {
       if (previous === undefined) {
-        delete process.env.GIT_MANAGER_APP_SETTINGS_PATH;
+        delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
       } else {
-        process.env.GIT_MANAGER_APP_SETTINGS_PATH = previous;
+        process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previous;
       }
     }
   });
 
   it('saves the default layout immediately', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'nested', 'app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'nested', 'app-settings.json') };
 
     saveDefaultLayout('sibling', env);
 
@@ -287,11 +293,11 @@ describe('app settings', () => {
   });
 
   it('keeps unknown app settings when the default layout is saved', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"theme":"mint","defaultLayout":"workspaces"}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveDefaultLayout('sibling', env);
 
@@ -319,14 +325,14 @@ describe('app settings', () => {
   });
 
   it('saves the sidebar color without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","contentColor":"#abcdef"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveSidebarColor('#112233', env);
 
@@ -341,14 +347,14 @@ describe('app settings', () => {
   });
 
   it('saves the IDE command without dropping the layout, colors, or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","sidebarColor":"#112233","contentColor":"#abcdef"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveIdeCommand('code -n {folder}', env);
 
@@ -363,14 +369,14 @@ describe('app settings', () => {
   });
 
   it('saves the terminal background without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalForeground":"#ffffff","terminalFont":"JetBrains Mono"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveTerminalBackground('#065f46', env);
 
@@ -390,14 +396,14 @@ describe('app settings', () => {
   });
 
   it('saves the terminal foreground without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"workspaces","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalFont":"JetBrains Mono"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveTerminalForeground('#ffffff', env);
 
@@ -416,14 +422,14 @@ describe('app settings', () => {
   });
 
   it('saves the terminal font family without dropping the layout, colors, or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalForeground":"#ffffff"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveTerminalFont('JetBrains Mono', env);
 
@@ -441,14 +447,14 @@ describe('app settings', () => {
   });
 
   it('saves the content color without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"workspaces","ideCommand":"cursor","sidebarColor":"#112233"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveContentColor('#abcdef', env);
 
@@ -463,10 +469,10 @@ describe('app settings', () => {
   });
 
   it('uses white sidebar text when that key is missing or not white or black', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).sidebarText).toBe('white');
 
@@ -482,14 +488,14 @@ describe('app settings', () => {
   });
 
   it('saves black or white sidebar text without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalFont":"JetBrains Mono"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveSidebarText('black', env);
 
@@ -514,14 +520,14 @@ describe('app settings', () => {
   });
 
   it('restores the original colors and leaves the layout and other settings in place', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","sidebarText":"black"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     resetAppColors(env);
 
@@ -554,14 +560,14 @@ describe('app settings', () => {
   });
 
   it('restores the terminal background and foreground and leaves the font and layout in place', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","sidebarColor":"#112233","contentColor":"#abcdef","terminalBackground":"#065f46","terminalForeground":"#ffffff","terminalFont":"JetBrains Mono"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     resetAppColors(env);
 
@@ -596,25 +602,25 @@ describe('app settings', () => {
   });
 
   it('uses Terminal mode and a blank shell command when those settings are not text', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"terminalMode":1,"shellCommand":["/bin/zsh"]}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).terminalMode).toBe('terminal');
     expect(readAppSettings(env).shellCommand).toBe('');
   });
 
   it('saves the terminal mode without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"sibling","ideCommand":"cursor","shellCommand":"/bin/zsh"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveTerminalMode('none', env);
 
@@ -634,14 +640,14 @@ describe('app settings', () => {
   });
 
   it('saves a shell command path without dropping the layout or other settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(
       settingsPath,
       '{"theme":"mint","defaultLayout":"workspaces","terminalMode":"tmux","ideCommand":"cursor"}\n',
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveShellCommand('/usr/bin/zsh', env);
 
@@ -656,11 +662,11 @@ describe('app settings', () => {
   });
 
   it('stores a shell path that contains a space', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
     writeFileSync(settingsPath, '{"theme":"mint","shellCommand":"/usr/bin/zsh"}\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     saveShellCommand('/opt/Git Manager/bash', env);
 
@@ -672,18 +678,18 @@ describe('app settings', () => {
   });
 
   it('leaves the registered repository list unchanged when the default layout is saved', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     mkdirSync(repoPath);
     execFileSync('git', ['init', '-b', 'master'], { cwd: repoPath, stdio: 'ignore' });
-    process.env.GIT_MANAGER_REGISTRY_PATH = registryPath;
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = registryPath;
     addRepository(repoPath, 'Harbor');
     const before = listRepositories();
 
     saveDefaultLayout('sibling', {
-      GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json'),
+      GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json'),
     });
 
     expect(listRepositories()).toEqual(before);
@@ -695,14 +701,32 @@ describe('app settings', () => {
   });
 
   it('uses the app default Workspaces when the repository has no layout mode', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     mkdirSync(repoPath);
 
     expect(
       createLayoutForRepository(repoPath, {
-        GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json'),
+        GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json'),
+      }),
+    ).toEqual({
+      label: 'Workspaces',
+      source: 'app',
+      supported: true,
+    });
+  });
+
+  it('ignores a repository config at .git-manager/config.toml', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+
+    expect(
+      createLayoutForRepository(repoPath, {
+        GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json'),
       }),
     ).toEqual({
       label: 'Workspaces',
@@ -712,11 +736,11 @@ describe('app settings', () => {
   });
 
   it('uses the app default Sibling when the repository has no layout mode', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     mkdirSync(repoPath);
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
     saveDefaultLayout('sibling', env);
 
     expect(createLayoutForRepository(repoPath, env)).toEqual({
@@ -727,12 +751,12 @@ describe('app settings', () => {
   });
 
   it('keeps a repository Workspaces layout when the app default is Sibling', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "workspaces"\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
     saveDefaultLayout('sibling', env);
 
     expect(createLayoutForRepository(repoPath, env)).toEqual({
@@ -743,12 +767,12 @@ describe('app settings', () => {
   });
 
   it('keeps a repository Sibling layout when the app default is Workspaces', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json') };
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json') };
 
     expect(createLayoutForRepository(repoPath, env)).toEqual({
       label: 'Sibling',
@@ -758,12 +782,12 @@ describe('app settings', () => {
   });
 
   it('reports an unsupported repository layout mode without using the app default', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
     saveDefaultLayout('sibling', env);
 
     expect(createLayoutForRepository(repoPath, env)).toEqual({
@@ -774,12 +798,12 @@ describe('app settings', () => {
   });
 
   it('reports a non-string repository layout mode as set by the repository', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
     saveDefaultLayout('sibling', env);
 
     expect(createLayoutForRepository(repoPath, env)).toEqual({
@@ -790,11 +814,11 @@ describe('app settings', () => {
   });
 
   it('saves Sibling onto a repository that has no layout config', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     mkdirSync(repoPath);
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'missing-app-settings.json') };
 
     saveRepositoryLayoutMode(repoPath, 'sibling');
 
@@ -806,12 +830,12 @@ describe('app settings', () => {
   });
 
   it('saves Workspaces without dropping copy files, hooks, or other layout keys', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       [
         '[layout]',
         'workspaces_dir = ".workspaces"',
@@ -837,7 +861,7 @@ describe('app settings', () => {
 
     saveRepositoryLayoutMode(repoPath, 'workspaces');
 
-    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'));
+    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'));
     expect(parsed).toEqual({
       layout: { workspaces_dir: '.workspaces', mode: 'workspaces' },
       copy: { files: ['.env.local'] },
@@ -856,15 +880,15 @@ describe('app settings', () => {
   });
 
   it('replaces an unsupported or non-text repository layout mode', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const customPath = join(root, 'custom');
     const numericPath = join(root, 'numeric');
-    mkdirSync(join(customPath, '.git-manager'), { recursive: true });
-    mkdirSync(join(numericPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(customPath, '.git-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
-    writeFileSync(join(numericPath, '.git-manager', 'config.toml'), '[layout]\nmode = 1\n');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    mkdirSync(join(customPath, '.git-worktree-manager'), { recursive: true });
+    mkdirSync(join(numericPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(customPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "custom"\n');
+    writeFileSync(join(numericPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = 1\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
     saveDefaultLayout('sibling', env);
 
     saveRepositoryLayoutMode(customPath, 'workspaces');
@@ -883,26 +907,26 @@ describe('app settings', () => {
   });
 
   it('reads no repository sidebar color or sidebar text when those keys are absent', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     mkdirSync(repoPath);
 
     expect(readRepositoryAppearance(repoPath)).toEqual({});
 
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
-    writeFileSync(join(repoPath, '.git-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), '[layout]\nmode = "sibling"\n');
 
     expect(readRepositoryAppearance(repoPath)).toEqual({});
   });
 
   it('reads a repository sidebar color and sidebar text and ignores values that cannot be used', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = "#112233"', 'sidebar_text = "black"', ''].join('\n'),
     );
 
@@ -912,7 +936,7 @@ describe('app settings', () => {
     });
 
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       ['[appearance]', 'sidebar_color = 1', 'sidebar_text = "blue"', ''].join('\n'),
     );
 
@@ -920,12 +944,12 @@ describe('app settings', () => {
   });
 
   it('saves a repository sidebar color and sidebar text that match the app settings and keeps the layout', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
-      join(repoPath, '.git-manager', 'config.toml'),
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
       [
         '[layout]',
         'workspaces_dir = ".workspaces"',
@@ -939,12 +963,12 @@ describe('app settings', () => {
         '',
       ].join('\n'),
     );
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: join(root, 'app-settings.json') };
 
     saveRepositorySidebarColor(repoPath, '#1a3c2b');
     saveRepositorySidebarText(repoPath, 'white');
 
-    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-manager', 'config.toml'), 'utf8'));
+    const parsed = TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'));
     expect(parsed).toEqual({
       layout: { workspaces_dir: '.workspaces', mode: 'sibling' },
       copy: { files: ['.env.local'] },
@@ -965,11 +989,11 @@ describe('app settings', () => {
   });
 
   it('clears only the repository sidebar color or only the repository sidebar text', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
-    const configPath = join(repoPath, '.git-manager', 'config.toml');
-    mkdirSync(join(repoPath, '.git-manager'), { recursive: true });
+    const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
     writeFileSync(
       configPath,
       ['[layout]', 'mode = "workspaces"', '', '[appearance]', 'sidebar_color = "#112233"', 'sidebar_text = "black"', ''].join(
@@ -994,10 +1018,10 @@ describe('app settings', () => {
   });
 
   it('remembers open repository paths and the selected path without changing other app settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const settingsPath = join(root, 'app-settings.json');
-    const env = { GIT_MANAGER_APP_SETTINGS_PATH: settingsPath };
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
 
@@ -1029,7 +1053,7 @@ describe('app settings', () => {
   });
 
   it('does not create a repository config when clearing sidebar color or sidebar text that were never set', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-app-settings-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
     roots.push(root);
     const repoPath = join(root, 'harbor');
     mkdirSync(repoPath);
@@ -1037,6 +1061,6 @@ describe('app settings', () => {
     clearRepositorySidebarColor(repoPath);
     clearRepositorySidebarText(repoPath);
 
-    expect(existsSync(join(repoPath, '.git-manager', 'config.toml'))).toBe(false);
+    expect(existsSync(join(repoPath, '.git-worktree-manager', 'config.toml'))).toBe(false);
   });
 });

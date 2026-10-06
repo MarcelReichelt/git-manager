@@ -3,14 +3,14 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   git,
-  gitManagerEnv,
+  gitWorktreeManagerEnv,
   initGitRepo,
   makeTempDir,
   removeTemp,
-  runGitManager,
+  runGitWorktreeManager,
 } from './run.js';
 
-describe('git-manager merge', () => {
+describe('git-worktree-manager merge', () => {
   const roots: string[] = [];
 
   afterEach(() => {
@@ -20,25 +20,25 @@ describe('git-manager merge', () => {
   });
 
   it('updates a branch from master and leaves the primary checkout on master', () => {
-    const root = makeTempDir('git-manager-merge-update-');
+    const root = makeTempDir('git-worktree-manager-merge-update-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'feature']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     expect(
-      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
     ).toBe(0);
 
     writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
     git(repoPath, ['add', 'master.txt']);
     git(repoPath, ['commit', '-m', 'master change']);
 
-    const merged = runGitManager(
+    const merged = runGitWorktreeManager(
       ['merge', '--repo', 'Harbor', '--update-from-master', 'feature'],
       env,
     );
@@ -51,25 +51,25 @@ describe('git-manager merge', () => {
   });
 
   it('squashes master into the branch with the squash commit message', () => {
-    const root = makeTempDir('git-manager-merge-squash-update-');
+    const root = makeTempDir('git-worktree-manager-merge-squash-update-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'feature']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     expect(
-      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
     ).toBe(0);
 
     writeFileSync(join(repoPath, 'master.txt'), 'from master\n');
     git(repoPath, ['add', 'master.txt']);
     git(repoPath, ['commit', '-m', 'master change']);
 
-    const merged = runGitManager(
+    const merged = runGitWorktreeManager(
       ['merge', '--repo', 'Harbor', '--update-from-master', 'feature', '--squash'],
       env,
     );
@@ -83,18 +83,18 @@ describe('git-manager merge', () => {
   });
 
   it('merges a branch into master on the primary checkout', () => {
-    const root = makeTempDir('git-manager-merge-into-');
+    const root = makeTempDir('git-worktree-manager-merge-into-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'feature']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     expect(
-      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
     ).toBe(0);
 
     const checkout = join(repoPath, '.workspaces', 'feature');
@@ -103,7 +103,7 @@ describe('git-manager merge', () => {
     git(checkout, ['commit', '-m', 'feature change']);
     expect(existsSync(join(repoPath, 'feature.txt'))).toBe(false);
 
-    const merged = runGitManager(
+    const merged = runGitWorktreeManager(
       ['merge', '--repo', 'Harbor', '--into-master', 'feature'],
       env,
     );
@@ -114,18 +114,18 @@ describe('git-manager merge', () => {
   });
 
   it('squashes a branch into master with the squash commit message', () => {
-    const root = makeTempDir('git-manager-merge-squash-into-');
+    const root = makeTempDir('git-worktree-manager-merge-squash-into-');
     roots.push(root);
     const repoPath = join(root, 'harbor');
     const registryPath = join(root, 'registry.db');
     initGitRepo(repoPath);
     git(repoPath, ['branch', 'feature']);
-    const env = gitManagerEnv(registryPath);
+    const env = gitWorktreeManagerEnv(registryPath);
     expect(
-      runGitManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
     ).toBe(0);
     expect(
-      runGitManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
+      runGitWorktreeManager(['worktree', 'create', 'feature', '--repo', 'Harbor'], env).status,
     ).toBe(0);
 
     const checkout = join(repoPath, '.workspaces', 'feature');
@@ -133,7 +133,7 @@ describe('git-manager merge', () => {
     git(checkout, ['add', 'feature.txt']);
     git(checkout, ['commit', '-m', 'feature change']);
 
-    const merged = runGitManager(
+    const merged = runGitWorktreeManager(
       ['merge', '--repo', 'Harbor', '--into-master', 'feature', '--squash'],
       env,
     );

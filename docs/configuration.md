@@ -1,10 +1,10 @@
 # Configuration
 
-The registered-repository list is `~/.config/git-manager/registry.db`. `GIT_MANAGER_REGISTRY_PATH` overrides that path. Each row is a path and a display name. Layout, worktrees, and terminal sessions are not stored there.
+The registered-repository list is `~/.config/git-worktree-manager/registry.db`. `GIT_WORKTREE_MANAGER_REGISTRY_PATH` overrides that path. Each row is a path and a display name. Layout, worktrees, and terminal sessions are not stored there.
 
 An older file, whose `repositories` table is not exactly `path` and `display_name`, is deleted and replaced with an empty registry. Registered repositories are added again. See [ADR 0001](adr/0001-replace-older-registry-file.md).
 
-## Per-repo: `.git-manager/config.toml`
+## Per-repo: `.git-worktree-manager/config.toml`
 
 Paths in this file are relative to the registered repository.
 
@@ -33,7 +33,7 @@ Hook commands run in the registered repository. Pre-create commands run before t
 
 ## App settings
 
-App settings live in `~/.config/git-manager/app-settings.json`. `GIT_MANAGER_APP_SETTINGS_PATH` overrides that path. The desktop window writes this file. It holds the default layout, the terminal mode, the shell command, the colors, the terminal font, the IDE command, and the arrangement.
+App settings live in `~/.config/git-worktree-manager/app-settings.json`. `GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH` overrides that path. The desktop window writes this file. It holds the default layout, the terminal mode, the shell command, the colors, the terminal font, the IDE command, and the arrangement.
 
 `defaultLayout` is `workspaces` or `sibling`. Worktree create uses it when `[layout].mode` is unset. The default is `workspaces`.
 

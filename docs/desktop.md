@@ -100,7 +100,7 @@ App settings also chooses the default layout, Workspaces or Sibling. Create uses
 
 ## Worktree mode
 
-Repository settings lists Worktree mode under the location. The line under the heading names the layout create will use, and whether the repository config or the app default set it. Workspaces and Sibling write `[layout].mode` in `.git-manager/config.toml`. Choosing one writes that mode and leaves the rest of the file in place. An unsupported mode shows its value, with neither choice selected, until Workspaces or Sibling replaces it. When the open repository has no path on disk, the radios stay on the app default and write no config.
+Repository settings lists Worktree mode under the location. The line under the heading names the layout create will use, and whether the repository config or the app default set it. Workspaces and Sibling write `[layout].mode` in `.git-worktree-manager/config.toml`. Choosing one writes that mode and leaves the rest of the file in place. An unsupported mode shows its value, with neither choice selected, until Workspaces or Sibling replaces it. When the open repository has no path on disk, the radios stay on the app default and write no config.
 
 ## Remotes
 

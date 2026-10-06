@@ -128,7 +128,7 @@ mkdirSync(outDir, { recursive: true });
 for (const mod of electronNativeAddons) {
   const moduleDir = join(root, 'node_modules', mod.name);
   const buildDir = join(moduleDir, 'build');
-  const stashDir = join(tmpdir(), `git-manager-native-${mod.name}-${process.pid}`);
+  const stashDir = join(tmpdir(), `git-worktree-manager-native-${mod.name}-${process.pid}`);
   const hadBuild = existsSync(buildDir);
   if (hadBuild) {
     cpSync(buildDir, stashDir, { recursive: true });

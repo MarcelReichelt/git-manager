@@ -29,7 +29,7 @@ describe('in-app shell host', () => {
   });
 
   it.skipIf(process.platform !== 'win32')('finds powershell.exe on PATH', () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-shell-path-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-shell-path-'));
     writeFileSync(join(root, 'powershell.exe'), '');
     const previousPath = process.env.PATH;
     process.env.PATH = root;
@@ -48,7 +48,7 @@ describe('in-app shell host', () => {
   });
 
   it.skipIf(process.platform !== 'win32')('names npm while it runs and the shell after it exits', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'git-manager-shell-'));
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-shell-'));
     writeFileSync(join(root, 'hold.mjs'), 'setTimeout(() => process.exit(0), 2500);\n');
     writeFileSync(
       join(root, 'package.json'),

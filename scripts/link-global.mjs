@@ -8,7 +8,7 @@ const isWindows = process.platform === 'win32';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = join(root, 'dist', 'cli.js');
 const binDir = join(homedir(), '.local', 'bin');
-const linkPath = join(binDir, isWindows ? 'git-manager.cmd' : 'git-manager');
+const linkPath = join(binDir, isWindows ? 'git-worktree-manager.cmd' : 'git-worktree-manager');
 
 if (!existsSync(cli)) {
   console.error('dist/cli.js not found. Run: yarn build');

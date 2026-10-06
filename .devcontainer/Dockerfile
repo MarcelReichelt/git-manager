@@ -1,4 +1,4 @@
-# Linux dev environment for git-manager so Windows users can test it
+# Linux dev environment for git-worktree-manager so Windows users can test it
 # exactly like a Linux user would (real POSIX paths, ~/.local/bin, etc.).
 FROM mcr.microsoft.com/devcontainers/typescript-node:22
 

@@ -1,12 +1,20 @@
 # Git workspace manager
 
-git-manager is the desktop app for working in one selected repository at a time, with a checkout per branch.
+git-manager is the desktop app for one workspace at a time, with a checkout per branch. The window holds the open repository tabs.
 
 ## Language
 
 **Workspace**:
-The desktop window for one selected repository.
+The view of the selected repository tab: the worktrees, the content, and the terminal section.
 _Avoid_: workspaces
+
+**Repository tab**:
+A registered repository open in the window. Closing it leaves that registered repository in the registry.
+_Avoid_: tab, project, session
+
+**Repository card**:
+The registered repositories that have no repository tab, together with Add repository. The start screen shows it. The + opens it over the workspace.
+_Avoid_: switcher, repository menu
 
 **Content**:
 The region of a workspace beside the list of branches. It shows the branch heading, the changed files, the commits, and the diff.
@@ -76,8 +84,16 @@ _Avoid_: arrangement, app default
 The layout used when a registered repository has not chosen Sibling or Workspaces.
 _Avoid_: unset layout
 
+**Sidebar color**:
+The color of the worktrees region and of a repository tab. One registered repository may set its own. With none set, the app settings color is used.
+_Avoid_: accent, theme
+
+**Sidebar text**:
+White or black writing on the sidebar color. One registered repository may set its own. With none set, the app settings choice is used.
+_Avoid_: foreground
+
 **App settings**:
-The settings that apply to every registered repository: the app default, the terminal mode, the shell command, the colors, the terminal font, and the IDE command.
+The settings that apply to every registered repository: the app default, the terminal mode, the shell command, the sidebar color, the sidebar text, the content color, the terminal colors, the terminal font, and the IDE command.
 _Avoid_: repository settings
 
 **Repository settings**:

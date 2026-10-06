@@ -342,7 +342,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   background-color: var(--paper);
   color: var(--grid);
   border-radius: 8px;
-  padding-right: 8px;
 }
 
 .branch-heading {

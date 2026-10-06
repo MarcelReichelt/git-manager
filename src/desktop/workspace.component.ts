@@ -60,6 +60,7 @@ import { browseForFolder } from './folder-browser';
 import { runAfterPaint } from './after-paint';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
+import { OverlayScroll } from './overlay-scrollbar';
 import {
   TerminalHost,
   adoptedTmuxTerminal,
@@ -251,7 +252,7 @@ const sampleCard: CardRepository[] = [
 @Component({
   selector: 'gm-workspace',
   standalone: true,
-  imports: [NgTemplateOutlet, TerminalHost, RepositorySettings],
+  imports: [NgTemplateOutlet, TerminalHost, RepositorySettings, OverlayScroll],
   styleUrl: './workspace-rail.css',
   host: {
     '[style.--forest]': 'paintedSidebarColor()',
@@ -996,7 +997,7 @@ button, input { font: inherit; color: inherit; }
               (displayNameChanged)="renameOpenRepository($event)"
             ></gm-repository-settings>
           </p>
-          <ul data-testid="branch-list">
+          <ul data-testid="branch-list" gmOverlayScroll>
             @for (branch of branches(); track branch.name) {
               <li
                 class="branch-row"
@@ -1134,7 +1135,7 @@ button, input { font: inherit; color: inherit; }
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
             <h3>Changes</h3>
-            <ul data-testid="changed-files">
+            <ul data-testid="changed-files" gmOverlayScroll>
               @for (file of visibleFiles(); track file.path) {
                 <li
                   data-testid="changed-file"
@@ -1168,7 +1169,7 @@ button, input { font: inherit; color: inherit; }
             <div data-testid="commits">
             @if (branchIsDefault()) {
               <h3>Commits</h3>
-              <ul data-testid="recent-commits" (scroll)="onRecentCommitsScroll($event)">
+              <ul data-testid="recent-commits" gmOverlayScroll (scroll)="onRecentCommitsScroll($event)">
                 @for (commit of visibleRecentCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1183,7 +1184,7 @@ button, input { font: inherit; color: inherit; }
               </ul>
             } @else {
               <h3>Commits only on this branch</h3>
-              <ul data-testid="branch-commits">
+              <ul data-testid="branch-commits" gmOverlayScroll>
                 @for (commit of visibleCommits(); track commit.sha ?? commit.subject) {
                   <li
                     data-testid="commit"
@@ -1212,7 +1213,7 @@ button, input { font: inherit; color: inherit; }
               (dblclick)="equalizeContentColumns($event)"
             ></div>
             @if (showingCommit() && visibleCommitFiles().length > 0) {
-              <ul class="commit-files" data-testid="commit-files" [style.width.px]="commitFileWidth()">
+              <ul class="commit-files" data-testid="commit-files" gmOverlayScroll [style.width.px]="commitFileWidth()">
                 @for (file of visibleCommitFiles(); track file.path) {
                   <li
                     data-testid="changed-file"
@@ -1244,7 +1245,7 @@ button, input { font: inherit; color: inherit; }
               ></div>
             }
             @if (diffText()) {
-              <pre data-testid="diff">{{ diffText() }}</pre>
+              <pre data-testid="diff" gmOverlayScroll>{{ diffText() }}</pre>
             } @else {
               <p data-testid="empty-diff">No diff for this file</p>
             }
@@ -1509,7 +1510,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (createDialogOpen()) {
       <div data-testid="create-worktree-dialog" role="dialog" aria-label="Create worktree" (click)="dismissCreateFromBackdrop($event)">
-        <section class="dialog-panel" [attr.aria-busy]="branchNamesLoading() || creatingWorktree() ? true : null" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll [attr.aria-busy]="branchNamesLoading() || creatingWorktree() ? true : null" (click)="$event.stopPropagation()">
           <h2>Create worktree</h2>
           <label>
             New branch
@@ -1532,6 +1533,7 @@ button, input { font: inherit; color: inherit; }
               <ul
                 id="create-branch-options"
                 data-testid="create-branch-options"
+                gmOverlayScroll
                 role="listbox"
                 aria-labelledby="existing-branches-heading"
               >
@@ -1562,7 +1564,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (mergeDialogBranch()) {
       <div data-testid="merge-into-master-dialog" role="dialog" aria-label="Merge into master" (click)="dismissMergeFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Merge into master</h2>
           @if (branchActivity()?.label === 'Merging into master') {
             <p data-testid="merge-activity">Merging into master</p>
@@ -1588,7 +1590,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (appSettingsOpen()) {
       <div data-testid="app-settings-dialog" role="dialog" aria-label="App settings" (click)="dismissAppSettingsFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>App settings</h2>
           <h3 data-testid="default-layout-heading">Default layout</h3>
           <label>
@@ -1819,7 +1821,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (oldSessionChoices().length > 0) {
       <div data-testid="old-session-dialog" role="dialog" aria-label="Old tmux sessions" (click)="dismissOldSessionsFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Old tmux sessions</h2>
           <p>These sessions were created before a branch was recorded, and each name matches more than one branch.</p>
           @for (session of oldSessionChoices(); track session.name) {
@@ -1839,7 +1841,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (pendingTerminalMode() !== null) {
       <div data-testid="terminal-mode-dialog" role="dialog" aria-label="Terminal mode" (click)="dismissTerminalModeFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Terminal mode</h2>
           <p>Keep the terminals that are still running, or kill them?</p>
           <div class="dialog-actions">
@@ -1852,7 +1854,7 @@ button, input { font: inherit; color: inherit; }
     }
     @if (addDialogOpen()) {
       <div data-testid="add-repository-dialog" role="dialog" aria-label="Add repository" (click)="dismissAddFromBackdrop($event)">
-        <section class="dialog-panel" (click)="$event.stopPropagation()">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
           <h2>Add repository</h2>
           <label>
             Location

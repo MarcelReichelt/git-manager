@@ -3990,8 +3990,184 @@ describe('desktop workspace', () => {
       blockBottom(fixture.nativeElement.querySelector('[data-testid="changes"]')),
     );
     const summary = fixture.nativeElement.querySelector('.branch-heading p');
-    expect(summary.textContent.trim()).toBe('30 commits · 0 changed files');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
     expect(summary.textContent).not.toContain('commits only on this branch');
+  });
+
+  it('shows the count of commits that are not on the default branch when only the first page is loaded', async () => {
+    const repoPath = createLongFeatureRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const list = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const subjects = commitSubjects(list);
+    expect(subjects).toHaveLength(30);
+    expect(subjects[0]).toBe('Feature 31');
+    expect(subjects[29]).toBe('Feature 02');
+    expect(subjects).not.toContain('Feature 01');
+    expect(subjects).not.toContain('init');
+    expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent.trim()).toBe(
+      '31 commits · 0 changed files',
+    );
+  });
+
+  it('shows the changed-file count until the commit total is known', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    writeFileSync(join(repoPath, 'note.txt'), 'unsaved\n');
+    const fixture = await renderRepository(repoPath);
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => {
+      queued.push(task);
+    });
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      queued.shift()?.();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      const subjects = commitSubjects(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+      expect(subjects).toHaveLength(30);
+      expect(subjects).not.toContain('init');
+
+      queued.shift()?.();
+      fixture.detectChanges();
+      expect(summary.textContent.trim()).toBe('31 commits · 1 changed files');
+    } finally {
+      setAfterPaintScheduler((task) => {
+        task();
+      });
+      for (const task of queued.splice(0)) {
+        task();
+      }
+    }
+  });
+
+  it('shows the changed-file count on another branch until the commit total is known', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    writeFileSync(join(repoPath, 'feature.txt'), 'feature\n');
+    git(repoPath, ['add', 'feature.txt']);
+    git(repoPath, ['commit', '-m', 'Add the feature note']);
+    git(repoPath, ['checkout', 'master']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    writeFileSync(join(repoPath, '.workspaces', 'feature', 'feature.txt'), 'feature\nextra\n');
+    const fixture = await renderRepository(repoPath);
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => {
+      queued.push(task);
+    });
+    try {
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      queued.shift()?.();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      expect(
+        [...fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')].map(
+          (commit) => commit.getAttribute('data-subject'),
+        ),
+      ).toEqual(['Add the feature note']);
+      expect(fixture.nativeElement.querySelector('[data-testid="recent-commits"]')).toBeNull();
+
+      queued.shift()?.();
+      fixture.detectChanges();
+      expect(summary.textContent.trim()).toBe('1 commits · 1 changed files');
+    } finally {
+      setAfterPaintScheduler((task) => {
+        task();
+      });
+      for (const task of queued.splice(0)) {
+        task();
+      }
+    }
+  });
+
+  it('keeps the commit count while further pages load', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+
+    const list = fixture.nativeElement.querySelector('[data-testid="recent-commits"]');
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+
+    expect(commitSubjects(list).at(-1)).toBe('init');
+    expect(commitSubjects(list).filter((subject) => subject === 'init')).toEqual(['init']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+  });
+
+  it('loads the next page of commits that are not on the default branch when the list is scrolled to the end', async () => {
+    const repoPath = createLongFeatureRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const list = fixture.nativeElement.querySelector('[data-testid="branch-commits"]');
+    const summary = fixture.nativeElement.querySelector('.branch-heading p');
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+    scrollCommitList(list, { scrollTop: 0, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list)).not.toContain('Feature 01');
+    expect(commitSubjects(list)).not.toContain('init');
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    const subjects = commitSubjects(list);
+    expect(subjects[0]).toBe('Feature 31');
+    expect(subjects.at(-1)).toBe('Feature 01');
+    expect(subjects).not.toContain('init');
+    expect(subjects.filter((subject) => subject === 'Feature 01')).toEqual(['Feature 01']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+
+    scrollCommitList(list, { scrollTop: 300, clientHeight: 100, scrollHeight: 400 });
+    fixture.detectChanges();
+    expect(commitSubjects(list).filter((subject) => subject === 'Feature 01')).toEqual(['Feature 01']);
+    expect(summary.textContent.trim()).toBe('31 commits · 0 changed files');
+  });
+
+  it('shows zero commits when that branch has no commits that are not on the default branch', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-heading p').textContent.trim()).toBe(
+      '0 commits · 0 changed files',
+    );
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="branch-commits"] [data-testid="commit"]')).toHaveLength(
+      0,
+    );
+  });
+
+  it('leaves the commit count out when the total cannot be read', async () => {
+    const repoPath = createLongHistoryRepository(roots);
+    writeFileSync(join(repoPath, 'note.txt'), 'unsaved\n');
+    const fixture = await renderRepository(repoPath);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${commitCountFailureDir(roots)}:${previousPath ?? ''}`;
+    try {
+      fixture.nativeElement.querySelector('[data-branch="master"]').click();
+      fixture.detectChanges();
+
+      const summary = fixture.nativeElement.querySelector('.branch-heading p');
+      expect(summary.textContent.trim()).toBe('1 changed files');
+      const subjects = commitSubjects(fixture.nativeElement.querySelector('[data-testid="recent-commits"]'));
+      expect(subjects).toHaveLength(30);
+      expect(subjects[0]).toBe('Record 30');
+      expect(subjects).not.toContain('init');
+    } finally {
+      process.env.PATH = previousPath;
+    }
   });
 
   it('lists commits that are not on main when main is the default branch', async () => {
@@ -7054,6 +7230,37 @@ function scrollCommitList(
     list.scrollTop = metrics.scrollTop;
   }
   list.dispatchEvent(new Event('scroll'));
+}
+
+function commitCountFailureDir(roots: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'git-worktree-manager-count-fail-'));
+  roots.push(dir);
+  writeFileSync(
+    join(dir, 'git'),
+    `#!/bin/sh
+if [ "$1" = "rev-list" ] && [ "$2" = "--count" ]; then
+  echo "count failed" >&2
+  exit 1
+fi
+exec /usr/bin/git "$@"
+`,
+    { mode: 0o755 },
+  );
+  return dir;
+}
+
+function createLongFeatureRepository(roots: string[]): string {
+  const repoPath = createEmptyRepository(roots);
+  git(repoPath, ['checkout', '-b', 'feature']);
+  for (let number = 1; number <= 31; number += 1) {
+    const label = String(number).padStart(2, '0');
+    writeFileSync(join(repoPath, 'note.txt'), `${label}\n`);
+    git(repoPath, ['add', 'note.txt']);
+    commitWithDate(repoPath, `Feature ${label}`, number);
+  }
+  git(repoPath, ['checkout', 'master']);
+  git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+  return repoPath;
 }
 
 function createLongHistoryRepository(roots: string[]): string {

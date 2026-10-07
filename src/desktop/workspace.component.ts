@@ -80,6 +80,8 @@ import {
   terminalDisplayName as formatTerminalName,
   terminalHostTitle as formatHostTitle,
   terminalMenuActions,
+  terminalMoveTargets,
+  withMoveInto,
   withNewTab,
   withRename,
   withSplit,
@@ -87,6 +89,7 @@ import {
   withoutTab,
   withoutTerminal,
   type TerminalMenuActions,
+  type TerminalMoveTarget,
   type TerminalTabView,
   type TerminalView,
   type WorktreeTerminalView,
@@ -1932,6 +1935,21 @@ button, input { font: inherit; color: inherit; }
               Unsplit
             </button>
           }
+          @if (moveTargets().length > 0) {
+            <div data-testid="terminal-menu-move" role="group" aria-label="Move to">
+              <p class="terminal-menu-label" data-testid="terminal-menu-move-label">Move to</p>
+              @for (target of moveTargets(); track target.tabId) {
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="terminal-menu-move-target"
+                  (click)="moveTerminalTo(target.tabId)"
+                >
+                  {{ target.label }}
+                </button>
+              }
+            </div>
+          }
         </div>
       }
     }
@@ -2918,6 +2936,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const newTabId = this.nextTerminalKey('tab');
     this.updateSelected((state) => withUnsplit(state, menu.tabId, terminalId, newTabId));
+    this.closeTerminalMenu();
+  }
+
+  moveTargets(): TerminalMoveTarget[] {
+    const menu = this.terminalMenu();
+    if (!menu) {
+      return [];
+    }
+    return terminalMoveTargets(this.terminalState(), menu.tabId, menu.terminalId);
+  }
+
+  moveTerminalTo(targetTabId: string): void {
+    const menu = this.terminalMenu();
+    if (!menu || !this.selectedBranchName()) {
+      return;
+    }
+    this.updateSelected((state) => withMoveInto(state, menu.tabId, menu.terminalId, targetTabId));
     this.closeTerminalMenu();
   }
 

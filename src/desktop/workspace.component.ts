@@ -15,7 +15,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { execFileSync } from 'node:child_process';
-import { basename, resolve } from 'node:path';
+import { watch, type FSWatcher } from 'node:fs';
+import { basename, resolve, sep } from 'node:path';
 import {
   addRepository,
   findRepository,
@@ -2065,6 +2066,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private terminalSerial = 0;
   private commandPoll: ReturnType<typeof setInterval> | null = null;
   private remoteFollow = 0;
+  private readonly gitWatchers = new Map<string, FSWatcher>();
+  private gitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private gitWatchGeneration = 0;
+  private gitWatchActive = false;
   private paneSplitDrag: {
     pointerId: number;
     startX: number;
@@ -2253,6 +2258,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   ngOnDestroy(): void {
+    this.clearGitWatch();
     this.remoteFollow += 1;
     this.rememberOpenRepositoryTabs();
     if (this.commandPoll !== null) {
@@ -2322,6 +2328,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.openingRepository.set(null);
       this.clearBranchSelection();
       this.clearTerminals();
+      this.clearGitWatch();
       this.applyOpenRepositoryAppearance();
       this.rememberOpenRepositoryTabs();
       return;
@@ -4352,9 +4359,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     } else {
       this.clearBranchSelection();
       this.clearTerminals();
-      this.refreshBranches();
     }
     this.applyOpenRepositoryAppearance();
+    this.refreshBranches();
   }
 
   private closeRepositoryTabMenuOnClick(event: Event): void {
@@ -4384,20 +4391,243 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private refreshBranches(): void {
     const path = this.effectivePath();
     if (path === null) {
+      this.clearGitWatch();
       return;
     }
     const rows = listBranches(path);
     this.claimOldSessions(path, rows);
-    this.realBranches.set(
-      listWorktreeBranches(path, rows).map((branch) => ({
-        name: branch.name,
-        status: branch.status,
-        changedFileCount: branch.changedFileCount,
-        ahead: branch.ahead,
-        behind: branch.behind,
-      })),
-    );
+    const next = listWorktreeBranches(path, rows).map((branch) => ({
+      name: branch.name,
+      status: branch.status,
+      changedFileCount: branch.changedFileCount,
+      ahead: branch.ahead,
+      behind: branch.behind,
+    }));
+    if (!sameWorktreeRows(this.realBranches(), next)) {
+      this.realBranches.set(next);
+    }
     this.rememberTmuxSessions();
+    this.syncGitWatch();
+    try {
+      this.refreshSelectedWorktreeContent();
+    } catch {
+      // The next local change retries the selected worktree.
+    }
+  }
+
+  private refreshSelectedWorktreeContent(): void {
+    const path = this.effectivePath();
+    const name = this.selectedBranchName();
+    if (!path || !name || this.contentLoading()) {
+      return;
+    }
+    if (!this.realBranches().some((branch) => branch.name === name)) {
+      return;
+    }
+    const onDefault = name === this.defaultBranchName();
+    const loadedCount = onDefault ? this.loadedRecentCommits().length : this.loadedCommits().length;
+    const files = readChangedFiles(path, name);
+    let commits = this.readCommitWindow(path, name, onDefault, Math.max(loadedCount, recentCommitPageSize));
+    if (this.worktreeContentStale(path, name)) {
+      return;
+    }
+    const identity = this.selectedCommitSubject();
+    if (
+      identity &&
+      !commitInList(commits.commits, identity) &&
+      commitObjectExists(path, identity)
+    ) {
+      commits = this.readCommitWindow(path, name, onDefault, commits.commits.length + recentCommitPageSize);
+      while (!commits.complete && !commitInList(commits.commits, identity)) {
+        const further = this.readCommitWindow(
+          path,
+          name,
+          onDefault,
+          commits.commits.length + recentCommitPageSize,
+        );
+        if (further.commits.length === commits.commits.length) {
+          break;
+        }
+        commits = further;
+      }
+      if (this.worktreeContentStale(path, name)) {
+        return;
+      }
+    }
+    const filePath = this.selectedFilePath();
+    const commitIdentity = this.selectedCommitSubject();
+    const commit = commitIdentity ? commits.commits.find((item) => commitMatches(item, commitIdentity)) : undefined;
+    let nextFile = filePath;
+    let nextCommit = commitIdentity;
+    let commitFiles = this.loadedCommitFiles();
+    let diff = this.loadedDiff();
+    if (commitIdentity) {
+      if (!commit) {
+        nextCommit = null;
+        nextFile = null;
+        commitFiles = [];
+        diff = null;
+      } else {
+        commitFiles = readCommitFiles(path, commit.sha);
+        if (nextFile && commitFiles.some((file) => file.path === nextFile)) {
+          diff = readCommitFileDiff(path, commit.sha, nextFile);
+        } else {
+          nextFile = null;
+          diff = '';
+        }
+      }
+    } else if (nextFile) {
+      if (files.some((file) => file.path === nextFile)) {
+        diff = readWorkingTreeDiff(path, name, nextFile);
+      } else {
+        nextFile = null;
+        diff = null;
+      }
+    }
+    if (!sameChangedFiles(this.loadedFiles(), files)) {
+      this.loadedFiles.set(files);
+    }
+    if (onDefault) {
+      if (!sameCommits(this.loadedRecentCommits(), commits.commits)) {
+        this.loadedRecentCommits.set(commits.commits);
+      }
+      if (this.loadedCommits().length > 0) {
+        this.loadedCommits.set([]);
+      }
+    } else {
+      if (!sameCommits(this.loadedCommits(), commits.commits)) {
+        this.loadedCommits.set(commits.commits);
+      }
+      if (this.loadedRecentCommits().length > 0) {
+        this.loadedRecentCommits.set([]);
+      }
+    }
+    if (this.commitListComplete() !== commits.complete) {
+      this.commitListComplete.set(commits.complete);
+    }
+    const total = onDefault ? countBranchCommits(path, name) : countCommitsOnlyOnBranch(path, name);
+    if (total !== undefined && total !== this.commitTotal()) {
+      this.commitTotal.set(total);
+    }
+    if (!sameChangedFiles(this.loadedCommitFiles(), commitFiles)) {
+      this.loadedCommitFiles.set(commitFiles);
+    }
+    if (this.loadedDiff() !== diff) {
+      this.loadedDiff.set(diff);
+    }
+    if (this.selectedFilePath() !== nextFile) {
+      this.selectedFilePath.set(nextFile);
+    }
+    if (this.selectedCommitSubject() !== nextCommit) {
+      this.selectedCommitSubject.set(nextCommit);
+    }
+  }
+
+  private worktreeContentStale(path: string, name: string): boolean {
+    return this.effectivePath() !== path || this.selectedBranchName() !== name || this.contentLoading();
+  }
+
+  private readCommitWindow(
+    path: string,
+    name: string,
+    onDefault: boolean,
+    count: number,
+  ): { commits: BranchCommit[]; complete: boolean } {
+    const commits: BranchCommit[] = [];
+    let complete = false;
+    while (commits.length < count) {
+      const page = onDefault
+        ? readRecentCommits(path, name, commits.length)
+        : readCommitsOnlyOnBranch(path, name, commits.length);
+      commits.push(...page);
+      if (page.length < recentCommitPageSize) {
+        complete = true;
+        break;
+      }
+    }
+    return { commits, complete };
+  }
+
+  private syncGitWatch(): void {
+    const path = this.effectivePath();
+    if (path === null) {
+      this.clearGitWatch();
+      return;
+    }
+    this.gitWatchActive = true;
+    const wanted = new Set(watchDirectories(path));
+    for (const [dir, watcher] of this.gitWatchers) {
+      if (!wanted.has(dir)) {
+        this.closeGitWatcher(dir, watcher);
+      }
+    }
+    for (const dir of wanted) {
+      if (this.gitWatchers.has(dir)) {
+        continue;
+      }
+      try {
+        const watcher = watch(dir, { recursive: true }, () => {
+          this.scheduleLocalGitRefresh();
+        });
+        watcher.on('error', () => {
+          this.closeGitWatcher(dir, watcher);
+          this.scheduleLocalGitRefresh();
+        });
+        this.gitWatchers.set(dir, watcher);
+      } catch {
+        // The next refresh watches a checkout that exists by then.
+      }
+    }
+  }
+
+  private scheduleLocalGitRefresh(): void {
+    if (!this.gitWatchActive) {
+      return;
+    }
+    if (this.gitRefreshTimer !== null) {
+      clearTimeout(this.gitRefreshTimer);
+    }
+    const generation = this.gitWatchGeneration;
+    this.zone.runOutsideAngular(() => {
+      this.gitRefreshTimer = setTimeout(() => {
+        this.gitRefreshTimer = null;
+        if (!this.gitWatchActive || generation !== this.gitWatchGeneration) {
+          return;
+        }
+        this.zone.run(() => {
+          try {
+            this.refreshBranches();
+          } catch {
+            // The next local change retries the read.
+          }
+        });
+      }, 80);
+    });
+  }
+
+  private closeGitWatcher(dir: string, watcher: FSWatcher): void {
+    this.gitWatchers.delete(dir);
+    try {
+      watcher.close();
+    } catch {
+      // The checkout is already gone.
+    }
+  }
+
+  private clearGitWatch(): void {
+    this.gitWatchActive = false;
+    this.gitWatchGeneration += 1;
+    if (this.gitRefreshTimer !== null) {
+      clearTimeout(this.gitRefreshTimer);
+      this.gitRefreshTimer = null;
+    }
+    for (const [dir, watcher] of this.gitWatchers) {
+      this.closeGitWatcher(dir, watcher);
+    }
+    if (this.gitRefreshTimer !== null) {
+      clearTimeout(this.gitRefreshTimer);
+      this.gitRefreshTimer = null;
+    }
   }
 
   keepOldSession(name: string, branch: string): void {
@@ -4701,6 +4931,102 @@ function inputValue(event: Event): string {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function sameWorktreeRows(
+  left: readonly { name: string; status: string; changedFileCount: number; ahead: number; behind: number }[],
+  right: readonly { name: string; status: string; changedFileCount: number; ahead: number; behind: number }[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((row, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        row.name === other.name &&
+        row.status === other.status &&
+        row.changedFileCount === other.changedFileCount &&
+        row.ahead === other.ahead &&
+        row.behind === other.behind
+      );
+    })
+  );
+}
+
+function sameChangedFiles(left: readonly ChangedFile[], right: readonly ChangedFile[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((file, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        file.path === other.path &&
+        file.previousPath === other.previousPath &&
+        file.added === other.added &&
+        file.deleted === other.deleted &&
+        file.binary === other.binary
+      );
+    })
+  );
+}
+
+function sameCommits(left: readonly BranchCommit[], right: readonly BranchCommit[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((commit, index) => commit.sha === right[index]?.sha && commit.subject === right[index]?.subject)
+  );
+}
+
+function commitMatches(commit: BranchCommit, identity: string): boolean {
+  return commit.sha === identity || commit.subject === identity;
+}
+
+function commitInList(commits: readonly BranchCommit[], identity: string): boolean {
+  return commits.some((commit) => commitMatches(commit, identity));
+}
+
+function commitObjectExists(repoPath: string, identity: string): boolean {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', `${identity}^{commit}`], {
+      cwd: repoPath,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function watchDirectories(repoPath: string): string[] {
+  const paths: string[] = [];
+  try {
+    const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+      cwd: repoPath,
+      encoding: 'utf8',
+    });
+    for (const block of output.split('\n\n')) {
+      for (const line of block.split('\n')) {
+        if (line.startsWith('worktree ')) {
+          paths.push(resolve(line.slice('worktree '.length)));
+        }
+      }
+    }
+  } catch {
+    return [resolve(repoPath)];
+  }
+  return outermostDirectories(paths.length > 0 ? paths : [repoPath]);
+}
+
+function outermostDirectories(paths: readonly string[]): string[] {
+  const sorted = [...paths].map((path) => resolve(path)).sort();
+  const kept: string[] = [];
+  for (const path of sorted) {
+    const covered = kept.some((dir) => path === dir || path.startsWith(`${dir}${sep}`));
+    if (!covered) {
+      kept.push(path);
+    }
+  }
+  return kept;
 }
 
 function isPromise(value: void | Promise<void>): value is Promise<void> {

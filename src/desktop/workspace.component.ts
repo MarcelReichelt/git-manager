@@ -3084,10 +3084,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const expanding = this.sectionFor(branch) === 'collapsed';
     const keepShare = this.changesShare() !== null;
     if (expanding) {
-      this.setSection(branch, 'docked');
-      if (this.terminalCount(branch) === 0) {
-        this.newTerminal();
+      this.attachTerminalForOpenSection(branch);
+      if (this.terminalViewCount(branch) === 0) {
+        return;
       }
+      this.setSection(branch, 'docked');
     } else {
       this.setSection(branch, 'collapsed');
     }
@@ -3203,6 +3204,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private setSection(branch: string, section: TerminalSection): void {
+    if (section !== 'collapsed' && this.terminalViewCount(branch) === 0) {
+      return;
+    }
     this.terminalSectionByBranch.update((current) => {
       if (section === 'collapsed') {
         if (!(branch in current)) {
@@ -3228,13 +3232,38 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     if (this.sectionFor(branch) === 'maximized') {
+      if (this.terminalViewCount(branch) === 0) {
+        this.setSection(branch, 'collapsed');
+        return;
+      }
       this.setSection(branch, 'docked');
       this.fitDockedTerminal();
       this.applyChangesShare();
       return;
     }
+    this.attachTerminalForOpenSection(branch);
+    if (this.terminalViewCount(branch) === 0) {
+      return;
+    }
     this.setSection(branch, 'maximized');
     this.captureMaximizedBody();
+  }
+
+  private attachTerminalForOpenSection(branch: string): void {
+    if (this.terminalViewCount(branch) > 0) {
+      return;
+    }
+    if (branch === this.selectedBranchName()) {
+      this.adoptOpenSessions(branch);
+    }
+    if (this.terminalViewCount(branch) === 0 && this.terminalCount(branch) === 0) {
+      this.newTerminal();
+    }
+  }
+
+  private terminalViewCount(branch: string): number {
+    const state = this.terminalsByBranch()[branch];
+    return state?.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0) ?? 0;
   }
 
   refreshMaximizedTerminal(): void {

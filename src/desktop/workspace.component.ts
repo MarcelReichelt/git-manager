@@ -1054,23 +1054,25 @@ button, input { font: inherit; color: inherit; }
                   class="branch-actions"
                   [class.is-open]="openBranch() === branch.name"
                 >
-                    <fieldset>
-                      <legend>Merge</legend>
-                      <button
-                        type="button"
-                        data-testid="update-from-master"
-                        (click)="updateBranch(branch.name, $event)"
-                      >
-                        Update from master
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="merge-into-master"
-                        (click)="mergeBranch(branch.name, $event)"
-                      >
-                        Merge into master
-                      </button>
-                    </fieldset>
+                    @if (branch.name !== defaultBranchName()) {
+                      <fieldset>
+                        <legend>Merge</legend>
+                        <button
+                          type="button"
+                          data-testid="update-from-master"
+                          (click)="updateBranch(branch.name, $event)"
+                        >
+                          Update from master
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="merge-into-master"
+                          (click)="mergeBranch(branch.name, $event)"
+                        >
+                          Merge into master
+                        </button>
+                      </fieldset>
+                    }
                     @if (branch.status === 'local-only') {
                       <button
                         type="button"
@@ -1080,13 +1082,15 @@ button, input { font: inherit; color: inherit; }
                         Push
                       </button>
                     }
-                    <button
-                      type="button"
-                      data-testid="remove-worktree"
-                      (click)="removeBranch(branch.name, $event)"
-                    >
-                      Remove worktree
-                    </button>
+                    @if (branch.name !== defaultBranchName()) {
+                      <button
+                        type="button"
+                        data-testid="remove-worktree"
+                        (click)="removeBranch(branch.name, $event)"
+                      >
+                        Remove worktree
+                      </button>
+                    }
                 </div>
               </li>
             }

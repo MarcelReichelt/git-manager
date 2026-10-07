@@ -3423,6 +3423,65 @@ describe('desktop workspace', () => {
     expect(local.querySelector('[data-testid="remove-worktree"]')).not.toBeNull();
   });
 
+  it('omits update, merge, and remove from the default branch menu', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="main"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    expect(menu.classList.contains('is-open')).toBe(true);
+    expect(menu.querySelector('[data-testid="update-from-master"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="merge-into-master"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="remove-worktree"]')).toBeNull();
+  });
+
+  it('keeps update, merge, and remove on a worktree that is not the default branch', async () => {
+    const repoPath = createEmptyRepository(roots, 'main');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    expect(menu.querySelector('[data-testid="update-from-master"]').textContent.trim()).toBe(
+      'Update from master',
+    );
+    expect(menu.querySelector('[data-testid="merge-into-master"]').textContent.trim()).toBe(
+      'Merge into master',
+    );
+    expect(menu.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe('Remove worktree');
+  });
+
+  it('keeps Push on the default branch menu when that branch is local only', async () => {
+    const repoPath = createEmptyRepository(roots);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="master"]');
+    expect(row.getAttribute('data-status')).toBe('local-only');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+
+    const menu = row.querySelector('[data-testid="hover-menu"]');
+    expect(menu.querySelector('[data-testid="push-branch"]').textContent.trim()).toBe('Push');
+    expect(menu.querySelector('[data-testid="update-from-master"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="merge-into-master"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="remove-worktree"]')).toBeNull();
+  });
+
   it('keeps branch actions closed while the pointer is only hovering the row', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

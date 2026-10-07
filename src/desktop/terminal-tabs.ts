@@ -26,6 +26,7 @@ export interface TerminalMenuActions {
   split: boolean;
   unsplit: boolean;
   splitDisabled: boolean;
+  swap: boolean;
 }
 
 export interface TerminalMoveTarget {
@@ -107,13 +108,14 @@ export function editableName(tab: TerminalTabView, terminalId: string | null): s
 }
 
 export function terminalMenuActions(tab: TerminalTabView, terminalId: string | null): TerminalMenuActions {
+  const swap = tab.terminals.length > 1;
   if (terminalId !== null && tab.terminals.length > 1) {
-    return { split: true, unsplit: true, splitDisabled: true };
+    return { split: true, unsplit: true, splitDisabled: true, swap };
   }
   if (tab.terminals.length > 1) {
-    return { split: false, unsplit: false, splitDisabled: true };
+    return { split: false, unsplit: false, splitDisabled: true, swap };
   }
-  return { split: true, unsplit: false, splitDisabled: false };
+  return { split: true, unsplit: false, splitDisabled: false, swap: false };
 }
 
 export function terminalMoveTargets(
@@ -215,6 +217,23 @@ export function withRename(
         terminals: tab.terminals.map((terminal) =>
           terminal.id === terminalId ? { ...terminal, customName: trimmed } : terminal,
         ),
+      };
+    }),
+  };
+}
+
+export function withSwap(state: WorktreeTerminalView, tabId: string): WorktreeTerminalView {
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => {
+      if (tab.id !== tabId || tab.terminals.length !== 2) {
+        return tab;
+      }
+      const [left, right] = tab.terminals;
+      return {
+        ...tab,
+        terminals: [right, left],
+        splitRatio: 1 - tab.splitRatio,
       };
     }),
   };

@@ -86,6 +86,7 @@ import {
   withNewTab,
   withRename,
   withSplit,
+  withSwap,
   withUnsplit,
   withoutTab,
   withoutTerminal,
@@ -1426,7 +1427,7 @@ button, input { font: inherit; color: inherit; }
                       @for (terminal of tab.terminals; track terminal.id) {
                         <ng-container
                           [ngTemplateOutlet]="terminalHost"
-                          [ngTemplateOutletContext]="{ terminal: terminal, tab: tab }"
+                          [ngTemplateOutletContext]="{ terminal: terminal, tab: tab, column: 0 }"
                         />
                       }
                     } @else {
@@ -1468,7 +1469,7 @@ button, input { font: inherit; color: inherit; }
                             </div>
                             <ng-container
                               [ngTemplateOutlet]="terminalHost"
-                              [ngTemplateOutletContext]="{ terminal: terminal, tab: tab }"
+                              [ngTemplateOutletContext]="{ terminal: terminal, tab: tab, column: index }"
                             />
                           </div>
                           @if (!last) {
@@ -1493,13 +1494,14 @@ button, input { font: inherit; color: inherit; }
                   <path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
                 </svg>
               </ng-template>
-              <ng-template #terminalHost let-terminal="terminal" let-tab="tab">
+              <ng-template #terminalHost let-terminal="terminal" let-tab="tab" let-column="column">
                 <gm-terminal-host
                   [terminal]="terminal"
                   [background]="terminalBackground()"
                   [foreground]="terminalForeground()"
                   [fontFamily]="terminalFontFamily()"
                   [paneHeight]="terminalPaneHeight()"
+                  [column]="column"
                   [active]="tab.focusedTerminalId === terminal.id"
                   (terminalEnded)="onTerminalEnded(terminal.id)"
                   (contextMenu)="openPaneMenu($event, tab, terminal.id)"
@@ -1938,6 +1940,11 @@ button, input { font: inherit; color: inherit; }
           @if (actions.unsplit) {
             <button type="button" role="menuitem" data-testid="terminal-menu-unsplit" (click)="unsplitFromMenu()">
               Unsplit
+            </button>
+          }
+          @if (actions.swap) {
+            <button type="button" role="menuitem" data-testid="terminal-menu-swap" (click)="swapFromMenu()">
+              Swap
             </button>
           }
           @if (moveTargets().length > 0) {
@@ -2937,6 +2944,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.splitTerminal(menu.tabId);
+  }
+
+  swapFromMenu(): void {
+    const menu = this.terminalMenu();
+    if (!menu || !this.selectedBranchName()) {
+      return;
+    }
+    this.updateSelected((state) => withSwap(state, menu.tabId));
+    this.closeTerminalMenu();
   }
 
   unsplitFromMenu(): void {

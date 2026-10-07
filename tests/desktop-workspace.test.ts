@@ -7764,23 +7764,36 @@ function createRepositoryWithDeletedRemoteBranches(roots: string[]): string {
   git(repoPath, ['remote', 'add', 'origin', origin]);
   git(repoPath, ['push', '-u', 'origin', 'master']);
 
+  const committedAt = git(repoPath, ['log', '-1', '--format=%cI']);
+  const commit = (message: string): void => {
+    execFileSync('git', ['commit', '-m', message], {
+      cwd: repoPath,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: committedAt,
+        GIT_COMMITTER_DATE: committedAt,
+      },
+    });
+  };
+
   git(repoPath, ['checkout', '-b', 'kept']);
   git(repoPath, ['checkout', '-b', 'tracked']);
   writeFileSync(join(repoPath, 'tracked.txt'), 'tracked\n');
   git(repoPath, ['add', 'tracked.txt']);
-  git(repoPath, ['commit', '-m', 'track']);
+  commit('track');
   git(repoPath, ['push', '-u', 'origin', 'tracked']);
 
   git(repoPath, ['checkout', '-b', 'gone']);
   writeFileSync(join(repoPath, 'gone.txt'), 'gone\n');
   git(repoPath, ['add', 'gone.txt']);
-  git(repoPath, ['commit', '-m', 'gone']);
+  commit('gone');
   git(repoPath, ['push', '-u', 'origin', 'gone']);
 
   git(repoPath, ['checkout', '-b', 'still-remote']);
   writeFileSync(join(repoPath, 'still.txt'), 'still\n');
   git(repoPath, ['add', 'still.txt']);
-  git(repoPath, ['commit', '-m', 'still']);
+  commit('still');
   git(repoPath, ['push', '-u', 'origin', 'still-remote']);
 
   git(repoPath, ['checkout', 'master']);

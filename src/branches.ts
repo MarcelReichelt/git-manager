@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -281,9 +281,13 @@ export function pruneRemoteTrackingRefs(repoPath: string): void {
 }
 
 function changedFileCount(worktree: string): number {
+  return uncommittedPaths(worktree).length;
+}
+
+function uncommittedPaths(worktree: string): string[] {
   const tracked = nulPaths(gitText(worktree, ['diff', '-M', '--name-only', '-z', 'HEAD']));
   const untracked = nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']));
-  return tracked.length + untracked.length;
+  return [...tracked, ...untracked];
 }
 
 interface DescribedBranch {
@@ -429,7 +433,68 @@ function checkoutPaths(repoPath: string): Map<string, string> {
 
 export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
   const checkedOut = checkedOutBranches(repoPath);
-  return (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
+  const rows = (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
+  return pinDefaultBranch(rowsByLastChange(repoPath, rows), readDefaultBranch(repoPath));
+}
+
+function rowsByLastChange(repoPath: string, rows: readonly BranchRow[]): BranchRow[] {
+  const paths = checkoutPaths(repoPath);
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      changedAt: lastChangeMs(paths.get(row.name)),
+    }))
+    .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
+    .map((entry) => entry.row);
+}
+
+function lastChangeMs(checkout: string | undefined): number {
+  if (checkout === undefined) {
+    return 0;
+  }
+  return Math.max(headCommitterMs(checkout), newestPathMs(checkout, uncommittedPaths(checkout)));
+}
+
+function newestPathMs(checkout: string, paths: readonly string[]): number {
+  let newest = 0;
+  for (const path of paths) {
+    const changedAt = pathMtimeMs(checkout, path);
+    if (changedAt > newest) {
+      newest = changedAt;
+    }
+  }
+  return newest;
+}
+
+function pathMtimeMs(checkout: string, path: string): number {
+  const absolute = resolve(checkout, path);
+  try {
+    const info = lstatSync(absolute);
+    if (info.isDirectory()) {
+      return 0;
+    }
+    return info.mtimeMs;
+  } catch {
+    return directoryMtimeMs(dirname(absolute));
+  }
+}
+
+function directoryMtimeMs(directory: string): number {
+  try {
+    return lstatSync(directory).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function headCommitterMs(checkout: string): number {
+  const raw = gitOptional(checkout, ['log', '-1', '--format=%ct']);
+  if (raw === undefined) {
+    return 0;
+  }
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) ? seconds * 1000 : 0;
 }
 
 export interface AvailableBranch {

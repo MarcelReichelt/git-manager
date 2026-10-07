@@ -5411,6 +5411,111 @@ describe('desktop workspace', () => {
     await expectOverlayScrollbar(live.nativeElement.querySelector('[data-testid="create-branch-options"]'));
   });
 
+  it('keeps dialogs inset from the top and bottom of the window', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    expectDialogWindowInset(
+      fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expectDialogWindowInset(
+      fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    row.querySelector('[data-testid="merge-into-master"]').click();
+    fixture.detectChanges();
+    expectDialogWindowInset(
+      fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"] .dialog-panel'),
+    );
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    expectDialogWindowInset(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] .dialog-panel'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    expectDialogWindowInset(
+      fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"] .dialog-panel'),
+    );
+  });
+
+  it('places dialog actions on the right', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    expectDialogActionsOnTheRight(
+      fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"] .dialog-actions'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="create-worktree"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expectDialogActionsOnTheRight(
+      fixture.nativeElement.querySelector('[data-testid="create-worktree-dialog"] .dialog-actions'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="cancel-create-worktree"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-settings"]').click();
+    fixture.detectChanges();
+    expectDialogActionsOnTheRight(
+      fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"] .dialog-actions'),
+    );
+    fixture.nativeElement.querySelector('[data-testid="open-add-remote"]').click();
+    fixture.detectChanges();
+    expectDialogActionsOnTheRight(
+      fixture.nativeElement.querySelector('[data-testid="add-remote-dialog"] .dialog-actions'),
+    );
+  });
+
+  it('keeps the dialog scrollbar clear of the panel edges', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector(
+      '[data-testid="app-settings-dialog"] .dialog-panel',
+    ) as HTMLElement;
+    const clientHeight = 200;
+    installScrollMetrics(panel, { clientHeight, scrollHeight: 800, scrollTop: 600 });
+    panel.dispatchEvent(new Event('pointerenter'));
+    const thumb = panel.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    expect(thumb.classList.contains('is-visible')).toBe(true);
+    const paddingTop = Number.parseFloat(getComputedStyle(panel).paddingTop);
+    const paddingBottom = Number.parseFloat(getComputedStyle(panel).paddingBottom);
+    expect(paddingTop).toBeGreaterThanOrEqual(12);
+    expect(paddingBottom).toBeGreaterThanOrEqual(12);
+    const height = Number.parseFloat(thumb.style.height);
+    const offset = Number.parseFloat(/translateY\(([-\d.]+)px\)/.exec(thumb.style.transform)?.[1] ?? '');
+    const top = Number.parseFloat(getComputedStyle(thumb).top);
+    expect(offset).toBeGreaterThan(0);
+    expect(top + offset + height).toBeLessThanOrEqual(clientHeight - paddingTop - paddingBottom + 2);
+  });
+
   it('leaves the terminal scrollbar unchanged', async () => {
     const repoPath = createEmptyRepository(roots);
     const fixture = await renderRepository(repoPath);
@@ -7476,6 +7581,25 @@ function expectOverlayScrollbarsClipped(sheet: HTMLElement): void {
     expect(sheet.contains(scrollbar)).toBe(true);
     expect(getComputedStyle(scrollbar).position).toBe('absolute');
   }
+}
+
+function expectDialogActionsOnTheRight(actions: Element | null): void {
+  expect(actions).toBeInstanceOf(HTMLElement);
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  expect(getComputedStyle(actions).justifyContent).toBe('flex-end');
+  expect(actions.querySelector('button')).not.toBeNull();
+}
+
+function expectDialogWindowInset(panel: Element | null): void {
+  expect(panel).toBeInstanceOf(HTMLElement);
+  if (!(panel instanceof HTMLElement)) {
+    return;
+  }
+  const style = getComputedStyle(panel);
+  expect(style.boxSizing).toBe('border-box');
+  expect(style.maxHeight).toBe('calc(100vh - 64px)');
 }
 
 async function expectOverlayScrollbar(region: HTMLElement | null): Promise<void> {

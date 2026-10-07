@@ -669,8 +669,6 @@ button, input { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 8px;
   width: 28rem;
-  max-height: calc(100vh - 32px);
-  overflow: auto;
   padding: 16px;
   background-color: var(--paper);
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -898,6 +896,7 @@ button, input { font: inherit; color: inherit; }
 
 .dialog-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 

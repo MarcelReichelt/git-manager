@@ -17,6 +17,10 @@ _Avoid_: workspaces
 A registered repository open in the window. Closing it leaves that registered repository in the registry.
 _Avoid_: tab, project, session
 
+**Terminals**:
+The window-bar control before the repository tabs for the worktrees that have a terminal.
+_Avoid_: terminals tab, terminal overview
+
 **Repository card**:
 The registered repositories that have no repository tab, together with Add repository. The start screen shows it. The + opens it over the workspace.
 _Avoid_: switcher, repository menu

@@ -771,6 +771,7 @@ describe('branch terminal', () => {
     expect(sheet.querySelector('[data-testid="diff"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="terminal-split"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
     expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr)');
     expect(body.style.gridTemplateRows.includes(`${docked}px`)).toBe(false);
     expect(fixture.nativeElement.querySelector('[data-testid="branch-list"]')).not.toBeNull();
@@ -992,8 +993,9 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
 
     clickControl(fixture, 'Maximize terminal');
+    await waitFor(() => terminalCount(fixture!, 'master') === '1');
     expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(visiblePaneCount(fixture)).toBe(1);
 
     clickBranch(fixture, 'feature');
     expect(collapseLabel(fixture)).toBe('Expand terminal');
@@ -1019,7 +1021,8 @@ describe('branch terminal', () => {
       'Restore terminal',
     );
     expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).toBeNull();
-    expect(terminalCount(fixture, 'master')).toBeNull();
+    expect(terminalCount(fixture, 'master')).toBe('1');
+    expect(visiblePaneCount(fixture)).toBe(1);
   });
 
   it('shows a running tmux session when a collapsed row selects that worktree', async () => {
@@ -1041,6 +1044,69 @@ describe('branch terminal', () => {
     expect(runningCount(fixture)).toBe('1');
     expect(terminalCount(fixture, 'feature')).toBe('1');
     expect(sessionsForBranch(repo.repo, 'feature')).toHaveLength(1);
+  });
+
+  it('starts one terminal when Maximize terminal is clicked with none open', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+
+    clickControl(fixture, 'Maximize terminal');
+    await waitFor(() => terminalCount(fixture!, 'feature') === '1');
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(tabNames(fixture)).toHaveLength(1);
+    expect(sheet.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe('Restore terminal');
+
+    clickControl(fixture, 'Restore terminal');
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+  });
+
+  it('keeps the terminal section collapsed when a terminal cannot start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const missing = join(root, 'missing-shell');
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    if (settingsPath === undefined) {
+      throw new Error('App settings path is not set');
+    }
+    writeFileSync(settingsPath, `${JSON.stringify({ shellCommand: missing })}\n`);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    clickControl(fixture, 'Maximize terminal');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain('missing-shell');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
+      'Maximize terminal',
+    );
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+
+    clickCollapse(fixture);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain('missing-shell');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
   it('starts one terminal when an empty terminal section expands', async () => {

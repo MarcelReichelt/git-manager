@@ -1,6 +1,8 @@
 import { Directive, ElementRef, NgZone, OnDestroy, OnInit, inject } from '@angular/core';
 
 const hideDelayMs = 700;
+const fadeInMs = 200;
+const fadeOutMs = 400;
 const thumbWidthPx = 6;
 
 function overlayThumbBox(
@@ -75,10 +77,18 @@ function ensureOverlayScrollbarStyles(): void {
   background: color-mix(in srgb, currentColor 55%, transparent);
   opacity: 0;
   pointer-events: none;
+  transition: opacity ${fadeOutMs}ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .overlay-scrollbar.is-visible {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity ${fadeInMs}ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .overlay-scrollbar,
+  .overlay-scrollbar.is-visible {
+    transition: none;
+  }
 }
 .dialog-panel.overlay-scroll {
   box-sizing: border-box;
@@ -102,7 +112,6 @@ export class OverlayScroll implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private anchor: HTMLElement | null = null;
   private thumb: HTMLElement | null = null;
-  private pointerOver = false;
   private scrolling = false;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private dragMove: ((event: PointerEvent) => void) | null = null;
@@ -125,8 +134,6 @@ export class OverlayScroll implements OnInit, OnDestroy {
     this.anchor = anchor;
     this.thumb = thumb;
     this.zone.runOutsideAngular(() => {
-      element.addEventListener('pointerenter', this.onPointerEnter);
-      element.addEventListener('pointerleave', this.onPointerLeave);
       element.addEventListener('scroll', this.onScroll, { passive: true });
       thumb.addEventListener('pointerdown', this.onThumbDown);
     });
@@ -134,8 +141,6 @@ export class OverlayScroll implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     const element = this.host.nativeElement;
-    element.removeEventListener('pointerenter', this.onPointerEnter);
-    element.removeEventListener('pointerleave', this.onPointerLeave);
     element.removeEventListener('scroll', this.onScroll);
     this.thumb?.removeEventListener('pointerdown', this.onThumbDown);
     this.clearDrag();
@@ -144,16 +149,6 @@ export class OverlayScroll implements OnInit, OnDestroy {
     }
     this.anchor?.remove();
   }
-
-  private onPointerEnter = (): void => {
-    this.pointerOver = true;
-    this.refresh();
-  };
-
-  private onPointerLeave = (): void => {
-    this.pointerOver = false;
-    this.refresh();
-  };
 
   private onScroll = (): void => {
     this.scrolling = true;
@@ -173,6 +168,7 @@ export class OverlayScroll implements OnInit, OnDestroy {
       return;
     }
     this.dragging = true;
+    this.refresh();
     const startY = event.clientY;
     const startScroll = element.scrollTop;
     const maxScroll = element.scrollHeight - element.clientHeight;
@@ -222,10 +218,7 @@ export class OverlayScroll implements OnInit, OnDestroy {
     const element = this.host.nativeElement;
     const inset = scrollbarInset(element);
     const box = overlayThumbBox(element.scrollTop, element.scrollHeight, element.clientHeight, inset);
-    thumb.classList.toggle(
-      'is-visible',
-      box !== null && (this.pointerOver || this.scrolling || this.dragging),
-    );
+    thumb.classList.toggle('is-visible', box !== null && (this.scrolling || this.dragging));
     if (!box) {
       thumb.style.height = '0px';
       thumb.style.transform = 'translateY(0px)';

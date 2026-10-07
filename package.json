@@ -57,7 +57,7 @@
     "node-pty": "1.1.0",
     "react": "^18.3.1",
     "rxjs": "7.8.2",
-    "simple-git": "^3.27.0",
+    "simple-git": "^4.0.2",
     "zod": "^3.24.2",
     "zone.js": "0.16.3"
   },
@@ -66,13 +66,21 @@
     "@types/jsdom": "^30.0.0",
     "@types/node": "^22.13.10",
     "@types/react": "^18.3.18",
-    "electron": "35.7.5",
+    "electron": "44.6.0",
     "electron-builder": "26.15.3",
     "ink-testing-library": "^4.0.0",
     "jsdom": "26.1.0",
     "tsup": "^8.4.0",
     "typescript": "6.0.3",
-    "vite": "6.3.5",
-    "vitest": "^3.0.9"
+    "vite": "6.4.4",
+    "vitest": "^4.1.11"
+  },
+  "resolutions": {
+    "tar": "7.5.22",
+    "postcss": "8.5.29",
+    "http-cache-semantics": "4.3.0",
+    "node-gyp/undici": "6.29.0",
+    "tsup/esbuild": "0.28.2",
+    "global-agent": "link:./scripts/global-agent-stub"
   }
 }

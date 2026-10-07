@@ -5269,7 +5269,7 @@ describe('desktop workspace', () => {
     expect(branchList.parentElement).toBe(sidebar);
   });
 
-  it('shows a thin overlay scrollbar on the branch list while the pointer is over it and while it scrolls', async () => {
+  it('shows a thin overlay scrollbar on the branch list while it scrolls, then fades it out', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
@@ -5280,22 +5280,32 @@ describe('desktop workspace', () => {
     expect(branchList.parentElement?.tagName).toBe('ASIDE');
 
     installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
-    branchList.dispatchEvent(new Event('pointerenter'));
     const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
     expect(thumb).not.toBeNull();
+
+    vi.useFakeTimers();
+    branchList.dispatchEvent(new Event('scroll'));
     expect(thumb.classList.contains('is-visible')).toBe(false);
+    await vi.advanceTimersByTimeAsync(700);
 
     installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
     branchList.dispatchEvent(new Event('pointerenter'));
+    expect(thumb.classList.contains('is-visible')).toBe(false);
+    expect(getComputedStyle(thumb).opacity).toBe('0');
+
+    branchList.dispatchEvent(new Event('scroll'));
     expect(thumb.classList.contains('is-visible')).toBe(true);
     const thumbStyle = getComputedStyle(thumb);
+    expect(thumbStyle.opacity).toBe('1');
     expect(thumbStyle.position).toBe('absolute');
     expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
     expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
     expect(thumb.style.height).toBe('25px');
     expect(thumb.style.transform).toBe('translateY(0px)');
+    const fadeInMs = opacityTransitionMs(thumbStyle);
+    expect(fadeInMs).toBeGreaterThanOrEqual(120);
+    expect(fadeInMs).toBeLessThanOrEqual(280);
 
-    vi.useFakeTimers();
     installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 100 });
     branchList.dispatchEvent(new Event('scroll'));
     expect(thumb.style.transform).toBe('translateY(25px)');
@@ -5304,10 +5314,13 @@ describe('desktop workspace', () => {
     expect(thumb.classList.contains('is-visible')).toBe(true);
     await vi.advanceTimersByTimeAsync(700);
     expect(thumb.classList.contains('is-visible')).toBe(false);
+    const hiddenStyle = getComputedStyle(thumb);
+    expect(hiddenStyle.opacity).toBe('0');
+    const fadeOutMs = opacityTransitionMs(hiddenStyle);
+    expect(fadeOutMs).toBeGreaterThan(fadeInMs);
+    expect(fadeOutMs).toBeGreaterThanOrEqual(300);
 
     branchList.dispatchEvent(new Event('pointerenter'));
-    expect(thumb.classList.contains('is-visible')).toBe(true);
-    branchList.dispatchEvent(new Event('pointerleave'));
     expect(thumb.classList.contains('is-visible')).toBe(false);
 
     branchList.dispatchEvent(new Event('scroll'));
@@ -5324,8 +5337,9 @@ describe('desktop workspace', () => {
 
     const branchList = fixture.nativeElement.querySelector('[data-testid="branch-list"]') as HTMLElement;
     installScrollMetrics(branchList, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
-    branchList.dispatchEvent(new Event('pointerenter'));
+    branchList.dispatchEvent(new Event('scroll'));
     const thumb = branchList.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
+    expect(thumb.classList.contains('is-visible')).toBe(true);
     thumb.dispatchEvent(new PointerEvent('pointerdown', { clientY: 10, bubbles: true }));
     window.dispatchEvent(new PointerEvent('pointermove', { clientY: 40, bubbles: true }));
     expect(branchList.scrollTop).toBe(120);
@@ -5502,7 +5516,7 @@ describe('desktop workspace', () => {
     ) as HTMLElement;
     const clientHeight = 200;
     installScrollMetrics(panel, { clientHeight, scrollHeight: 800, scrollTop: 600 });
-    panel.dispatchEvent(new Event('pointerenter'));
+    panel.dispatchEvent(new Event('scroll'));
     const thumb = panel.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
     expect(thumb.classList.contains('is-visible')).toBe(true);
     const paddingTop = Number.parseFloat(getComputedStyle(panel).paddingTop);
@@ -7610,27 +7624,42 @@ async function expectOverlayScrollbar(region: HTMLElement | null): Promise<void>
   expect(getComputedStyle(region).scrollbarWidth).toBe('none');
   expect(getComputedStyle(region).scrollbarGutter).not.toBe('stable');
   installScrollMetrics(region, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
-  region.dispatchEvent(new Event('pointerenter'));
   const thumb = region.querySelector('[data-testid="overlay-scrollbar"]') as HTMLElement;
   expect(thumb).not.toBeNull();
+
+  vi.useFakeTimers();
+  region.dispatchEvent(new Event('scroll'));
   expect(thumb.classList.contains('is-visible')).toBe(false);
+  await vi.advanceTimersByTimeAsync(700);
 
   installScrollMetrics(region, { clientHeight: 100, scrollHeight: 400, scrollTop: 0 });
   region.dispatchEvent(new Event('pointerenter'));
-  expect(thumb.classList.contains('is-visible')).toBe(true);
-  const thumbStyle = getComputedStyle(thumb);
-  expect(thumbStyle.position).toBe('absolute');
-  expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
-  expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
-
-  vi.useFakeTimers();
-  region.dispatchEvent(new Event('pointerleave'));
   expect(thumb.classList.contains('is-visible')).toBe(false);
   region.dispatchEvent(new Event('scroll'));
   expect(thumb.classList.contains('is-visible')).toBe(true);
+  const thumbStyle = getComputedStyle(thumb);
+  expect(thumbStyle.opacity).toBe('1');
+  expect(thumbStyle.position).toBe('absolute');
+  expect(Number.parseFloat(thumbStyle.width)).toBeLessThanOrEqual(8);
+  expect(Number.parseFloat(thumbStyle.width)).toBeGreaterThan(0);
+  expect(opacityTransitionMs(thumbStyle)).toBeGreaterThan(0);
+
+  region.dispatchEvent(new Event('pointerleave'));
+  expect(thumb.classList.contains('is-visible')).toBe(true);
   await vi.advanceTimersByTimeAsync(700);
   expect(thumb.classList.contains('is-visible')).toBe(false);
+  expect(getComputedStyle(thumb).opacity).toBe('0');
+  expect(opacityTransitionMs(getComputedStyle(thumb))).toBeGreaterThan(opacityTransitionMs(thumbStyle));
   vi.useRealTimers();
+}
+
+function opacityTransitionMs(style: CSSStyleDeclaration): number {
+  const match = /(?:^|,)\s*opacity\s+(\d+(?:\.\d+)?)(ms|s)\b/.exec(style.transition);
+  if (!match) {
+    return 0;
+  }
+  const value = Number.parseFloat(match[1] ?? '');
+  return match[2] === 'ms' ? value : value * 1000;
 }
 
 function installScrollMetrics(

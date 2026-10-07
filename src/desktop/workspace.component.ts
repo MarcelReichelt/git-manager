@@ -896,6 +896,7 @@ button, input { font: inherit; color: inherit; }
 
 .dialog-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 

@@ -7,17 +7,30 @@ function overlayThumbBox(
   scrollTop: number,
   scrollHeight: number,
   clientHeight: number,
+  inset = 0,
 ): { size: number; offset: number } | null {
-  if (clientHeight <= 0 || scrollHeight <= clientHeight) {
+  const track = clientHeight - inset * 2;
+  if (clientHeight <= 0 || track <= 0 || scrollHeight <= clientHeight) {
     return null;
   }
-  const size = Math.round(
-    Math.min(clientHeight, Math.max(24, (clientHeight * clientHeight) / scrollHeight)),
-  );
+  const size = Math.round(Math.min(track, Math.max(24, (track * clientHeight) / scrollHeight)));
   const maxScroll = scrollHeight - clientHeight;
-  const travel = Math.max(0, clientHeight - size);
+  const travel = Math.max(0, track - size);
   const offset = maxScroll === 0 ? 0 : Math.round((scrollTop / maxScroll) * travel);
   return { size, offset };
+}
+
+function scrollbarInset(element: HTMLElement): number {
+  if (!element.classList.contains('dialog-panel')) {
+    return 0;
+  }
+  const style = getComputedStyle(element);
+  const paddingTop = Number.parseFloat(style.paddingTop);
+  const paddingBottom = Number.parseFloat(style.paddingBottom);
+  if (!Number.isFinite(paddingTop) || !Number.isFinite(paddingBottom)) {
+    return 0;
+  }
+  return Math.min(paddingTop, paddingBottom);
 }
 
 function ensureOverlayScrollbarStyles(): void {
@@ -154,7 +167,8 @@ export class OverlayScroll implements OnInit, OnDestroy {
     }
     event.preventDefault();
     const element = this.host.nativeElement;
-    const box = overlayThumbBox(element.scrollTop, element.scrollHeight, element.clientHeight);
+    const inset = scrollbarInset(element);
+    const box = overlayThumbBox(element.scrollTop, element.scrollHeight, element.clientHeight, inset);
     if (!box) {
       return;
     }
@@ -162,7 +176,7 @@ export class OverlayScroll implements OnInit, OnDestroy {
     const startY = event.clientY;
     const startScroll = element.scrollTop;
     const maxScroll = element.scrollHeight - element.clientHeight;
-    const travel = Math.max(1, element.clientHeight - box.size);
+    const travel = Math.max(1, element.clientHeight - inset * 2 - box.size);
     this.clearDrag();
     this.dragMove = (move: PointerEvent) => {
       element.scrollTop = startScroll + ((move.clientY - startY) / travel) * maxScroll;
@@ -206,7 +220,8 @@ export class OverlayScroll implements OnInit, OnDestroy {
       return;
     }
     const element = this.host.nativeElement;
-    const box = overlayThumbBox(element.scrollTop, element.scrollHeight, element.clientHeight);
+    const inset = scrollbarInset(element);
+    const box = overlayThumbBox(element.scrollTop, element.scrollHeight, element.clientHeight, inset);
     thumb.classList.toggle(
       'is-visible',
       box !== null && (this.pointerOver || this.scrolling || this.dragging),

@@ -99,6 +99,8 @@ jobs:
       - name: Write the changelog once
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job downloads artifacts only. gh cannot discover the repo from git.
+          GH_REPO: ${{ github.repository }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           body="$(gh release view "$tag" --json body --jq .body)"

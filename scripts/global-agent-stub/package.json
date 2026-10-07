@@ -1,0 +1,7 @@
+{
+  "name": "global-agent",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Stand-in for the optional @electron/get proxy helper. The published global-agent 3.0.0 pulls sprintf-js 1.1.3, which has no patched release.",
+  "main": "index.js"
+}

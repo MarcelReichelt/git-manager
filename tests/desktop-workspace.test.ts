@@ -2578,6 +2578,7 @@ describe('desktop workspace', () => {
     expect(settings.querySelector('[data-testid="add-remote-name"]')).toBeNull();
     const settingsInputs = [...settings.querySelectorAll('input')];
     expect(settingsInputs.map((input) => input.getAttribute('data-testid'))).toEqual([
+      'repository-display-name',
       'worktree-mode-workspaces',
       'worktree-mode-sibling',
       'repository-sidebar-color',

@@ -68,8 +68,10 @@ function ensureOverlayScrollbarStyles(): void {
   pointer-events: auto;
 }
 .dialog-panel.overlay-scroll {
+  box-sizing: border-box;
   overflow: auto;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 64px);
+  min-height: 0;
 }
 `;
   document.head.appendChild(style);

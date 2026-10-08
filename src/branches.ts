@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { readPinnedWorktrees } from './app-settings.js';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
@@ -70,7 +70,31 @@ function hasRef(repoPath: string, ref: string): boolean {
   }
 }
 
+let sharedWorktreeList: { repo: string; entries: WorktreeEntry[] } | null = null;
+
+export function withWorktreeList<T>(repoPath: string, read: () => T): T {
+  const key = resolve(repoPath);
+  if (sharedWorktreeList?.repo === key) {
+    return read();
+  }
+  const previous = sharedWorktreeList;
+  sharedWorktreeList = { repo: key, entries: readWorktreeEntries(repoPath) };
+  try {
+    return read();
+  } finally {
+    sharedWorktreeList = previous;
+  }
+}
+
 function listWorktrees(repoPath: string): WorktreeEntry[] {
+  const key = resolve(repoPath);
+  if (sharedWorktreeList?.repo === key) {
+    return sharedWorktreeList.entries;
+  }
+  return readWorktreeEntries(repoPath);
+}
+
+function readWorktreeEntries(repoPath: string): WorktreeEntry[] {
   const output = gitText(repoPath, ['worktree', 'list', '--porcelain']);
   const entries: WorktreeEntry[] = [];
   for (const block of output.split('\n\n')) {
@@ -188,17 +212,19 @@ function parseNumstat(raw: string): ChangedFile[] {
   return files;
 }
 
-function untrackedFiles(worktree: string): ChangedFile[] {
-  return nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z'])).map((path) => {
-    const stat = untrackedLineStat(worktree, path);
-    return {
-      path,
-      previousPath: null,
-      added: stat.added,
-      deleted: stat.deleted,
-      binary: stat.binary,
-    };
-  });
+function untrackedFiles(worktree: string, linked: ReadonlySet<string>): ChangedFile[] {
+  return nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']))
+    .filter((path) => !isOtherWorktree(resolve(worktree, path), worktree, linked))
+    .map((path) => {
+      const stat = untrackedLineStat(worktree, path);
+      return {
+        path,
+        previousPath: null,
+        added: stat.added,
+        deleted: stat.deleted,
+        binary: stat.binary,
+      };
+    });
 }
 
 function untrackedLineStat(
@@ -257,9 +283,9 @@ function nulPaths(raw: string): string[] {
   return raw.split('\0').filter((path) => path !== '');
 }
 
-function changedFilesInWorktree(worktree: string): ChangedFile[] {
+function changedFilesInWorktree(worktree: string, linked: ReadonlySet<string>): ChangedFile[] {
   const tracked = parseNumstat(gitText(worktree, ['diff', '-M', '--numstat', '-z', 'HEAD']));
-  return [...tracked, ...untrackedFiles(worktree)];
+  return [...tracked, ...untrackedFiles(worktree, linked)];
 }
 
 export function ensureGitRepository(repoPath: string): void {
@@ -281,14 +307,52 @@ export function pruneRemoteTrackingRefs(repoPath: string): void {
   }
 }
 
-function changedFileCount(worktree: string): number {
-  return uncommittedPaths(worktree).length;
+function uncommittedPaths(worktree: string, linked: ReadonlySet<string>): string[] {
+  const raw = gitText(worktree, [
+    '--no-optional-locks',
+    'status',
+    '--porcelain=v1',
+    '-z',
+    '--untracked-files=all',
+  ]);
+  return porcelainPaths(raw).filter((path) => !isOtherWorktree(resolve(worktree, path), worktree, linked));
 }
 
-function uncommittedPaths(worktree: string): string[] {
-  const tracked = nulPaths(gitText(worktree, ['diff', '-M', '--name-only', '-z', 'HEAD']));
-  const untracked = nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']));
-  return [...tracked, ...untracked];
+function porcelainPaths(raw: string): string[] {
+  if (raw === '') {
+    return [];
+  }
+  const parts = raw.split('\0');
+  if (parts.at(-1) === '') {
+    parts.pop();
+  }
+  const paths: string[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const entry = parts[index] ?? '';
+    if (entry.length < 4) {
+      continue;
+    }
+    paths.push(entry.slice(3));
+    const status = entry[0];
+    if (status === 'R' || status === 'C') {
+      index += 1;
+    }
+  }
+  return paths;
+}
+
+function isOtherWorktree(absolute: string, current: string, linked: ReadonlySet<string>): boolean {
+  // A nested worktree lives inside the main checkout's directory. Its files belong to that worktree.
+  const here = resolve(current);
+  for (const worktree of linked) {
+    if (worktree === here || here.startsWith(`${worktree}${sep}`)) {
+      continue;
+    }
+    if (absolute === worktree || absolute.startsWith(`${worktree}${sep}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 interface DescribedBranch {
@@ -298,16 +362,25 @@ interface DescribedBranch {
   behind: number;
 }
 
-function describeBranches(repoPath: string): { rows: DescribedBranch[]; defaultBranch: string | undefined } {
+function describeBranches(repoPath: string): {
+  rows: DescribedBranch[];
+  defaultBranch: string | undefined;
+  committerMs: Map<string, number>;
+} {
   const base = aheadBehindBase(repoPath);
   const comparison = aheadBehindAtom(repoPath, base);
-  const localAtoms = ['%(refname:short)', '%(upstream)', '%(upstream:track)'];
+  const localAtoms = ['%(refname:short)', '%(upstream)', '%(upstream:track)', '%(committerdate:unix)'];
   if (comparison) {
     localAtoms.push(comparison);
   }
   const locals = forEachFields(repoPath, localAtoms, 'refs/heads');
   const localNames = new Set(locals.map((fields) => fields[0] ?? ''));
-  const rows: DescribedBranch[] = locals.map((fields) => describeLocalBranch(repoPath, base, fields));
+  const committerMs = new Map<string, number>();
+  const rows: DescribedBranch[] = locals.map((fields) => {
+    const described = describeLocalBranch(repoPath, base, fields);
+    committerMs.set(described.name, unixMs(fields[3]));
+    return described;
+  });
   const remoteAtoms = ['%(refname:short)'];
   if (comparison) {
     remoteAtoms.push(comparison);
@@ -324,7 +397,14 @@ function describeBranches(repoPath: string): { rows: DescribedBranch[]; defaultB
     const counts = countsFromField(repoPath, name, base, fields[1]);
     rows.push({ name, status: 'remote-only', ahead: counts.ahead, behind: counts.behind });
   }
-  return { rows, defaultBranch: base === 'HEAD' ? defaultBranchName(repoPath) : base };
+  return { rows, defaultBranch: base === 'HEAD' ? defaultBranchName(repoPath) : base, committerMs };
+}
+
+function unixMs(value: string | undefined): number {
+  if (value === undefined || !/^\d+$/.test(value)) {
+    return 0;
+  }
+  return Number(value) * 1000;
 }
 
 function describeLocalBranch(repoPath: string, base: string, fields: readonly string[]): DescribedBranch {
@@ -332,11 +412,11 @@ function describeLocalBranch(repoPath: string, base: string, fields: readonly st
   const upstream = fields[1] ?? '';
   const track = parseUpstreamTrack(fields[2] ?? '');
   if (upstream === '') {
-    const counts = countsFromField(repoPath, name, base, fields[3]);
+    const counts = countsFromField(repoPath, name, base, fields[4]);
     return { name, status: 'local-only', ahead: counts.ahead, behind: counts.behind };
   }
   if (track === 'gone') {
-    const counts = countsFromField(repoPath, name, base, fields[3]);
+    const counts = countsFromField(repoPath, name, base, fields[4]);
     return { name, status: 'remote-deleted', ahead: counts.ahead, behind: counts.behind };
   }
   if (track === 'none') {
@@ -406,41 +486,94 @@ function parseUpstreamTrack(
   return { ahead: ahead ? Number(ahead[1]) : 0, behind: behind ? Number(behind[1]) : 0 };
 }
 
-export function listBranches(repoPath: string): BranchRow[] {
-  const described = describeBranches(repoPath);
-  const checkouts = checkoutPaths(repoPath);
-  const rows = described.rows.map((row) => {
-    const checkout = checkouts.get(row.name);
-    return {
-      name: row.name,
-      status: row.status,
-      changedFileCount: checkout ? changedFileCount(checkout) : 0,
-      ahead: row.ahead,
-      behind: row.behind,
-    };
-  });
-  return pinDefaultBranch(rows, described.defaultBranch);
+export interface OpenBranches {
+  rows: BranchRow[];
+  worktrees: BranchRow[];
+  primaryBranch: string | undefined;
+  pinned: readonly string[];
+  checkouts: readonly string[];
 }
 
-function checkoutPaths(repoPath: string): Map<string, string> {
-  const paths = new Map<string, string>();
-  for (const entry of listWorktrees(repoPath)) {
-    if (entry.branch) {
-      paths.set(entry.branch, resolve(entry.path));
-    }
-  }
-  return paths;
+export function readOpenBranches(repoPath: string): OpenBranches {
+  const opened = openBranches(repoPath);
+  return {
+    rows: opened.rows,
+    worktrees: opened.worktrees,
+    primaryBranch: opened.primaryBranch,
+    pinned: opened.pinned,
+    checkouts: opened.checkouts,
+  };
+}
+
+export function listBranches(repoPath: string): BranchRow[] {
+  return openBranches(repoPath).rows;
 }
 
 export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
-  const checkedOut = checkedOutBranches(repoPath);
-  const rows = (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
-  return orderWorktreeRows(
-    rowsByLastChange(repoPath, rows),
-    readDefaultBranch(repoPath),
-    readPrimaryCheckoutBranch(repoPath),
-    readPinnedWorktrees(repoPath),
+  const opened = openBranches(repoPath);
+  if (!known) {
+    return opened.worktrees;
+  }
+  const present = new Set(opened.worktrees.map((row) => row.name));
+  const rows = known.filter((row) => present.has(row.name));
+  const sorted = rows
+    .map((row, index) => ({ row, index, changedAt: opened.changedAt.get(row.name) ?? 0 }))
+    .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
+    .map((entry) => entry.row);
+  return orderWorktreeRows(sorted, opened.defaultBranch, opened.primaryBranch, opened.pinned);
+}
+
+interface OpenBranchScan extends OpenBranches {
+  defaultBranch: string | undefined;
+  changedAt: ReadonlyMap<string, number>;
+}
+
+function openBranches(repoPath: string): OpenBranchScan {
+  const described = describeBranches(repoPath);
+  const entries = listWorktrees(repoPath);
+  const linked = new Set(entries.map((entry) => resolve(entry.path)));
+  const checkouts = new Map<string, { path: string; uncommitted: string[] }>();
+  for (const entry of entries) {
+    if (!entry.branch) {
+      continue;
+    }
+    const path = resolve(entry.path);
+    checkouts.set(entry.branch, { path, uncommitted: uncommittedPaths(path, linked) });
+  }
+  const rows = pinDefaultBranch(
+    described.rows.map((row) => ({
+      name: row.name,
+      status: row.status,
+      changedFileCount: checkouts.get(row.name)?.uncommitted.length ?? 0,
+      ahead: row.ahead,
+      behind: row.behind,
+    })),
+    described.defaultBranch,
   );
+  const changedAt = new Map<string, number>();
+  const worktreeRows = rows.filter((row) => checkouts.has(row.name));
+  const sorted = worktreeRows
+    .map((row, index) => {
+      const checkout = checkouts.get(row.name);
+      const at = checkout
+        ? Math.max(described.committerMs.get(row.name) ?? 0, newestPathMs(checkout.path, checkout.uncommitted))
+        : 0;
+      changedAt.set(row.name, at);
+      return { row, index, changedAt: at };
+    })
+    .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
+    .map((entry) => entry.row);
+  const primaryBranch = entries[0]?.branch ?? undefined;
+  const pinned = readPinnedWorktrees(repoPath);
+  return {
+    rows,
+    worktrees: orderWorktreeRows(sorted, described.defaultBranch, primaryBranch, pinned),
+    primaryBranch,
+    pinned,
+    checkouts: [...linked],
+    defaultBranch: described.defaultBranch,
+    changedAt,
+  };
 }
 
 export function readPrimaryCheckoutBranch(repoPath: string): string | undefined {
@@ -470,25 +603,6 @@ function orderWorktreeRows<T extends { name: string }>(
   }
   const anchorIndex = body.findIndex((row) => row.name === anchor);
   return [...body.slice(0, anchorIndex + 1), ...pinnedRows, ...body.slice(anchorIndex + 1)];
-}
-
-function rowsByLastChange(repoPath: string, rows: readonly BranchRow[]): BranchRow[] {
-  const paths = checkoutPaths(repoPath);
-  return rows
-    .map((row, index) => ({
-      row,
-      index,
-      changedAt: lastChangeMs(paths.get(row.name)),
-    }))
-    .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
-    .map((entry) => entry.row);
-}
-
-function lastChangeMs(checkout: string | undefined): number {
-  if (checkout === undefined) {
-    return 0;
-  }
-  return Math.max(headCommitterMs(checkout), newestPathMs(checkout, uncommittedPaths(checkout)));
 }
 
 function newestPathMs(checkout: string, paths: readonly string[]): number {
@@ -521,15 +635,6 @@ function directoryMtimeMs(directory: string): number {
   } catch {
     return 0;
   }
-}
-
-function headCommitterMs(checkout: string): number {
-  const raw = gitOptional(checkout, ['log', '-1', '--format=%ct']);
-  if (raw === undefined) {
-    return 0;
-  }
-  const seconds = Number(raw);
-  return Number.isFinite(seconds) ? seconds * 1000 : 0;
 }
 
 export interface AvailableBranch {
@@ -775,11 +880,13 @@ function checkedOutBranch(repoPath: string): string | undefined {
 }
 
 export function readChangedFiles(repoPath: string, branch: string): ChangedFile[] {
-  const checkout = worktreePath(repoPath, branch);
+  const entries = listWorktrees(repoPath);
+  const checkout = entries.find((entry) => entry.branch === branch);
   if (!checkout) {
     return [];
   }
-  return changedFilesInWorktree(checkout);
+  const linked = new Set(entries.map((entry) => resolve(entry.path)));
+  return changedFilesInWorktree(resolve(checkout.path), linked);
 }
 
 export const recentCommitPageSize = 30;

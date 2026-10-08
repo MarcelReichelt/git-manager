@@ -6579,6 +6579,42 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')).toHaveLength(1);
   });
 
+  it('shows the kept repository before it rereads git', async () => {
+    const { pier } = registerPair();
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+
+    writeFileSync(join(pier, '.workspaces', 'feature', 'notes.txt'), 'hello\n');
+    const held = holdPaint();
+    try {
+      fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+        'true',
+      );
+      expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+      expect(
+        fixture.nativeElement.querySelector('[data-branch="feature"] [data-testid="changed-file-count"]').textContent.trim(),
+      ).toBe('0');
+      expect(fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="notes.txt"]')).toBeNull();
+
+      held.release();
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('[data-branch="feature"] [data-testid="changed-file-count"]').textContent.trim(),
+      ).toBe('1');
+      expect(fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="notes.txt"]')).not.toBeNull();
+    } finally {
+      held.release();
+    }
+  });
+
   it('keeps the open workspace visible while another repository opens', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);

@@ -121,6 +121,22 @@ describe('Terminals on the grouped worktrees', () => {
     expect(overlayCard.querySelector('[data-testid="terminals"]')).toBeNull();
     expect(start.nativeElement.querySelector('[data-testid="window-bar"] [data-testid="terminals"]')).not.toBeNull();
   });
+
+  it('shows a black Terminals chip with a white prompt, a white count, and an accessible name', async () => {
+    const repoPath = createRepository(roots);
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    const chip = fixture.nativeElement.querySelector('[data-testid="terminals"]');
+    const prompt = chip.querySelector('[data-testid="terminals-prompt"]');
+    const count = chip.querySelector('[data-testid="terminals-count"]');
+
+    expect(getComputedStyle(chip).backgroundColor).toBe('rgb(0, 0, 0)');
+    expect(prompt.textContent.trim()).toBe('>');
+    expect(getComputedStyle(prompt).color).toBe('rgb(255, 255, 255)');
+    expect(count.textContent.trim()).toBe('0');
+    expect(getComputedStyle(count).color).toBe('rgb(255, 255, 255)');
+    expect(chip.getAttribute('aria-label')).toBe('0 terminals');
+  });
 });
 
 function createRepository(roots: string[]): string {

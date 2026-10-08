@@ -46,6 +46,19 @@
   flex: none;
   align-items: center;
   gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: #000000;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-testid='terminals-prompt'],
+[data-testid='terminals-count'] {
+  color: #ffffff;
 }
 
 [data-testid='app-settings'] svg {

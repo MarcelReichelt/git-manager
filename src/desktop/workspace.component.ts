@@ -29,7 +29,6 @@ import {
   pinWorktree,
   readAppSettings,
   readOpenRepositoryTabs,
-  readPinnedWorktrees,
   readRepositoryAppearance,
   resolveAppSettingsPath,
   resetAppColors,
@@ -115,9 +114,7 @@ import {
 } from './tmux-sessions';
 import {
   ensureGitRepository,
-  listBranches,
   listRemoteBranchesWithoutWorktree,
-  listWorktreeBranches,
   refreshOpenRepositoryRemotes,
   pinDefaultBranch,
   countBranchCommits,
@@ -127,8 +124,9 @@ import {
   readCommitFiles,
   readCommitsOnlyOnBranch,
   readDefaultBranch,
-  readPrimaryCheckoutBranch,
+  readOpenBranches,
   readRecentCommits,
+  withWorktreeList,
   recentCommitPageSize,
   readWorkingTreeDiff,
   type BranchCommit,
@@ -4884,14 +4882,27 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.maximizedBodyHeight.set(null);
       }
       this.realBranches.set(saved.branches);
-      this.claimOldSessions(tab.path, saved.branches);
-      this.rememberTmuxSessions();
+      if (this.oldSessionRepo !== tab.path) {
+        this.oldSessionChoices.set([]);
+      }
       this.closeTerminalMenu();
       this.renaming.set(null);
-    } else {
-      this.clearBranchSelection();
-      this.clearTerminals();
+      this.applyOpenRepositoryAppearance();
+      const path = tab.path;
+      this.runWhenPainted(() => {
+        if (this.effectivePath() !== path) {
+          return;
+        }
+        try {
+          this.refreshBranches();
+        } catch {
+          // The next local change retries the read.
+        }
+      });
+      return;
     }
+    this.clearBranchSelection();
+    this.clearTerminals();
     this.applyOpenRepositoryAppearance();
     this.refreshBranches();
   }
@@ -4931,33 +4942,33 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.clearGitWatch();
       return;
     }
-    const primary = readPrimaryCheckoutBranch(path);
-    if (primary !== this.primaryBranchName()) {
-      this.primaryBranchName.set(primary);
-    }
-    const pinned = readPinnedWorktrees(path);
-    if (pinned.join('\0') !== this.pinnedWorktrees().join('\0')) {
-      this.pinnedWorktrees.set(pinned);
-    }
-    const rows = listBranches(path);
-    this.claimOldSessions(path, rows);
-    const next = listWorktreeBranches(path, rows).map((branch) => ({
-      name: branch.name,
-      status: branch.status,
-      changedFileCount: branch.changedFileCount,
-      ahead: branch.ahead,
-      behind: branch.behind,
-    }));
-    if (!sameWorktreeRows(this.realBranches(), next)) {
-      this.realBranches.set(next);
-    }
-    this.rememberTmuxSessions();
-    this.syncGitWatch();
-    try {
-      this.refreshSelectedWorktreeContent();
-    } catch {
-      // The next local change retries the selected worktree.
-    }
+    withWorktreeList(path, () => {
+      const opened = readOpenBranches(path);
+      if (opened.primaryBranch !== this.primaryBranchName()) {
+        this.primaryBranchName.set(opened.primaryBranch);
+      }
+      if (opened.pinned.join('\0') !== this.pinnedWorktrees().join('\0')) {
+        this.pinnedWorktrees.set([...opened.pinned]);
+      }
+      this.claimOldSessions(path, opened.rows);
+      const next = opened.worktrees.map((branch) => ({
+        name: branch.name,
+        status: branch.status,
+        changedFileCount: branch.changedFileCount,
+        ahead: branch.ahead,
+        behind: branch.behind,
+      }));
+      if (!sameWorktreeRows(this.realBranches(), next)) {
+        this.realBranches.set(next);
+      }
+      this.rememberTmuxSessions();
+      this.syncGitWatch(opened.checkouts);
+      try {
+        this.refreshSelectedWorktreeContent();
+      } catch {
+        // The next local change retries the selected worktree.
+      }
+    });
   }
 
   private refreshSelectedWorktreeContent(): void {
@@ -5093,14 +5104,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return { commits, complete };
   }
 
-  private syncGitWatch(): void {
+  private syncGitWatch(checkouts: readonly string[]): void {
     const path = this.effectivePath();
     if (path === null) {
       this.clearGitWatch();
       return;
     }
     this.gitWatchActive = true;
-    const wanted = new Set(watchDirectories(path));
+    const wanted = new Set(outermostDirectories(checkouts));
     for (const [dir, watcher] of this.gitWatchers) {
       if (!wanted.has(dir)) {
         this.closeGitWatcher(dir, watcher);
@@ -5543,26 +5554,6 @@ function commitObjectExists(repoPath: string, identity: string): boolean {
   } catch {
     return false;
   }
-}
-
-function watchDirectories(repoPath: string): string[] {
-  const paths: string[] = [];
-  try {
-    const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
-      cwd: repoPath,
-      encoding: 'utf8',
-    });
-    for (const block of output.split('\n\n')) {
-      for (const line of block.split('\n')) {
-        if (line.startsWith('worktree ')) {
-          paths.push(resolve(line.slice('worktree '.length)));
-        }
-      }
-    }
-  } catch {
-    return [resolve(repoPath)];
-  }
-  return outermostDirectories(paths.length > 0 ? paths : [repoPath]);
 }
 
 function outermostDirectories(paths: readonly string[]): string[] {

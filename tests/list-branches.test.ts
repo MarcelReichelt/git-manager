@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { pinWorktree } from '../src/app-settings.js';
@@ -8,7 +8,9 @@ import {
   listWorktreeBranches,
   pruneRemoteTrackingRefs,
   readChangedFiles,
+  readOpenBranches,
   refreshRemoteHead,
+  withWorktreeList,
 } from '../src/branches.js';
 import { git, initGitRepo, makeTempDir, removeTemp } from './cli/run.js';
 
@@ -161,6 +163,63 @@ describe('listBranches', () => {
     expect(files.some((file) => file.path === 'guide.md' && file.previousPath === 'README.md')).toBe(true);
     expect(notes).toMatchObject({ added: 2, deleted: 0, binary: false });
     expect(logo).toMatchObject({ added: null, deleted: null, binary: true });
+  });
+
+  it('does not count a linked worktree as a change of the main checkout', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    initGitRepo(repoPath);
+    mkdirSync(join(repoPath, '.workspaces'), { recursive: true });
+    git(repoPath, ['branch', 'feature']);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'hello\n');
+
+    const master = listBranches(repoPath).find((branch) => branch.name === 'master');
+    const featureRow = listBranches(repoPath).find((branch) => branch.name === 'feature');
+    expect(master?.changedFileCount).toBe(0);
+    expect(readChangedFiles(repoPath, 'master')).toEqual([]);
+    expect(featureRow?.changedFileCount).toBe(1);
+    expect(readChangedFiles(repoPath, 'feature').map((file) => file.path)).toContain('notes.txt');
+  });
+
+  it('reads each checkout once while the open repository is refreshed', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    addFeatureAndZeta(repoPath);
+    listBranches(repoPath);
+    const traceLog = join(root, 'git.log');
+    const traceBin = join(root, 'bin');
+    mkdirSync(traceBin);
+    writeFileSync(
+      join(traceBin, 'git'),
+      `#!/bin/bash
+/usr/bin/git "$@"
+status=$?
+printf '%s\\n' "$*" >> ${JSON.stringify(traceLog)}
+exit $status
+`,
+      { mode: 0o755 },
+    );
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${traceBin}:${previousPath ?? ''}`;
+    writeFileSync(traceLog, '');
+    try {
+      withWorktreeList(repoPath, () => {
+        readOpenBranches(repoPath);
+        readChangedFiles(repoPath, 'feature');
+      });
+    } finally {
+      process.env.PATH = previousPath;
+    }
+    const calls = readFileSync(traceLog, 'utf8')
+      .split('\n')
+      .filter((line) => line !== '');
+    expect(calls.filter((call) => call.includes('worktree list'))).toHaveLength(1);
+    expect(calls.filter((call) => call.includes(' status '))).toHaveLength(3);
+    expect(calls.filter((call) => call.startsWith('log '))).toEqual([]);
   });
 
   it('counts commits against the default branch when a branch has no upstream', () => {

@@ -2742,7 +2742,29 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   terminalsTotal(): number {
-    return this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
+    const current = this.effectivePath();
+    const tabs = this.repositoryTabs();
+    if (tabs.length === 0) {
+      return this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
+    }
+    let total = 0;
+    for (const tab of tabs) {
+      if (tab.path === current) {
+        total += this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
+        continue;
+      }
+      const saved = this.repositoryWorkspaces.get(tab.path);
+      if (!saved) {
+        continue;
+      }
+      total += saved.branches.reduce(
+        (sum, branch) =>
+          sum +
+          countBranchTerminals(tab.path, branch.name, saved.terminalsByBranch[branch.name], this.tmuxSessionRecords()),
+        0,
+      );
+    }
+    return total;
   }
 
   openTerminals(event: Event): void {
@@ -2761,19 +2783,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   terminalCount(name: string): number {
-    const state = this.terminalsByBranch()[name];
-    const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
-    const repo = this.effectivePath();
-    if (!repo) {
-      return remembered;
-    }
-    const known = new Set(
-      state?.tabs.flatMap((tab) =>
-        tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
-      ) ?? [],
+    return countBranchTerminals(
+      this.effectivePath(),
+      name,
+      this.terminalsByBranch()[name],
+      this.tmuxSessionRecords(),
     );
-    const outside = sessionsForBranch(repo, name, this.tmuxSessionRecords()).filter((session) => !known.has(session)).length;
-    return remembered + outside;
   }
 
   focusTab(tabId: string): void {
@@ -5318,6 +5333,25 @@ interface TerminalMenuState {
   terminalId: string | null;
   x: number;
   y: number;
+}
+
+function countBranchTerminals(
+  repo: string | null,
+  name: string,
+  state: WorktreeTerminalView | undefined,
+  sessions: readonly TmuxSessionRecord[],
+): number {
+  const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
+  if (!repo) {
+    return remembered;
+  }
+  const known = new Set(
+    state?.tabs.flatMap((tab) =>
+      tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
+    ) ?? [],
+  );
+  const outside = sessionsForBranch(repo, name, sessions).filter((session) => !known.has(session)).length;
+  return remembered + outside;
 }
 
 function branchHasTerminal(state: WorktreeTerminalView, terminalId: string): boolean {

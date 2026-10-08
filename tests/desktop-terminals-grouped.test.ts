@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
+import { createBranchSession, killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { whenRemoteRefreshIdle } from '../src/branches';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
@@ -77,6 +77,54 @@ describe('Terminals on the grouped worktrees', () => {
 
   function render() {
     return setupWorkspace();
+  }
+
+  async function renderLive() {
+    if (restoreSearch === undefined) {
+      const previousSearch = location.search;
+      history.replaceState(null, '', `${location.pathname}?live=1`);
+      restoreSearch = () => {
+        history.replaceState(null, '', `${location.pathname}${previousSearch}`);
+      };
+    }
+    return setupWorkspace();
+  }
+
+  function openRepositoryCard(fixture: ComponentFixture<WorkspaceComponent>): void {
+    const button = fixture.nativeElement.querySelector('[data-testid="open-repository-card"]');
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error('Open repository is not shown');
+    }
+    button.click();
+    fixture.detectChanges();
+  }
+
+  function openRepositoryTabMenu(fixture: ComponentFixture<WorkspaceComponent>, name: string): HTMLElement {
+    const tab = fixture.nativeElement.querySelector(`[data-testid="repository-tab"][data-name="${name}"]`);
+    if (!(tab instanceof HTMLElement)) {
+      throw new Error(`${name} has no repository tab`);
+    }
+    tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 16 }));
+    fixture.detectChanges();
+    const menu = fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]');
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error('The repository tab menu is not open');
+    }
+    return menu;
+  }
+
+  async function openLiveRepository(fixture: ComponentFixture<WorkspaceComponent>, name: string): Promise<void> {
+    const overlay = fixture.nativeElement.querySelector('[data-testid="switching-overlay"]');
+    const scope = overlay instanceof HTMLElement ? overlay : fixture.nativeElement;
+    const button = scope.querySelector(`[data-testid="repository"][data-name="${name}"]`);
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`${name} is not on the repository card`);
+    }
+    button.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await whenRemoteRefreshIdle();
+    fixture.detectChanges();
   }
 
   function renderRepository(repoPath: string) {
@@ -197,6 +245,65 @@ describe('Terminals on the grouped worktrees', () => {
     expect(terminalsCount(fixture)).toBe('2');
     expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('2 terminals');
   });
+
+  it('counts a shell on a repository tab that is not selected', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(terminalsCount(fixture)).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('1 terminals');
+
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    expect(terminalsCount(fixture)).toBe('2');
+  });
+
+  it('counts a tmux session that is not yet a terminal tab', async () => {
+    const { pier } = registerPair(roots);
+    createBranchSession(pier, 'feature', join(pier, '.workspaces', 'feature'), 1);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+
+    expect(branchTerminalCount(fixture, 'feature')).toBe('1');
+    expect(branchTerminalCount(fixture, 'master')).toBeNull();
+    expect(terminalsCount(fixture)).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('1 terminals');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')).toHaveLength(0);
+  });
+
+  it('drops the count when a repository tab is closed', async () => {
+    const { pier } = registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    expect(terminalsCount(fixture)).toBe('1');
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector(`[data-testid="repository-tab"][data-path="${pier}"]`)).toBeNull();
+    expect(terminalsCount(fixture)).toBe('0');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('0 terminals');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="terminals"]')).opacity).toBe('0.4');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
@@ -255,6 +362,35 @@ function terminalsHoverRule(): boolean {
     }
   }
   return false;
+}
+
+function registerPair(roots: string[]): { pier: string; quay: string } {
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminals-'));
+  roots.push(root);
+  const pier = join(root, 'pier');
+  const quay = join(root, 'quay');
+  initGitRepo(pier);
+  initGitRepo(quay);
+  writeFileSync(join(pier, 'README.md'), '# pier\n');
+  writeFileSync(join(quay, 'README.md'), '# quay\n');
+  execFileSync('git', ['add', '.'], { cwd: pier, stdio: 'ignore' });
+  execFileSync('git', ['commit', '-m', 'init'], { cwd: pier, stdio: 'ignore' });
+  execFileSync('git', ['add', '.'], { cwd: quay, stdio: 'ignore' });
+  execFileSync('git', ['commit', '-m', 'init'], { cwd: quay, stdio: 'ignore' });
+  mkdirSync(join(pier, '.workspaces'));
+  execFileSync('git', ['branch', 'feature'], { cwd: pier, stdio: 'ignore' });
+  execFileSync('git', ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature'], { cwd: pier, stdio: 'ignore' });
+  process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+  addRepository(pier, 'Pier');
+  addRepository(quay, 'Quay');
+  return { pier, quay };
+}
+
+function initGitRepo(repoPath: string): void {
+  mkdirSync(repoPath, { recursive: true });
+  execFileSync('git', ['init', '-b', 'master'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'git-worktree-manager test'], { cwd: repoPath, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'test@git-worktree-manager.local'], { cwd: repoPath, stdio: 'ignore' });
 }
 
 function createRepository(roots: string[]): string {

@@ -1176,8 +1176,8 @@ button, input { font: inherit; color: inherit; }
           }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
-          @if (terminalsOpen()) {
-          } @else if (selectedBranch(); as branch) {
+          @if (!terminalsOpen()) {
+          @if (selectedBranch(); as branch) {
             @if (contentLoading() && !terminalMaximized()) {
               <p class="empty-sheet" data-testid="content-loading">Loading {{ branch.name }}</p>
             } @else if (!terminalMaximized()) {
@@ -1582,6 +1582,7 @@ button, input { font: inherit; color: inherit; }
             </div>
           } @else {
             <p class="empty-sheet">Select a branch</p>
+          }
           }
         </section>
       </main>
@@ -2440,7 +2441,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.repositoryWorkspaces.delete(path);
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
-    if (this.terminalsReturnPath() === path) {
+    if (this.terminalsOpen() && this.terminalsReturnPath() === path) {
       const nextReturn = remaining[index] ?? remaining[index - 1] ?? null;
       this.terminalsReturnPath.set(nextReturn?.path ?? null);
     }

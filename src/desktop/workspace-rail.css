@@ -58,11 +58,6 @@
   outline-offset: -2px;
 }
 
-[data-testid='terminals-prompt'],
-[data-testid='terminals-count'] {
-  color: #ffffff;
-}
-
 [data-testid='terminals'].is-idle {
   opacity: 0.4;
   cursor: default;

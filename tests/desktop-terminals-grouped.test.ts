@@ -1140,6 +1140,40 @@ describe('Terminals on the grouped worktrees', () => {
       ),
     ).toBe(true);
   });
+
+  it('clears the sheet when the chosen worktree loses its last terminal and other terminals remain', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    clickIcon(fixture, 'terminal-kill');
+
+    expect(fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim()).toBe('Terminals');
+    expect(groupNames(fixture)).toEqual(['Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-worktree"][data-branch="feature"]')).toBeNull();
+    expect(terminalsCount(fixture)).toBe('1');
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.textContent?.trim()).toBe('');
+    expect(sheet.querySelector('[data-testid="terminal-row"], .branch-heading, [data-testid="changes"], [data-testid="commits"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-worktree"][aria-selected="true"]')).toBeNull();
+    expect(terminalsWorktree(fixture, 'Quay', 'master').getAttribute('aria-selected')).toBe('false');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

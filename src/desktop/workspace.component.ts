@@ -4558,7 +4558,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (repo === this.effectivePath()) {
       this.collapseIfEmpty(branch, result.state);
     }
+    this.releaseChosenWorktree(repo, branch, result.state);
     this.closeTerminalMenu();
+  }
+
+  private releaseChosenWorktree(path: string, branch: string, state: WorktreeTerminalView): void {
+    const chosen = this.terminalsWorktree();
+    if (!chosen || chosen.path !== path || chosen.branch !== branch) {
+      return;
+    }
+    if (countBranchTerminals(path, branch, state, this.tmuxSessionRecords()) > 0) {
+      return;
+    }
+    this.terminalsWorktree.set(null);
   }
 
   private removeTab(branch: string, tabId: string): void {

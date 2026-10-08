@@ -627,6 +627,53 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-branch="master"]')).not.toBeNull();
   });
+
+  it('keeps Terminals open behind settings and updates a renamed group header', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
+    fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
+    fixture.detectChanges();
+
+    const settings = openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-settings"]');
+    if (!(settings instanceof HTMLElement)) {
+      throw new Error('Repository settings is not in the repository tab menu');
+    }
+    settings.click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
+    const name = dialog.querySelector('[data-testid="repository-display-name"]') as HTMLInputElement;
+    name.value = 'North Quay';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const headers = [...fixture.nativeElement.querySelectorAll('[data-testid="terminals-group-name"]')].map((header) =>
+      header.textContent?.trim(),
+    );
+    expect(headers).toEqual(['Pier', 'North Quay']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

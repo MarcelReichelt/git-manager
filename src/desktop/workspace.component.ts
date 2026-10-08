@@ -1014,10 +1014,16 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
+          <p class="branch-label">
+            <span>{{ terminalsOpen() ? 'Terminals' : 'Worktrees' }}</span>
+            <gm-repository-settings
+              [repositoryPath]="effectivePath()"
+              [showControl]="!terminalsOpen()"
+              (appearanceChanged)="applyOpenRepositoryAppearance()"
+              (displayNameChanged)="renameOpenRepository($event)"
+            ></gm-repository-settings>
+          </p>
           @if (terminalsOpen()) {
-            <p class="branch-label">
-              <span>Terminals</span>
-            </p>
             <ul data-testid="terminals-list" gmOverlayScroll>
               @for (group of terminalGroups(); track group.path) {
                 <li data-testid="terminals-group" [attr.data-path]="group.path" [attr.data-name]="group.name">
@@ -1040,14 +1046,6 @@ button, input { font: inherit; color: inherit; }
               }
             </ul>
           } @else {
-          <p class="branch-label">
-            <span>Worktrees</span>
-            <gm-repository-settings
-              [repositoryPath]="effectivePath()"
-              (appearanceChanged)="applyOpenRepositoryAppearance()"
-              (displayNameChanged)="renameOpenRepository($event)"
-            ></gm-repository-settings>
-          </p>
           <ul data-testid="branch-list" gmOverlayScroll>
             @for (branch of branches(); track branch.name) {
               <li

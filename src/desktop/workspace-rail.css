@@ -185,6 +185,29 @@ aside {
   opacity: 0.7;
 }
 
+[data-testid='terminals-list'] {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+[data-testid='terminals-group-name'] {
+  margin: 12px 4px 4px;
+  color: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  text-transform: none;
+}
+
+[data-testid='terminals-worktree'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 0 0 4px;
+  padding: 0 8px;
+}
+
 ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-list,

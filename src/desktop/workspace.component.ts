@@ -1018,6 +1018,27 @@ button, input { font: inherit; color: inherit; }
             <p class="branch-label">
               <span>Terminals</span>
             </p>
+            <ul data-testid="terminals-list" gmOverlayScroll>
+              @for (group of terminalGroups(); track group.path) {
+                <li data-testid="terminals-group" [attr.data-path]="group.path" [attr.data-name]="group.name">
+                  <p data-testid="terminals-group-name">{{ group.name }}</p>
+                  <ul>
+                    @for (row of group.rows; track row.name) {
+                      <li data-testid="terminals-worktree" [attr.data-branch]="row.name">
+                        <span class="branch-name">{{ row.name }}</span>
+                        <span
+                          class="terminal-count"
+                          data-testid="terminal-count"
+                          [attr.aria-label]="row.count + ' terminals'"
+                        >
+                          {{ row.count }}
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                </li>
+              }
+            </ul>
           } @else {
           <p class="branch-label">
             <span>Worktrees</span>
@@ -2066,6 +2087,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly overlayOpen = signal(false);
   readonly repositoryTabs = signal<RepositoryTab[]>([]);
   readonly terminalsOpen = signal(false);
+  readonly terminalGroups = computed(() => {
+    this.storedTerminalEpoch();
+    const sessions = this.tmuxSessionRecords();
+    const current = this.effectivePath();
+    const liveTerminals = this.terminalsByBranch();
+    const liveBranches = this.branches();
+    return this.repositoryTabs().flatMap((tab) => {
+      const saved = this.repositoryWorkspaces.get(tab.path);
+      const branches = tab.path === current ? liveBranches : (saved?.branches ?? []);
+      const terminals = tab.path === current ? liveTerminals : (saved?.terminalsByBranch ?? {});
+      const rows = branches.flatMap((branch) => {
+        const count = countBranchTerminals(tab.path, branch.name, terminals[branch.name], sessions);
+        return count > 0 ? [{ name: branch.name, count }] : [];
+      });
+      return rows.length > 0 ? [{ path: tab.path, name: tab.name, rows }] : [];
+    });
+  });
   private readonly terminalsReturnPath = signal<string | null>(null);
   private readonly storedTerminalEpoch = signal(0);
   private tabToReveal: string | null = null;

@@ -447,6 +447,105 @@ describe('Terminals on the grouped worktrees', () => {
     expect(sheet.querySelector('[data-testid="branch-heading"], h2, [data-testid="changes"]')).toBeNull();
     expect(getComputedStyle(sheet).backgroundColor).toBe('rgb(171, 205, 239)');
   });
+
+  it('groups worktrees that have a terminal by repository tab order', async () => {
+    const { pier, quay } = registerGrouped(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    expect(branchNames(fixture)).toEqual(['master', 'feature']);
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '2');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Dock');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    const groups = [...fixture.nativeElement.querySelectorAll('[data-testid="terminals-group"]')] as HTMLElement[];
+    expect(groups.map((group) => group.getAttribute('data-name'))).toEqual(['pier', 'Quay']);
+    expect(groups.map((group) => group.querySelector('[data-testid="terminals-group-name"]')?.textContent?.trim())).toEqual([
+      'pier',
+      'Quay',
+    ]);
+    expect(getComputedStyle(groups[0].querySelector('[data-testid="terminals-group-name"]')).textTransform).toBe('none');
+    expect(groups.map((group) => group.getAttribute('data-path'))).toEqual([pier, quay]);
+
+    const pierRows = [...groups[0].querySelectorAll('[data-testid="terminals-worktree"]')] as HTMLElement[];
+    expect(pierRows.map((row) => row.getAttribute('data-branch'))).toEqual(['master', 'feature']);
+    expect(pierRows.map((row) => row.querySelector('[data-testid="terminal-count"]')?.textContent?.trim())).toEqual(['1', '1']);
+    expect(pierRows[0].querySelector('[data-testid="status-color"]')).toBeNull();
+    expect(pierRows[0].querySelector('[data-testid="changed-file-count"]')).toBeNull();
+    expect(pierRows[0].querySelector('[data-testid="ahead"]')).toBeNull();
+    expect(pierRows[0].querySelector('[data-testid="behind"]')).toBeNull();
+    expect(pierRows[0].querySelector('[data-testid="branch-menu"]')).toBeNull();
+
+    const quayRows = [...groups[1].querySelectorAll('[data-testid="terminals-worktree"]')] as HTMLElement[];
+    expect(quayRows.map((row) => row.getAttribute('data-branch'))).toEqual(['master']);
+    expect(quayRows[0].querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('2');
+    expect(quayRows[0].querySelector('[data-testid="terminal-count"]')?.getAttribute('aria-label')).toBe('2 terminals');
+  });
+
+  it('shows two headers when two repositories share a display name', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminals-'));
+    roots.push(root);
+    const east = join(root, 'east');
+    const west = join(root, 'west');
+    initGitRepo(east);
+    initGitRepo(west);
+    writeFileSync(join(east, 'README.md'), '# east\n');
+    writeFileSync(join(west, 'README.md'), '# west\n');
+    execFileSync('git', ['add', '.'], { cwd: east, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: east, stdio: 'ignore' });
+    execFileSync('git', ['add', '.'], { cwd: west, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: west, stdio: 'ignore' });
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(east, 'Harbor');
+    addRepository(west, 'Harbor');
+
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Harbor');
+    const firstPath = fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    openRepositoryCard(fixture);
+    const remaining = fixture.nativeElement.querySelector('[data-testid="switching-overlay"] [data-testid="repository"]');
+    remaining.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await whenRemoteRefreshIdle();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    const groups = [...fixture.nativeElement.querySelectorAll('[data-testid="terminals-group"]')] as HTMLElement[];
+    expect(groups.map((group) => group.querySelector('[data-testid="terminals-group-name"]')?.textContent?.trim())).toEqual([
+      'Harbor',
+      'Harbor',
+    ]);
+    expect(new Set(groups.map((group) => group.getAttribute('data-path')))).toEqual(new Set([east, west]));
+    expect(groups[0].getAttribute('data-path')).toBe(firstPath);
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
@@ -505,6 +604,41 @@ function terminalsHoverRule(): boolean {
     }
   }
   return false;
+}
+
+function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="branch-row"]')].map(
+    (row) => (row as HTMLElement).getAttribute('data-branch') ?? '',
+  );
+}
+
+function registerGrouped(roots: string[]): { pier: string; quay: string; dock: string } {
+  const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminals-'));
+  roots.push(root);
+  const pier = join(root, 'pier');
+  const quay = join(root, 'quay');
+  const dock = join(root, 'dock');
+  initGitRepo(pier);
+  initGitRepo(quay);
+  initGitRepo(dock);
+  writeFileSync(join(pier, 'README.md'), '# pier\n');
+  writeFileSync(join(quay, 'README.md'), '# quay\n');
+  writeFileSync(join(dock, 'README.md'), '# dock\n');
+  for (const repoPath of [pier, quay, dock]) {
+    execFileSync('git', ['add', '.'], { cwd: repoPath, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repoPath, stdio: 'ignore' });
+  }
+  mkdirSync(join(pier, '.workspaces'));
+  execFileSync('git', ['branch', 'feature'], { cwd: pier, stdio: 'ignore' });
+  execFileSync('git', ['worktree', 'add', join(pier, '.workspaces', 'feature'), 'feature'], {
+    cwd: pier,
+    stdio: 'ignore',
+  });
+  process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+  addRepository(pier, 'pier');
+  addRepository(quay, 'Quay');
+  addRepository(dock, 'Dock');
+  return { pier, quay, dock };
 }
 
 function registerPair(roots: string[]): { pier: string; quay: string } {

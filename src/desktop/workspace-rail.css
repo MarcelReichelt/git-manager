@@ -55,6 +55,7 @@
   font: inherit;
   cursor: pointer;
   opacity: 1;
+  outline-offset: -2px;
 }
 
 [data-testid='terminals-prompt'],

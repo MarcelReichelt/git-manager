@@ -973,8 +973,10 @@ button, input { font: inherit; color: inherit; }
               [class.is-idle]="terminalsTotal() === 0"
               [attr.aria-label]="terminalsTotal() + ' terminals'"
               [attr.aria-selected]="terminalsOpen()"
-              (click)="openTerminals($event)"
+              [style.outline]="terminalsOpen() ? '2px solid #ffffff' : 'none'"
+              (click)="chooseTerminals($event)"
               (keydown)="onTerminalsKeydown($event)"
+              (contextmenu)="keepTerminalsMenuClosed($event)"
             >
               <span data-testid="terminals-prompt" aria-hidden="true">&gt;</span>
               <span data-testid="terminals-count">{{ terminalsTotal() }}</span>
@@ -987,7 +989,7 @@ button, input { font: inherit; color: inherit; }
                   [attr.data-name]="tab.name"
                   [attr.data-path]="tab.path"
                   [attr.title]="tab.name"
-                  [attr.aria-selected]="effectivePath() === tab.path"
+                  [attr.aria-selected]="terminalsOpen() ? false : effectivePath() === tab.path"
                   [style.background-color]="repositoryTabSidebarColor(tab.path)"
                   [style.color]="repositoryTabSidebarTextColor(tab.path)"
                   [style.outline]="repositoryTabFrame(tab.path)"
@@ -2769,11 +2771,17 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return total;
   }
 
-  openTerminals(event: Event): void {
+  chooseTerminals(event: Event): void {
     if (this.terminalsTotal() === 0 || this.terminalsOpen()) {
       event.preventDefault();
       return;
     }
+    this.terminalsOpen.set(true);
+  }
+
+  keepTerminalsMenuClosed(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   onTerminalsKeydown(event: KeyboardEvent): void {
@@ -2781,7 +2789,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     event.preventDefault();
-    this.openTerminals(event);
+    this.chooseTerminals(event);
   }
 
   terminalCount(name: string): number {
@@ -3867,7 +3875,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   repositoryTabFrame(path: string): string {
-    if (this.effectivePath() !== path) {
+    if (this.terminalsOpen() || this.effectivePath() !== path) {
       return 'none';
     }
     return `2px solid ${this.repositoryTabSidebarTextColor(path)}`;

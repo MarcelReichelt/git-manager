@@ -334,6 +334,54 @@ describe('Terminals on the grouped worktrees', () => {
     expect(terminalsCount(fixture)).toBe('0');
     expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('0 terminals');
   });
+
+  it('selects Terminals with a white frame and leaves every repository tab unselected', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+
+    const chip = fixture.nativeElement.querySelector('[data-testid="terminals"]') as HTMLButtonElement;
+    chip.click();
+    fixture.detectChanges();
+
+    expect(chip.getAttribute('aria-selected')).toBe('true');
+    expect(getComputedStyle(chip).outline).toBe('2px solid #ffffff');
+    expect(getComputedStyle(chip).outlineOffset).toBe('-2px');
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="repository-tab"]')] as HTMLElement[];
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'false']);
+    expect(tabs.map((tab) => getComputedStyle(tab).outline)).toEqual(['none', 'none']);
+
+    chip.click();
+    fixture.detectChanges();
+    expect(chip.getAttribute('aria-selected')).toBe('true');
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'false']);
+  });
+
+  it('opens no context menu for Terminals', async () => {
+    const repoPath = createRepository(roots);
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+
+    const chip = fixture.nativeElement.querySelector('[data-testid="terminals"]') as HTMLButtonElement;
+    const menuEvent = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 12 });
+    chip.dispatchEvent(menuEvent);
+    fixture.detectChanges();
+
+    expect(menuEvent.defaultPrevented).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-menu"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu"]')).toBeNull();
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

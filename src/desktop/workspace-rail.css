@@ -946,3 +946,33 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 [data-testid='workspace-error'] { color: var(--coral); }
+
+.skeleton-row { pointer-events: none; }
+
+.skeleton-bar {
+  display: block;
+  height: 10px;
+  width: 46%;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.skeleton-row:nth-child(2n) .skeleton-bar { width: 64%; }
+
+.skeleton-row:nth-child(3n) .skeleton-bar { width: 38%; }
+
+.content-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px;
+}
+
+.skeleton-title { width: 28%; height: 18px; }
+
+.skeleton-short { width: 52%; }
+
+@keyframes skeleton-pulse {
+  50% { opacity: 0.45; }
+}

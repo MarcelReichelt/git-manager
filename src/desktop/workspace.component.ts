@@ -15,7 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { execFileSync } from 'node:child_process';
-import { watch, type FSWatcher } from 'node:fs';
+import { readdirSync, watch, type FSWatcher } from 'node:fs';
 import { basename, resolve, sep } from 'node:path';
 import {
   addRepository,
@@ -1052,6 +1052,13 @@ button, input { font: inherit; color: inherit; }
               }
             </ul>
           } @else {
+          @if (worktreesLoading()) {
+            <ul data-testid="worktree-skeleton" aria-busy="true" aria-label="Loading worktrees">
+              @for (row of worktreeSkeleton; track row) {
+                <li class="branch-row skeleton-row" aria-hidden="true"><span class="skeleton-bar"></span></li>
+              }
+            </ul>
+          } @else {
           <ul data-testid="branch-list" gmOverlayScroll>
             @for (branch of branches(); track branch.name) {
               <li
@@ -1171,6 +1178,7 @@ button, input { font: inherit; color: inherit; }
               </li>
             }
           </ul>
+          }
           <div class="create-row">
             <button type="button" data-testid="create-worktree" (click)="openCreateDialog()">Create worktree</button>
           </div>
@@ -1345,6 +1353,12 @@ button, input { font: inherit; color: inherit; }
             @if (showTerminalRow()) {
               <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
             }
+            </div>
+          } @else if (worktreesLoading()) {
+            <div class="content-skeleton" data-testid="content-skeleton" aria-busy="true" aria-label="Loading worktree">
+              <span class="skeleton-bar skeleton-title"></span>
+              <span class="skeleton-bar"></span>
+              <span class="skeleton-bar skeleton-short"></span>
             </div>
           } @else {
             <p class="empty-sheet">Select a branch</p>
@@ -2220,6 +2234,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private gitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private gitWatchGeneration = 0;
   private gitWatchActive = false;
+  private gitWatchCheckouts: { path: string; measured: boolean; primary: boolean }[] = [];
+  private readonly worktreeChangedAt = new Map<string, Map<string, number>>();
   private paneSplitDrag: {
     pointerId: number;
     startX: number;
@@ -2286,6 +2302,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     return pinDefaultBranch(sample.branches, sample.defaultBranch);
   });
+  readonly worktreesLoading = computed(
+    () => this.effectivePath() !== null && this.realBranches().length === 0,
+  );
+  readonly worktreeSkeleton = [0, 1, 2, 3, 4, 5];
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
@@ -2476,6 +2496,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.terminalsWorktree.set(null);
     }
     this.repositoryWorkspaces.delete(path);
+    this.worktreeChangedAt.delete(path);
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
     if (this.terminalsOpen() && this.terminalsReturnPath() === path) {
@@ -2839,6 +2860,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.contentLoading.set(true);
     this.runWhenPainted(() => {
       try {
+        this.refreshBranches();
         this.loadBranchContent(name);
         this.contentLoading.set(false);
       } catch (error) {
@@ -4274,7 +4296,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         void createWorktree(repo, branchName).then(
           () => {
             this.zone.run(() => {
-              this.refreshBranches();
+              this.refreshBranches([branchName]);
               this.createDialogOpen.set(false);
               this.createBranchName.set('');
               this.creatingWorktree.set(false);
@@ -4309,7 +4331,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.runWhenPainted(() => {
       try {
         action();
-        this.refreshBranches();
+        this.refreshBranches(effect === 'remove' ? [] : [name]);
         if (effect === 'remove') {
           if (selected === name) {
             this.clearBranchSelection();
@@ -4577,6 +4599,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const result = withoutTerminal(state, tabId, terminalId);
     this.writeBranchTerminals(repo, branch, result.state);
     stopTerminal(terminal);
+    this.rememberTmuxSessions();
     if (repo === this.effectivePath()) {
       this.collapseIfEmpty(branch, result.state);
     }
@@ -4607,6 +4630,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     for (const terminal of result.removed) {
       stopTerminal(terminal);
     }
+    this.rememberTmuxSessions();
     if (repo === this.effectivePath()) {
       this.collapseIfEmpty(branch, result.state);
     }
@@ -4888,23 +4912,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.closeTerminalMenu();
       this.renaming.set(null);
       this.applyOpenRepositoryAppearance();
-      const path = tab.path;
-      this.runWhenPainted(() => {
-        if (this.effectivePath() !== path) {
-          return;
-        }
-        try {
-          this.refreshBranches();
-        } catch {
-          // The next local change retries the read.
-        }
-      });
+      this.scheduleBranchRefresh(tab.path);
       return;
     }
     this.clearBranchSelection();
     this.clearTerminals();
+    this.realBranches.set([]);
     this.applyOpenRepositoryAppearance();
-    this.refreshBranches();
+    this.scheduleBranchRefresh(tab.path);
   }
 
   private closeRepositoryTabMenuOnClick(event: Event): void {
@@ -4934,7 +4949,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.closeTerminalMenu();
   }
 
-  private refreshBranches(): void {
+  private refreshBranches(also: readonly string[] = []): void {
     const path = this.effectivePath();
     if (path === null) {
       this.pinnedWorktrees.set([]);
@@ -4942,8 +4957,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.clearGitWatch();
       return;
     }
+    const measure = this.branchesToMeasure(also);
     withWorktreeList(path, () => {
-      const opened = readOpenBranches(path);
+      const opened = readOpenBranches(path, {
+        branches: measure,
+        changedAt: this.worktreeChangedAt.get(path),
+      });
+      this.worktreeChangedAt.set(path, new Map(opened.changedAt));
       if (opened.primaryBranch !== this.primaryBranchName()) {
         this.primaryBranchName.set(opened.primaryBranch);
       }
@@ -4951,18 +4971,32 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.pinnedWorktrees.set([...opened.pinned]);
       }
       this.claimOldSessions(path, opened.rows);
-      const next = opened.worktrees.map((branch) => ({
-        name: branch.name,
-        status: branch.status,
-        changedFileCount: branch.changedFileCount,
-        ahead: branch.ahead,
-        behind: branch.behind,
-      }));
+      const measured = new Set(measure);
+      const previous = new Map(this.realBranches().map((branch) => [branch.name, branch]));
+      const next = opened.worktrees.map((branch) => {
+        const prior = previous.get(branch.name);
+        if (!prior || measured.has(branch.name)) {
+          return {
+            name: branch.name,
+            status: branch.status,
+            changedFileCount: branch.changedFileCount,
+            ahead: branch.ahead,
+            behind: branch.behind,
+          };
+        }
+        return {
+          name: branch.name,
+          status: branch.status,
+          changedFileCount: prior.changedFileCount,
+          ahead: prior.ahead,
+          behind: prior.behind,
+        };
+      });
       if (!sameWorktreeRows(this.realBranches(), next)) {
         this.realBranches.set(next);
       }
       this.rememberTmuxSessions();
-      this.syncGitWatch(opened.checkouts);
+      this.syncGitWatch(opened.paths, measure, opened.primaryPath);
       try {
         this.refreshSelectedWorktreeContent();
       } catch {
@@ -5104,25 +5138,67 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return { commits, complete };
   }
 
-  private syncGitWatch(checkouts: readonly string[]): void {
+  private branchesToMeasure(also: readonly string[]): string[] {
+    const names = new Set<string>(also);
+    const base = this.defaultBranchName();
+    const selected = this.selectedBranchName();
+    if (base !== undefined) {
+      names.add(base);
+    }
+    if (selected !== null) {
+      names.add(selected);
+    }
+    return [...names];
+  }
+
+  private syncGitWatch(
+    paths: ReadonlyMap<string, string>,
+    measured: readonly string[],
+    primaryPath: string | undefined,
+  ): void {
     const path = this.effectivePath();
     if (path === null) {
       this.clearGitWatch();
       return;
     }
     this.gitWatchActive = true;
-    const wanted = new Set(outermostDirectories(checkouts));
+    const measuredSet = new Set(measured);
+    this.gitWatchCheckouts = [...paths.entries()].map(([branch, checkout]) => ({
+      path: checkout,
+      measured: measuredSet.has(branch),
+      primary: primaryPath !== undefined && checkout === primaryPath,
+    }));
+    if (
+      primaryPath !== undefined &&
+      !this.gitWatchCheckouts.some((checkout) => checkout.path === primaryPath)
+    ) {
+      this.gitWatchCheckouts.push({ path: primaryPath, measured: false, primary: true });
+    }
+    const wanted = new Map<string, boolean>();
+    for (const checkout of this.gitWatchCheckouts) {
+      if (!checkout.measured && !checkout.primary) {
+        continue;
+      }
+      for (const target of checkoutWatchTargets(checkout.path)) {
+        wanted.set(target.path, wanted.get(target.path) === true || target.recursive);
+      }
+    }
     for (const [dir, watcher] of this.gitWatchers) {
       if (!wanted.has(dir)) {
         this.closeGitWatcher(dir, watcher);
       }
     }
-    for (const dir of wanted) {
+    for (const [dir, recursive] of wanted) {
       if (this.gitWatchers.has(dir)) {
         continue;
       }
       try {
-        const watcher = watch(dir, { recursive: true }, () => {
+        const watcher = watch(dir, { recursive }, (_event, filename) => {
+          const name =
+            typeof filename === 'string' ? filename : filename instanceof Buffer ? filename.toString('utf8') : null;
+          if (name !== null && this.gitEventIsIgnored(dir, name)) {
+            return;
+          }
           this.scheduleLocalGitRefresh();
         });
         watcher.on('error', () => {
@@ -5161,6 +5237,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
+  private gitEventIsIgnored(root: string, filename: string): boolean {
+    const absolute = resolve(root, filename);
+    let match: { path: string; measured: boolean; primary: boolean } | undefined;
+    for (const checkout of this.gitWatchCheckouts) {
+      if (absolute === checkout.path || absolute.startsWith(`${checkout.path}${sep}`)) {
+        if (!match || checkout.path.length > match.path.length) {
+          match = checkout;
+        }
+      }
+    }
+    if (!match || match.measured) {
+      return false;
+    }
+    if (match.primary && this.pathIsGitMetadata(match.path, absolute)) {
+      return false;
+    }
+    return true;
+  }
+
+  private pathIsGitMetadata(checkout: string, absolute: string): boolean {
+    const gitDir = `${checkout}${sep}.git`;
+    return absolute === gitDir || absolute.startsWith(`${gitDir}${sep}`);
+  }
+
   private closeGitWatcher(dir: string, watcher: FSWatcher): void {
     this.gitWatchers.delete(dir);
     try {
@@ -5172,6 +5272,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private clearGitWatch(): void {
     this.gitWatchActive = false;
+    this.gitWatchCheckouts = [];
     this.gitWatchGeneration += 1;
     if (this.gitRefreshTimer !== null) {
       clearTimeout(this.gitRefreshTimer);
@@ -5241,13 +5342,27 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     } else {
       this.clearBranchSelection();
       this.clearTerminals();
+      this.realBranches.set([]);
     }
-    this.refreshBranches();
     this.applyOpenRepositoryAppearance();
     if (path !== null) {
       this.appendRepositoryTab(path, name);
+      this.scheduleBranchRefresh(path);
     }
     this.rememberOpenRepositoryTabs();
+  }
+
+  private scheduleBranchRefresh(path: string): void {
+    this.runWhenPainted(() => {
+      if (this.effectivePath() !== path) {
+        return;
+      }
+      try {
+        this.refreshBranches();
+      } catch {
+        // The next local change retries the read.
+      }
+    });
   }
 
   private restoreOpenRepositoryTabs(): void {
@@ -5556,16 +5671,43 @@ function commitObjectExists(repoPath: string, identity: string): boolean {
   }
 }
 
-function outermostDirectories(paths: readonly string[]): string[] {
-  const sorted = [...paths].map((path) => resolve(path)).sort();
-  const kept: string[] = [];
-  for (const path of sorted) {
-    const covered = kept.some((dir) => path === dir || path.startsWith(`${dir}${sep}`));
-    if (!covered) {
-      kept.push(path);
-    }
+const skippedWatchDirectories = new Set([
+  '.angular',
+  '.cache',
+  '.git',
+  '.workspaces',
+  '.yarn',
+  'build',
+  'coverage',
+  'dist',
+  'node_modules',
+  'out',
+  'release',
+  'tmp',
+]);
+
+export function checkoutWatchTargets(checkout: string): { path: string; recursive: boolean }[] {
+  const root = resolve(checkout);
+  const targets: { path: string; recursive: boolean }[] = [{ path: root, recursive: false }];
+  let entries: { name: string; isDirectory(): boolean }[];
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return targets;
   }
-  return kept;
+  for (const entry of entries) {
+    if (entry.name === '.git') {
+      if (entry.isDirectory()) {
+        targets.push({ path: resolve(root, '.git'), recursive: true });
+      }
+      continue;
+    }
+    if (!entry.isDirectory() || skippedWatchDirectories.has(entry.name)) {
+      continue;
+    }
+    targets.push({ path: resolve(root, entry.name), recursive: true });
+  }
+  return targets;
 }
 
 function isPromise(value: void | Promise<void>): value is Promise<void> {

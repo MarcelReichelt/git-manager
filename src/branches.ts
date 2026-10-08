@@ -360,6 +360,7 @@ interface DescribedBranch {
   status: BranchStatus;
   ahead: number;
   behind: number;
+  upstreamRef?: string;
 }
 
 function describeBranches(repoPath: string): {
@@ -492,16 +493,28 @@ export interface OpenBranches {
   primaryBranch: string | undefined;
   pinned: readonly string[];
   checkouts: readonly string[];
+  changedAt: ReadonlyMap<string, number>;
+  paths: ReadonlyMap<string, string>;
+  primaryPath: string | undefined;
 }
 
-export function readOpenBranches(repoPath: string): OpenBranches {
-  const opened = openBranches(repoPath);
+/** Changed-file counts and ahead/behind are read for these worktrees only. */
+export interface WorktreeMeasurement {
+  branches: readonly string[];
+  changedAt?: ReadonlyMap<string, number>;
+}
+
+export function readOpenBranches(repoPath: string, measurement?: WorktreeMeasurement): OpenBranches {
+  const opened = openBranches(repoPath, measurement);
   return {
     rows: opened.rows,
     worktrees: opened.worktrees,
     primaryBranch: opened.primaryBranch,
     pinned: opened.pinned,
     checkouts: opened.checkouts,
+    changedAt: opened.changedAt,
+    paths: opened.paths,
+    primaryPath: opened.primaryPath,
   };
 }
 
@@ -525,11 +538,12 @@ export function listWorktreeBranches(repoPath: string, known?: readonly BranchRo
 
 interface OpenBranchScan extends OpenBranches {
   defaultBranch: string | undefined;
-  changedAt: ReadonlyMap<string, number>;
 }
 
-function openBranches(repoPath: string): OpenBranchScan {
-  const described = describeBranches(repoPath);
+function openBranches(repoPath: string, measurement?: WorktreeMeasurement): OpenBranchScan {
+  const measureAll = measurement === undefined;
+  const measuredNames = new Set(measurement?.branches ?? []);
+  const described = measureAll ? describeBranches(repoPath) : describeBranchesWithoutCounts(repoPath);
   const entries = listWorktrees(repoPath);
   const linked = new Set(entries.map((entry) => resolve(entry.path)));
   const checkouts = new Map<string, { path: string; uncommitted: string[] }>();
@@ -538,16 +552,30 @@ function openBranches(repoPath: string): OpenBranchScan {
       continue;
     }
     const path = resolve(entry.path);
-    checkouts.set(entry.branch, { path, uncommitted: uncommittedPaths(path, linked) });
+    const measure = measureAll || measuredNames.has(entry.branch);
+    checkouts.set(entry.branch, {
+      path,
+      uncommitted: measure ? uncommittedPaths(path, linked) : [],
+    });
   }
+  const comparisonBase = described.defaultBranch ?? 'HEAD';
   const rows = pinDefaultBranch(
-    described.rows.map((row) => ({
-      name: row.name,
-      status: row.status,
-      changedFileCount: checkouts.get(row.name)?.uncommitted.length ?? 0,
-      ahead: row.ahead,
-      behind: row.behind,
-    })),
+    described.rows.map((row) => {
+      const checkout = checkouts.get(row.name);
+      const measure = measureAll || (measuredNames.has(row.name) && checkout !== undefined);
+      const counts = !measure
+        ? { ahead: 0, behind: 0 }
+        : measureAll
+          ? { ahead: row.ahead, behind: row.behind }
+          : measuredCounts(repoPath, row, comparisonBase);
+      return {
+        name: row.name,
+        status: row.status,
+        changedFileCount: measure && checkout ? checkout.uncommitted.length : 0,
+        ahead: counts.ahead,
+        behind: counts.behind,
+      };
+    }),
     described.defaultBranch,
   );
   const changedAt = new Map<string, number>();
@@ -555,15 +583,23 @@ function openBranches(repoPath: string): OpenBranchScan {
   const sorted = worktreeRows
     .map((row, index) => {
       const checkout = checkouts.get(row.name);
+      const committer = described.committerMs.get(row.name) ?? 0;
+      const measure = measureAll || measuredNames.has(row.name);
       const at = checkout
-        ? Math.max(described.committerMs.get(row.name) ?? 0, newestPathMs(checkout.path, checkout.uncommitted))
-        : 0;
+        ? measure
+          ? Math.max(committer, newestPathMs(checkout.path, checkout.uncommitted))
+          : Math.max(committer, measurement?.changedAt?.get(row.name) ?? 0)
+        : committer;
       changedAt.set(row.name, at);
       return { row, index, changedAt: at };
     })
     .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
     .map((entry) => entry.row);
   const primaryBranch = entries[0]?.branch ?? undefined;
+  const paths = new Map<string, string>();
+  for (const [name, checkout] of checkouts) {
+    paths.set(name, checkout.path);
+  }
   const pinned = readPinnedWorktrees(repoPath);
   return {
     rows,
@@ -571,9 +607,55 @@ function openBranches(repoPath: string): OpenBranchScan {
     primaryBranch,
     pinned,
     checkouts: [...linked],
-    defaultBranch: described.defaultBranch,
     changedAt,
+    paths,
+    primaryPath: entries[0] ? resolve(entries[0].path) : undefined,
+    defaultBranch: described.defaultBranch,
   };
+}
+
+function describeBranchesWithoutCounts(repoPath: string): {
+  rows: DescribedBranch[];
+  defaultBranch: string | undefined;
+  committerMs: Map<string, number>;
+} {
+  const base = aheadBehindBase(repoPath);
+  const locals = forEachFields(
+    repoPath,
+    ['%(refname)', '%(refname:short)', '%(upstream)', '%(committerdate:unix)'],
+    'refs/heads',
+  );
+  const localRefs = new Set(locals.map((fields) => fields[0] ?? ''));
+  const remoteRefs = new Set(
+    forEachFields(repoPath, ['%(refname)'], 'refs/remotes').map((fields) => fields[0] ?? ''),
+  );
+  const committerMs = new Map<string, number>();
+  const rows = locals.map((fields) => {
+    const name = fields[1] ?? '';
+    const upstream = fields[2] ?? '';
+    committerMs.set(name, unixMs(fields[3]));
+    let status: BranchStatus = 'local-only';
+    if (upstream !== '') {
+      const exists = upstream.startsWith('refs/heads/') ? localRefs.has(upstream) : remoteRefs.has(upstream);
+      status = exists ? 'local-and-remote' : 'remote-deleted';
+    }
+    return { name, status, ahead: 0, behind: 0, upstreamRef: upstream };
+  });
+  return { rows, defaultBranch: base === 'HEAD' ? defaultBranchName(repoPath) : base, committerMs };
+}
+
+function measuredCounts(
+  repoPath: string,
+  row: DescribedBranch,
+  base: string,
+): { ahead: number; behind: number } {
+  if (row.status === 'local-and-remote' && row.upstreamRef) {
+    return aheadBehind(repoPath, row.name, row.upstreamRef);
+  }
+  if (row.name === base) {
+    return { ahead: 0, behind: 0 };
+  }
+  return aheadBehind(repoPath, row.name, base);
 }
 
 export function readPrimaryCheckoutBranch(repoPath: string): string | undefined {

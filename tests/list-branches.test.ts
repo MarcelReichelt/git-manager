@@ -222,6 +222,113 @@ exit $status
     expect(calls.filter((call) => call.startsWith('log '))).toEqual([]);
   });
 
+  it('reads changed files and ahead/behind only for the named worktrees', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(repoPath, '2020-06-01T00:00:00Z', 'master');
+    writeFileSync(join(zeta, 'notes.txt'), 'newer\n');
+    const traceLog = join(root, 'git.log');
+    const traceBin = join(root, 'bin');
+    mkdirSync(traceBin);
+    writeFileSync(
+      join(traceBin, 'git'),
+      `#!/bin/bash
+printf '%s\\n' "$PWD :: $*" >> ${JSON.stringify(traceLog)}
+/usr/bin/git "$@"
+status=$?
+exit $status
+`,
+      { mode: 0o755 },
+    );
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${traceBin}:${previousPath ?? ''}`;
+    writeFileSync(traceLog, '');
+    let opened: ReturnType<typeof readOpenBranches>;
+    try {
+      opened = readOpenBranches(repoPath, { branches: ['master', 'feature'] });
+    } finally {
+      process.env.PATH = previousPath;
+    }
+    const calls = readFileSync(traceLog, 'utf8')
+      .split('\n')
+      .filter((line) => line !== '');
+    const statusDirs = calls
+      .filter((call) => call.includes(' :: ') && call.includes(' status '))
+      .map((call) => call.split(' :: ')[0] ?? '');
+    expect(statusDirs).toHaveLength(2);
+    expect(statusDirs.some((dir) => dir === zeta)).toBe(false);
+    expect(calls.some((call) => call.includes('ahead-behind'))).toBe(false);
+    expect(opened.worktrees.find((branch) => branch.name === 'feature')).toMatchObject({
+      ahead: 1,
+      behind: 1,
+      changedFileCount: 0,
+    });
+    expect(opened.worktrees.find((branch) => branch.name === 'zeta')).toMatchObject({
+      changedFileCount: 0,
+      ahead: 0,
+      behind: 0,
+    });
+    expect(opened.worktrees.find((branch) => branch.name === 'master')?.changedFileCount).toBe(0);
+  });
+
+  it('keeps a remembered change time when that worktree is not measured again', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'zeta');
+    const notes = join(zeta, 'notes.txt');
+    writeFileSync(notes, 'new\n');
+    touchAt(notes, '2020-12-01T00:00:00Z');
+
+    const full = readOpenBranches(repoPath);
+    expect(full.worktrees.map((branch) => branch.name)).toEqual(['master', 'zeta', 'feature']);
+
+    const scoped = readOpenBranches(repoPath, { branches: ['master'], changedAt: full.changedAt });
+
+    expect(scoped.worktrees.map((branch) => branch.name)).toEqual(['master', 'zeta', 'feature']);
+    expect(scoped.worktrees.find((branch) => branch.name === 'zeta')?.changedFileCount).toBe(0);
+    expect(full.worktrees.find((branch) => branch.name === 'zeta')?.changedFileCount).toBe(1);
+  });
+
+  it('reports a deleted upstream without comparing every branch', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const origin = join(root, 'origin.git');
+    initGitRepo(repoPath);
+    execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', origin]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['branch', 'feature']);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    git(feature, ['commit', '--allow-empty', '-m', 'feature']);
+    git(feature, ['push', '-u', 'origin', 'feature']);
+    git(repoPath, ['update-ref', '-d', 'refs/remotes/origin/feature']);
+
+    const scoped = readOpenBranches(repoPath, { branches: ['master'] });
+    expect(scoped.worktrees.find((branch) => branch.name === 'feature')).toMatchObject({
+      status: 'remote-deleted',
+      ahead: 0,
+      behind: 0,
+    });
+
+    const measured = readOpenBranches(repoPath, { branches: ['feature'] });
+    const listed = listBranches(repoPath).find((branch) => branch.name === 'feature');
+    expect(measured.worktrees.find((branch) => branch.name === 'feature')).toMatchObject({
+      status: 'remote-deleted',
+      ahead: listed?.ahead,
+      behind: listed?.behind,
+    });
+    expect(listed?.ahead).toBe(1);
+  });
+
   it('counts commits against the default branch when a branch has no upstream', () => {
     const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);

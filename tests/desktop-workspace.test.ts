@@ -12,7 +12,7 @@ import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
 import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { listWorktreeBranches, whenRemoteRefreshIdle } from '../src/branches';
-import { WorkspaceComponent } from '../src/desktop/workspace.component';
+import { WorkspaceComponent, checkoutWatchTargets } from '../src/desktop/workspace.component';
 import { readAppSettings, readPinnedWorktrees } from '../src/app-settings';
 import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
@@ -3807,6 +3807,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
 
@@ -4094,6 +4096,8 @@ describe('desktop workspace', () => {
       '[data-testid="branch-row"][data-branch="rewrite"]',
     );
     expect(rewrite.getAttribute('data-status')).toBe('local-only');
+    rewrite.click();
+    fixture.detectChanges();
     expect(rewrite.querySelector('[data-testid="changed-file-count"]').textContent.trim()).toBe('1');
     expect(rewrite.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('2');
     expect(rewrite.querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
@@ -4936,6 +4940,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
@@ -4990,6 +4996,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
@@ -5051,6 +5059,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
@@ -6518,6 +6528,46 @@ describe('desktop workspace', () => {
     }
   });
 
+  it('shows skeletons in the repository tab before the worktree list is read', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    const fixture = await renderLive();
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => queued.push(task));
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    const opening = queued.splice(0);
+    const reading: Array<() => void> = [];
+    setAfterPaintScheduler((task) => reading.push(task));
+    for (const task of opening) {
+      task();
+    }
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="worktree-skeleton"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="content-skeleton"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-row"]')).toBeNull();
+
+    setAfterPaintScheduler((task) => task());
+    for (const task of reading) {
+      task();
+    }
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="worktree-skeleton"]')).toBeNull();
+    expect(branchNames(fixture)).toEqual(['master']);
+  });
+
   it('prunes remote-tracking refs when a repository is opened from the card', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
@@ -7605,8 +7655,11 @@ describe('desktop workspace', () => {
     expect(featureRow().querySelector('[data-testid="changed-file-count"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="ahead"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+    featureRow().click();
+    fixture.detectChanges();
 
-    writeFileSync(join(feature, 'notes.txt'), 'hello\n');
+    mkdirSync(join(feature, 'src'));
+    writeFileSync(join(feature, 'src', 'notes.txt'), 'hello\n');
     await untilVisible(fixture, (root) => {
       const row = root.querySelector('[data-branch="feature"]');
       return row?.querySelector('[data-testid="changed-file-count"]')?.textContent?.trim() === '1';
@@ -7618,7 +7671,7 @@ describe('desktop workspace', () => {
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(repoPath);
 
-    git(feature, ['add', 'notes.txt']);
+    git(feature, ['add', 'src/notes.txt']);
     git(feature, ['commit', '-m', 'Add notes']);
     await untilVisible(fixture, (root) => {
       const row = root.querySelector('[data-branch="feature"]');
@@ -7653,6 +7706,8 @@ describe('desktop workspace', () => {
     expect(featureRow().getAttribute('data-status')).toBe('local-and-remote');
     expect(featureRow().querySelector('[data-testid="ahead"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+    featureRow().click();
+    fixture.detectChanges();
 
     git(feature, ['commit', '--allow-empty', '-m', 'local only']);
     await untilVisible(
@@ -7814,7 +7869,7 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['branch', '--list', 'notes'])).toBe('notes');
   });
 
-  it('refreshes the worktree list in the same order as a fresh read', async () => {
+  it('refreshes the default branch and the selected worktree, and leaves the others as they were', async () => {
     const repoPath = createEmptyRepository(roots);
     const feature = join(repoPath, '.workspaces', 'feature');
     const zeta = join(repoPath, '.workspaces', 'zeta');
@@ -7831,15 +7886,40 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
 
     writeFileSync(join(zeta, 'notes.txt'), 'newer\n');
+    const started = Date.now();
+    while (Date.now() - started < 800) {
+      fixture.detectChanges();
+      expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
+      expect(
+        fixture.nativeElement.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]').textContent.trim(),
+      ).toBe('0');
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+
+    fixture.nativeElement.querySelector('[data-branch="zeta"]').click();
     await untilVisible(fixture, (root) => {
       const names = [...root.querySelectorAll('[data-testid="branch-row"]')].map(
         (row) => row.getAttribute('data-branch') ?? '',
       );
-      return names.join(',') === 'master,zeta,feature';
+      return (
+        names.join(',') === 'master,zeta,feature' &&
+        root.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]')?.textContent?.trim() === '1'
+      );
     });
 
-    expect(branchNames(fixture)).toEqual(['master', 'zeta', 'feature']);
     expect(branchNames(fixture)).toEqual(listWorktreeBranches(repoPath).map((branch) => branch.name));
+
+    writeFileSync(join(repoPath, 'local.txt'), 'on master\n');
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-branch="master"] [data-testid="changed-file-count"]')?.textContent?.trim() === '1',
+    );
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]').textContent.trim(),
+    ).toBe('1');
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="feature"] [data-testid="changed-file-count"]').textContent.trim(),
+    ).toBe('0');
   });
 
   it('keeps ahead and behind on the remote state already fetched', async () => {
@@ -7870,6 +7950,8 @@ describe('desktop workspace', () => {
     git(otherPath, ['add', 'remote.txt']);
     git(otherPath, ['commit', '-m', 'remote only']);
     git(otherPath, ['push', 'origin', 'feature']);
+    featureRow().click();
+    fixture.detectChanges();
     writeFileSync(join(feature, 'local.txt'), 'local\n');
     await untilVisible(
       fixture,
@@ -8411,6 +8493,29 @@ function hasRef(repoPath: string, ref: string): boolean {
     return false;
   }
 }
+
+describe('checkoutWatchTargets', () => {
+  it('watches the checkout and its source directories and leaves dependency directories out', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-watch-'));
+    mkdirSync(join(root, 'src'));
+    mkdirSync(join(root, 'node_modules', 'leftpad'), { recursive: true });
+    mkdirSync(join(root, '.git'));
+    mkdirSync(join(root, 'dist'));
+
+    const targets = checkoutWatchTargets(root);
+    const paths = targets.map((target) => target.path);
+
+    expect(paths).toContain(root);
+    expect(targets.find((target) => target.path === root)?.recursive).toBe(false);
+    expect(paths).toContain(join(root, 'src'));
+    expect(targets.find((target) => target.path === join(root, 'src'))?.recursive).toBe(true);
+    expect(paths).toContain(join(root, '.git'));
+    expect(targets.find((target) => target.path === join(root, '.git'))?.recursive).toBe(true);
+    expect(paths).not.toContain(join(root, 'node_modules'));
+    expect(paths).not.toContain(join(root, 'dist'));
+    rmSync(root, { recursive: true, force: true });
+  });
+});
 
 function holdPaint(): { release(): void } {
   const queued: Array<() => void> = [];

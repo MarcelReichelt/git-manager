@@ -1,6 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { readPinnedWorktrees } from './app-settings.js';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -281,9 +282,13 @@ export function pruneRemoteTrackingRefs(repoPath: string): void {
 }
 
 function changedFileCount(worktree: string): number {
+  return uncommittedPaths(worktree).length;
+}
+
+function uncommittedPaths(worktree: string): string[] {
   const tracked = nulPaths(gitText(worktree, ['diff', '-M', '--name-only', '-z', 'HEAD']));
   const untracked = nulPaths(gitText(worktree, ['ls-files', '--others', '--exclude-standard', '-z']));
-  return tracked.length + untracked.length;
+  return [...tracked, ...untracked];
 }
 
 interface DescribedBranch {
@@ -429,7 +434,102 @@ function checkoutPaths(repoPath: string): Map<string, string> {
 
 export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
   const checkedOut = checkedOutBranches(repoPath);
-  return (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
+  const rows = (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
+  return orderWorktreeRows(
+    rowsByLastChange(repoPath, rows),
+    readDefaultBranch(repoPath),
+    readPrimaryCheckoutBranch(repoPath),
+    readPinnedWorktrees(repoPath),
+  );
+}
+
+export function readPrimaryCheckoutBranch(repoPath: string): string | undefined {
+  return checkedOutBranch(repoPath);
+}
+
+function orderWorktreeRows<T extends { name: string }>(
+  rows: readonly T[],
+  defaultBranch: string | undefined,
+  primaryBranch: string | undefined,
+  pinned: readonly string[],
+): T[] {
+  const listed = pinDefaultBranch(rows, defaultBranch);
+  const pinnedNames = new Set(pinned);
+  const anchor = listed.some((row) => row.name === primaryBranch)
+    ? primaryBranch
+    : listed.some((row) => row.name === defaultBranch)
+      ? defaultBranch
+      : undefined;
+  const pinnedRows = listed.filter(
+    (row) => pinnedNames.has(row.name) && row.name !== anchor && row.name !== defaultBranch,
+  );
+  const pinnedSet = new Set(pinnedRows.map((row) => row.name));
+  const body = listed.filter((row) => !pinnedSet.has(row.name));
+  if (anchor === undefined) {
+    return [...pinnedRows, ...body];
+  }
+  const anchorIndex = body.findIndex((row) => row.name === anchor);
+  return [...body.slice(0, anchorIndex + 1), ...pinnedRows, ...body.slice(anchorIndex + 1)];
+}
+
+function rowsByLastChange(repoPath: string, rows: readonly BranchRow[]): BranchRow[] {
+  const paths = checkoutPaths(repoPath);
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      changedAt: lastChangeMs(paths.get(row.name)),
+    }))
+    .sort((left, right) => right.changedAt - left.changedAt || left.index - right.index)
+    .map((entry) => entry.row);
+}
+
+function lastChangeMs(checkout: string | undefined): number {
+  if (checkout === undefined) {
+    return 0;
+  }
+  return Math.max(headCommitterMs(checkout), newestPathMs(checkout, uncommittedPaths(checkout)));
+}
+
+function newestPathMs(checkout: string, paths: readonly string[]): number {
+  let newest = 0;
+  for (const path of paths) {
+    const changedAt = pathMtimeMs(checkout, path);
+    if (changedAt > newest) {
+      newest = changedAt;
+    }
+  }
+  return newest;
+}
+
+function pathMtimeMs(checkout: string, path: string): number {
+  const absolute = resolve(checkout, path);
+  try {
+    const info = lstatSync(absolute);
+    if (info.isDirectory()) {
+      return 0;
+    }
+    return info.mtimeMs;
+  } catch {
+    return directoryMtimeMs(dirname(absolute));
+  }
+}
+
+function directoryMtimeMs(directory: string): number {
+  try {
+    return lstatSync(directory).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function headCommitterMs(checkout: string): number {
+  const raw = gitOptional(checkout, ['log', '-1', '--format=%ct']);
+  if (raw === undefined) {
+    return 0;
+  }
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) ? seconds * 1000 : 0;
 }
 
 export interface AvailableBranch {

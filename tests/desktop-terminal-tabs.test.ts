@@ -126,6 +126,45 @@ function menuButtons(fixture: ComponentFixture<WorkspaceComponent>): HTMLButtonE
   return Array.from(menu.querySelectorAll('button')) as HTMLButtonElement[];
 }
 
+function openMoveSubmenu(fixture: ComponentFixture<WorkspaceComponent>): void {
+  const move = fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]');
+  if (!(move instanceof HTMLElement)) {
+    throw new Error('Move to is not shown');
+  }
+  move.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  fixture.detectChanges();
+}
+
+function moveTargetLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return Array.from(
+    fixture.nativeElement.querySelectorAll('[data-testid="terminal-menu-move-target"]'),
+    (button) => (button.textContent ?? '').replace(/\s+/g, ' ').trim(),
+  );
+}
+
+function toolbarLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]');
+  const collapse = header?.querySelector('[data-testid="terminal-collapse"]')?.getAttribute('aria-label') ?? '';
+  const icons = Array.from(header?.querySelectorAll('.terminal-icon') ?? [], (button) =>
+    (button as HTMLElement).getAttribute('aria-label'),
+  );
+  return [collapse, ...icons].filter((label): label is string => label !== null);
+}
+
+function paneIds(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return Array.from(
+    fixture.nativeElement.querySelectorAll('.terminal-pane-column [data-testid="terminal-pane"]'),
+    (pane) => (pane as HTMLElement).getAttribute('data-terminal-id') ?? '',
+  );
+}
+
+function columnGrows(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return Array.from(
+    fixture.nativeElement.querySelectorAll('.terminal-pane-column'),
+    (column) => (column as HTMLElement).style.flexGrow,
+  );
+}
+
 function paneHeaders(fixture: ComponentFixture<WorkspaceComponent>): string[] {
   return Array.from(
     fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]'),
@@ -537,6 +576,7 @@ describe('terminal tabs', () => {
       'Kill',
       'Split',
       'Unsplit',
+      'Swap',
     ]);
     expect(
       (fixture.nativeElement.querySelector('[data-testid="terminal-menu-split"]') as HTMLButtonElement).disabled,
@@ -549,7 +589,7 @@ describe('terminal tabs', () => {
     const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
     rightClick(tab);
     fixture.detectChanges();
-    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill']);
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-split"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-unsplit"]')).toBeNull();
   });
@@ -855,6 +895,7 @@ describe('terminal tabs', () => {
       'Kill',
       'Split',
       'Unsplit',
+      'Swap',
     ]);
     expect(
       (fixture.nativeElement.querySelector('[data-testid="terminal-menu-split"]') as HTMLButtonElement).disabled,
@@ -863,12 +904,12 @@ describe('terminal tabs', () => {
 
     rightClick(tab().querySelector('[data-testid="terminal-tab-index"]')!);
     fixture.detectChanges();
-    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill']);
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
     dismissMenu(fixture);
 
     rightClick(tab().querySelector('[data-testid="terminal-tab-separator"]')!);
     fixture.detectChanges();
-    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill']);
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
     dismissMenu(fixture);
 
     const leftName = names()[0]!;
@@ -935,7 +976,7 @@ describe('terminal tabs', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-name-input"]')).toBeNull();
     expect(tabNames(fixture)).toEqual(['1 pair']);
-    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill']);
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
     dismissMenu(fixture);
 
     clickIcon(fixture, 'terminal-new');
@@ -953,7 +994,12 @@ describe('terminal tabs', () => {
       'Kill',
       'Split',
       'Unsplit',
+      'Swap',
+      'Move to',
     ]);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-submenu"]')).toBeNull();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual([tabNames(fixture)[1]]);
     dismissMenu(fixture);
 
     const alpha = tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]')[0] as HTMLElement;
@@ -1008,5 +1054,430 @@ describe('terminal tabs', () => {
     );
     const label = fixture.nativeElement.querySelector('[data-testid="terminal-tab-label"]') as HTMLElement;
     expect(label.textContent).toBe('1  · bash');
+  });
+
+  it('lists the other single-terminal tabs of this worktree under Move to', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+    renameFrom(fixture, tabs()[0]!, 'alpha');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    renameFrom(fixture, tabs()[1]!, 'beta');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 3);
+    renameFrom(fixture, tabs()[2]!, 'gamma');
+
+    clickBranch(fixture, 'master');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    renameFrom(fixture, tabs()[0]!, 'other');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    renameFrom(fixture, tabs()[1]!, 'extra');
+
+    clickBranch(fixture, 'feature');
+    expect(tabNames(fixture)).toEqual(['1 alpha', '2 beta', '3 gamma']);
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')?.textContent?.trim()).toBe(
+      'Move to',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-submenu"]')).toBeNull();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual([
+      'Rename',
+      'Kill',
+      'Split',
+      'Move to',
+    ]);
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['2 beta', '3 gamma']);
+
+    dismissMenu(fixture);
+    rightClick(tabs()[1]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['1 alpha', '3 gamma']);
+
+    dismissMenu(fixture);
+    clickTab(fixture, 1);
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2);
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['3 gamma']);
+
+    dismissMenu(fixture);
+    rightClick(fixture.nativeElement.querySelector('[data-testid="terminal-pane-header"]')!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['1 alpha', '3 gamma']);
+
+    dismissMenu(fixture);
+    rightClick(tabs()[1]!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
+
+    dismissMenu(fixture);
+    clickBranch(fixture, 'master');
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['2 extra']);
+  });
+
+  it('moves a single terminal onto the right of the chosen tab', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+    renameFrom(fixture, tabs()[0]!, 'server');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    renameFrom(fixture, tabs()[1]!, 'logs');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 3);
+    renameFrom(fixture, tabs()[2]!, 'build');
+    expect(tabNames(fixture)).toEqual(['1 server', '2 logs', '3 build']);
+
+    clickTab(fixture, 0);
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    const target = fixture.nativeElement.querySelector(
+      '[data-testid="terminal-menu-move-target"]',
+    ) as HTMLButtonElement;
+    expect(target.textContent?.trim()).toBe('2 logs');
+    target.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 logs · server', '2 build']);
+    expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
+    expect(paneHeaders(fixture)).toEqual(['logs', 'server']);
+    expect(
+      Array.from(tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]'), (name) => name.textContent),
+    ).toEqual(['logs', 'server']);
+    expect(tabs()[0]!.querySelector('[data-testid="terminal-tab-text"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('3');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu"]')).toBeNull();
+  });
+
+  it('keeps the other terminal when a split terminal moves into a tab', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+    renameFrom(fixture, tabs()[0]!, 'left');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 left · bash');
+    const headers = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]')) as HTMLElement[];
+    renameFrom(fixture, headers()[1]!, 'right');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    renameFrom(fixture, tabs()[1]!, 'logs');
+    expect(tabNames(fixture)).toEqual(['1 left · right', '2 logs']);
+
+    clickTab(fixture, 0);
+    rightClick(headers()[1]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual(['2 logs']);
+    (fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-target"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 left', '2 logs · right']);
+    expect(tabs()[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(paneHeaders(fixture)).toEqual(['logs', 'right']);
+    expect(tabs()[0]!.querySelector('[data-testid="terminal-tab-name"]')).toBeNull();
+    expect(tabs()[1]!.querySelector('[data-testid="terminal-tab-text"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('3');
+  });
+
+  it('keeps a split tab name on the terminal that stays, as after Unsplit', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2);
+    renameFrom(fixture, tabs()[0]!, 'pair');
+    const headers = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]')) as HTMLElement[];
+    renameFrom(fixture, headers()[1]!, 'kept');
+    expect(paneHeaders(fixture)).toEqual(['bash', 'kept']);
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    renameFrom(fixture, tabs()[1]!, 'dest');
+    expect(tabNames(fixture)[0]).toBe('1 pair');
+
+    clickTab(fixture, 0);
+    rightClick(headers()[1]!);
+    fixture.detectChanges();
+    openMoveSubmenu(fixture);
+    (fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-target"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 pair', '2 dest · kept']);
+    expect(tabs()[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(paneHeaders(fixture)).toEqual(['dest', 'kept']);
+    clickTab(fixture, 0);
+    expect(paneHeaders(fixture)).toEqual([]);
+    expect(tabNames(fixture)[0]).toBe('1 pair');
+  });
+
+  it('hides Move to when no single-terminal tab can take this terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Split']);
+    dismissMenu(fixture);
+
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2);
+    rightClick(fixture.nativeElement.querySelector('[data-testid="terminal-pane-header"]')!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+    dismissMenu(fixture);
+
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!).length === 2);
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[1] === '2 bash · bash');
+    rightClick(fixture.nativeElement.querySelector('[data-testid="terminal-pane-header"]')!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+    dismissMenu(fixture);
+
+    rightClick(tabs()[0]!.querySelector('[data-testid="terminal-tab-name"]')!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+  });
+
+  it('keeps the context menu inside the window when the pointer is at the bottom', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const previousHeight = window.innerHeight;
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+    const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    const height = 120;
+    const width = 160;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.getAttribute('data-testid') === 'terminal-menu') {
+        return {
+          x: 40,
+          y: 560,
+          width,
+          height,
+          top: 560,
+          left: 40,
+          right: 200,
+          bottom: 680,
+          toJSON() {
+            return {};
+          },
+        } as DOMRect;
+      }
+      return originalRect.call(this);
+    };
+    try {
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 560 }),
+      );
+      fixture.detectChanges();
+      const menu = fixture.nativeElement.querySelector('[data-testid="terminal-menu"]') as HTMLElement;
+      expect(Number.parseFloat(menu.style.top) + height).toBeLessThanOrEqual(600 - 8);
+      expect(Number.parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight });
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    }
+  });
+
+  it('offers Swap on a split tab, a name, and a pane header, and nowhere else', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const tabs = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')) as HTMLElement[];
+
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]')).toBeNull();
+    expect(toolbarLabels(fixture)).toEqual(['Collapse terminal', 'Split', 'New', 'Maximize terminal', 'Kill']);
+    dismissMenu(fixture);
+
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 bash · bash');
+    const headers = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]')) as HTMLElement[];
+    renameFrom(fixture, headers()[0]!, 'alpha');
+    renameFrom(fixture, headers()[1]!, 'beta');
+    expect(toolbarLabels(fixture)).toEqual(['Collapse terminal', 'Split', 'New', 'Maximize terminal', 'Kill']);
+
+    rightClick(tabs()[0]!);
+    fixture.detectChanges();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual(['Rename', 'Kill', 'Swap']);
+    const swap = fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]') as HTMLButtonElement;
+    expect(swap.getAttribute('role')).toBe('menuitem');
+    expect(swap.disabled).toBe(false);
+    dismissMenu(fixture);
+
+    rightClick(tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]')[1]!);
+    fixture.detectChanges();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual([
+      'Rename',
+      'Kill',
+      'Split',
+      'Unsplit',
+      'Swap',
+    ]);
+    dismissMenu(fixture);
+
+    rightClick(headers()[0]!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]')).not.toBeNull();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual([
+      'Rename',
+      'Kill',
+      'Split',
+      'Unsplit',
+      'Swap',
+    ]);
+  });
+
+  it('swaps the two terminals and keeps each name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 bash · bash');
+    const headers = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]')) as HTMLElement[];
+    renameFrom(fixture, headers()[0]!, 'alpha');
+    renameFrom(fixture, headers()[1]!, 'beta');
+    expect(tabNames(fixture)).toEqual(['1 alpha · beta']);
+    const before = paneIds(fixture);
+    expect(before).toHaveLength(2);
+
+    const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    rightClick(tab);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 beta · alpha']);
+    expect(paneHeaders(fixture)).toEqual(['beta', 'alpha']);
+    expect(paneIds(fixture)).toEqual([before[1], before[0]]);
+    expect(
+      Array.from(tab.querySelectorAll('[data-testid="terminal-tab-name"]'), (name) => name.textContent),
+    ).toEqual(['beta', 'alpha']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu"]')).toBeNull();
+    expect(toolbarLabels(fixture)).toEqual(['Collapse terminal', 'Split', 'New', 'Maximize terminal', 'Kill']);
+  });
+
+  it('keeps the wider side wider when the terminals swap', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2);
+    const headers = () =>
+      Array.from(fixture!.nativeElement.querySelectorAll('[data-testid="terminal-pane-header"]')) as HTMLElement[];
+    renameFrom(fixture, headers()[0]!, 'wide');
+    renameFrom(fixture, headers()[1]!, 'narrow');
+
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-pane-split"]') as HTMLElement;
+    Object.defineProperty(split.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 200 });
+    split.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0, pointerId: 1 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 150, clientY: 0, pointerId: 1 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 150, clientY: 0, pointerId: 1 }));
+    fixture.detectChanges();
+    expect(columnGrows(fixture)).toEqual(['0.75', '0.25']);
+    expect(paneHeaders(fixture)).toEqual(['wide', 'narrow']);
+
+    rightClick(headers()[1]!);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(paneHeaders(fixture)).toEqual(['narrow', 'wide']);
+    expect(columnGrows(fixture)).toEqual(['0.25', '0.75']);
+  });
+
+  it('keeps focus on the terminal that moves to the other side', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => paneHeaders(fixture!).length === 2 && tabNames(fixture!)[0] === '1 bash · bash');
+    const tab = () => fixture!.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    const names = () => Array.from(tab().querySelectorAll('[data-testid="terminal-tab-name"]')) as HTMLElement[];
+    renameFrom(fixture, names()[0]!, 'left');
+    renameFrom(fixture, names()[1]!, 'right');
+    const rightId = names()[1]!.getAttribute('data-terminal-id') ?? '';
+    names()[1]!.click();
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(paneTextarea(fixture, rightId));
+    expect(paneIds(fixture)[1]).toBe(rightId);
+
+    rightClick(names()[1]!);
+    fixture.detectChanges();
+    const swap = fixture.nativeElement.querySelector('[data-testid="terminal-menu-swap"]') as HTMLButtonElement;
+    swap.focus();
+    swap.click();
+    fixture.detectChanges();
+
+    expect(paneIds(fixture)[0]).toBe(rightId);
+    expect(paneHeaders(fixture)).toEqual(['right', 'left']);
+    expect(document.activeElement).toBe(paneTextarea(fixture, rightId));
   });
 });

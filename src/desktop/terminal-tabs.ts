@@ -26,6 +26,12 @@ export interface TerminalMenuActions {
   split: boolean;
   unsplit: boolean;
   splitDisabled: boolean;
+  swap: boolean;
+}
+
+export interface TerminalMoveTarget {
+  tabId: string;
+  label: string;
 }
 
 export function emptyTerminals(): WorktreeTerminalView {
@@ -102,13 +108,31 @@ export function editableName(tab: TerminalTabView, terminalId: string | null): s
 }
 
 export function terminalMenuActions(tab: TerminalTabView, terminalId: string | null): TerminalMenuActions {
+  const swap = tab.terminals.length > 1;
   if (terminalId !== null && tab.terminals.length > 1) {
-    return { split: true, unsplit: true, splitDisabled: true };
+    return { split: true, unsplit: true, splitDisabled: true, swap };
   }
   if (tab.terminals.length > 1) {
-    return { split: false, unsplit: false, splitDisabled: true };
+    return { split: false, unsplit: false, splitDisabled: true, swap };
   }
-  return { split: true, unsplit: false, splitDisabled: false };
+  return { split: true, unsplit: false, splitDisabled: false, swap: false };
+}
+
+export function terminalMoveTargets(
+  state: WorktreeTerminalView,
+  sourceTabId: string,
+  terminalId: string | null,
+): TerminalMoveTarget[] {
+  const source = state.tabs.find((tab) => tab.id === sourceTabId);
+  if (!source || !movingTerminal(source, terminalId)) {
+    return [];
+  }
+  return state.tabs.flatMap((tab, index) => {
+    if (tab.id === sourceTabId || tab.terminals.length !== 1) {
+      return [];
+    }
+    return [{ tabId: tab.id, label: tabChipText(index + 1, tab) }];
+  });
 }
 
 export function withNewTab(state: WorktreeTerminalView, tab: TerminalTabView): WorktreeTerminalView {
@@ -130,20 +154,46 @@ export function withSplit(
       if (tab.id !== tabId || tab.terminals.length !== 1) {
         return tab;
       }
-      const existing = tab.terminals[0];
-      if (!existing) {
-        return tab;
-      }
-      const moved = tab.customName.trim();
-      const kept = moved.length > 0 ? { ...existing, customName: moved } : existing;
-      return {
-        ...tab,
-        customName: '',
-        terminals: [kept, terminal],
-        focusedTerminalId: terminal.id,
-      };
+      return placeOnRight(tab, terminal);
     }),
   };
+}
+
+export function withMoveInto(
+  state: WorktreeTerminalView,
+  sourceTabId: string,
+  terminalId: string | null,
+  targetTabId: string,
+): WorktreeTerminalView {
+  if (sourceTabId === targetTabId) {
+    return state;
+  }
+  const source = state.tabs.find((tab) => tab.id === sourceTabId);
+  const target = state.tabs.find((tab) => tab.id === targetTabId);
+  if (!source || !target || target.terminals.length !== 1) {
+    return state;
+  }
+  const moving = movingTerminal(source, terminalId);
+  if (!moving) {
+    return state;
+  }
+  const carried = carriedTerminal(source, moving);
+  const placed = placeOnRight(target, carried);
+  const rest = source.terminals.filter((terminal) => terminal.id !== moving.id);
+  const tabs = state.tabs.flatMap((tab) => {
+    if (tab.id === targetTabId) {
+      return [placed];
+    }
+    if (tab.id !== sourceTabId) {
+      return [tab];
+    }
+    const only = rest[0];
+    if (rest.length === 1 && only) {
+      return [collapsePair(tab, only)];
+    }
+    return [];
+  });
+  return { tabs, focusedTabId: target.id };
 }
 
 export function withRename(
@@ -167,6 +217,23 @@ export function withRename(
         terminals: tab.terminals.map((terminal) =>
           terminal.id === terminalId ? { ...terminal, customName: trimmed } : terminal,
         ),
+      };
+    }),
+  };
+}
+
+export function withSwap(state: WorktreeTerminalView, tabId: string): WorktreeTerminalView {
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => {
+      if (tab.id !== tabId || tab.terminals.length !== 2) {
+        return tab;
+      }
+      const [left, right] = tab.terminals;
+      return {
+        ...tab,
+        terminals: [right, left],
+        splitRatio: 1 - tab.splitRatio,
       };
     }),
   };
@@ -268,6 +335,36 @@ export function mapTerminalCommand(
       };
     }),
   };
+}
+
+function placeOnRight(tab: TerminalTabView, terminal: TerminalView): TerminalTabView {
+  const existing = tab.terminals[0];
+  if (!existing) {
+    return tab;
+  }
+  const moved = tab.customName.trim();
+  const kept = moved.length > 0 ? { ...existing, customName: moved } : existing;
+  return {
+    ...tab,
+    customName: '',
+    terminals: [kept, terminal],
+    focusedTerminalId: terminal.id,
+  };
+}
+
+function carriedTerminal(source: TerminalTabView, moving: TerminalView): TerminalView {
+  if (moving.customName.trim().length > 0 || source.terminals.length !== 1) {
+    return moving;
+  }
+  const tabName = source.customName.trim();
+  return tabName.length > 0 ? { ...moving, customName: tabName } : moving;
+}
+
+function movingTerminal(tab: TerminalTabView, terminalId: string | null): TerminalView | undefined {
+  if (terminalId !== null) {
+    return tab.terminals.find((terminal) => terminal.id === terminalId);
+  }
+  return tab.terminals.length === 1 ? tab.terminals[0] : undefined;
 }
 
 function collapsePair(tab: TerminalTabView, only: TerminalView): TerminalTabView {

@@ -234,6 +234,7 @@ export class TerminalHost {
   readonly contextMenu = output<MouseEvent>();
   readonly paneFocus = output<void>();
   readonly active = input(false);
+  readonly column = input(0);
   private readonly shellPane = viewChild(ShellPane);
   private readonly terminalPane = viewChild(TerminalPane);
   readonly paneTitle = computed(() => terminalHostTitle(this.terminal().host));
@@ -242,6 +243,8 @@ export class TerminalHost {
       if (!this.active()) {
         return;
       }
+      // Swap keeps this pane active and changes its column. Read the column so the caret follows.
+      this.column();
       this.shellPane()?.focus();
       this.terminalPane()?.focus();
     });

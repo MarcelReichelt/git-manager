@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { pinWorktree } from '../src/app-settings.js';
 import {
   listBranches,
   listWorktreeBranches,
@@ -177,6 +178,281 @@ describe('listBranches', () => {
     expect(feature).toMatchObject({ status: 'local-only', ahead: 2, behind: 1, changedFileCount: 0 });
   });
 
+  it('lists the default branch first and orders the other worktrees by newest commit', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('orders a worktree with a newer uncommitted file ahead of a later commit', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'zeta');
+    const edited = join(zeta, 'README.md');
+    writeFileSync(edited, '# edited\n');
+    touchAt(edited, '2020-12-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('orders a worktree with a newer untracked file ahead of a later commit', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'zeta');
+    const notes = join(zeta, 'notes.txt');
+    writeFileSync(notes, 'new\n');
+    touchAt(notes, '2020-12-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('orders a worktree with a newer deleted file ahead of a later commit', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'zeta');
+    unlinkSync(join(zeta, 'README.md'));
+    touchAt(zeta, '2020-12-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('orders by the commit when that is newer than the uncommitted file', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    const edited = join(zeta, 'README.md');
+    writeFileSync(edited, '# old edit\n');
+    touchAt(edited, '2020-01-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('lists pinned worktrees under the default branch, each group by last change', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    git(repoPath, ['branch', 'other']);
+    const other = join(repoPath, '.workspaces', 'other');
+    git(repoPath, ['worktree', 'add', other, 'other']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    commitAt(other, '2020-12-01T00:00:00Z', 'other');
+    pinWorktree(repoPath, 'feature');
+    pinWorktree(repoPath, 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+      'other',
+    ]);
+  });
+
+  it('keeps a newer pinned worktree under the default branch', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-12-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-03-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'feature');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
+  it('keeps an older pinned worktree ahead of a newer unpinned one', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'feature');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
+  it('ignores a pin for a branch that has no worktree and a pin on another repository', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'missing');
+    const other = join(root, 'other');
+    initGitRepo(other);
+    pinWorktree(other, 'feature');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('keeps branch order when the last changes are equal', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+    expect(listWorktreeBranches(repoPath, listBranches(repoPath)).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
+  it('leaves an ignored file out of the last change', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-06-01T00:00:00Z', 'feature');
+    writeFileSync(join(zeta, '.gitignore'), 'secret.txt\n');
+    git(zeta, ['add', '.gitignore']);
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'ignore secrets');
+    const secret = join(zeta, 'secret.txt');
+    writeFileSync(secret, 'hidden\n');
+    touchAt(secret, '2020-12-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
+  it('keeps a pinned worktree under the checkout the repository was added at', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    initGitRepo(repoPath);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-12-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual(['feature', 'zeta']);
+  });
+
+  it('orders checked out worktrees by last change when the default branch is absent', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    initGitRepo(repoPath);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual(['zeta', 'feature']);
+  });
+
+  it('orders by the committer date when the author date is older', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitWithDates(feature, '2020-06-01T00:00:00Z', '2020-03-01T00:00:00Z', 'feature');
+    commitWithDates(zeta, '2020-01-01T00:00:00Z', '2020-12-01T00:00:00Z', 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('orders by the commit when that is newer than a deleted file', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2021-06-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-01-01T00:00:00Z', 'zeta');
+    unlinkSync(join(zeta, 'README.md'));
+    touchAt(zeta, '2020-12-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
   it('reports ahead and behind for a branch that matches its upstream', () => {
     const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);
@@ -208,6 +484,38 @@ describe('listBranches', () => {
     expect(master).toMatchObject({ status: 'local-and-remote', ahead: 0, behind: 0 });
   });
 });
+
+function addFeatureAndZeta(repoPath: string): { feature: string; zeta: string } {
+  initGitRepo(repoPath);
+  git(repoPath, ['branch', 'feature']);
+  git(repoPath, ['branch', 'zeta']);
+  const feature = join(repoPath, '.workspaces', 'feature');
+  const zeta = join(repoPath, '.workspaces', 'zeta');
+  git(repoPath, ['worktree', 'add', feature, 'feature']);
+  git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+  return { feature, zeta };
+}
+
+function touchAt(path: string, date: string): void {
+  const time = new Date(date);
+  utimesSync(path, time, time);
+}
+
+function commitAt(cwd: string, date: string, message: string): void {
+  commitWithDates(cwd, date, date, message);
+}
+
+function commitWithDates(cwd: string, authorDate: string, committerDate: string, message: string): void {
+  execFileSync('git', ['commit', '--allow-empty', '-m', message], {
+    cwd,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: authorDate,
+      GIT_COMMITTER_DATE: committerDate,
+    },
+  });
+}
 
 function switchedDefaultRepository(root: string, remote = 'origin'): string {
   const repoPath = join(root, 'harbor');

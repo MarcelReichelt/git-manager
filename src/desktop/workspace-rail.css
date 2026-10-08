@@ -21,6 +21,7 @@
 
 [data-testid='repository-tab'],
 [data-testid='open-repository-card'],
+[data-testid='terminals'],
 [data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
@@ -38,6 +39,33 @@
 [data-testid='app-mark'] {
   display: block;
   flex: none;
+}
+
+[data-testid='terminals'] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: #000000;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+  opacity: 1;
+  outline-offset: -2px;
+}
+
+[data-testid='terminals'] svg {
+  display: block;
+  flex: none;
+}
+
+[data-testid='terminals'].is-idle {
+  opacity: 0.4;
+  cursor: default;
 }
 
 [data-testid='app-settings'] svg {
@@ -153,8 +181,56 @@ aside {
   text-transform: uppercase;
 }
 
+.branch-label[hidden] {
+  display: none;
+}
+
 .branch-label > span {
   opacity: 0.7;
+}
+
+[data-testid='terminals-list'] {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+[data-testid='terminals-group'] + [data-testid='terminals-group'] {
+  margin-top: 8px;
+}
+
+[data-testid='terminals-group-name'] {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  margin: 0 4px 8px;
+  color: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+[data-testid='terminals-worktree'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 0 0 4px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+}
+
+[data-testid='terminals-worktree'].is-selected {
+  background-color: var(--surface);
+  color: var(--forest);
+}
+
+[data-testid='terminals-worktree'].is-selected .branch-name {
+  font-weight: 500;
 }
 
 ul { margin: 0; padding: 0; list-style: none; }

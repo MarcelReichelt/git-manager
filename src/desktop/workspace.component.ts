@@ -967,6 +967,22 @@ button, input { font: inherit; color: inherit; }
               <circle cx="5.2" cy="12" r="1.6" fill="#ffffff" />
               <circle cx="11.4" cy="8" r="1.6" fill="#ffffff" />
             </svg>
+            <button
+              type="button"
+              data-testid="terminals"
+              [class.is-idle]="terminalsTotal() === 0"
+              [attr.aria-label]="terminalsTotal() + ' terminals'"
+              [attr.aria-selected]="terminalsOpen()"
+              [style.outline]="terminalsOpen() ? '2px solid #ffffff' : 'none'"
+              (click)="chooseTerminals($event)"
+              (keydown)="onTerminalsKeydown($event)"
+              (contextmenu)="keepTerminalsMenuClosed($event)"
+            >
+              <svg data-testid="terminals-prompt" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.749.749 0 0 1-.22.53l-2.25 2.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L5.44 8 3.72 6.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
+              </svg>
+              <span data-testid="terminals-count">{{ terminalsTotal() }}</span>
+            </button>
             <div data-testid="repository-tabs">
               @for (tab of repositoryTabs(); track tab.path) {
                 <button
@@ -975,7 +991,7 @@ button, input { font: inherit; color: inherit; }
                   [attr.data-name]="tab.name"
                   [attr.data-path]="tab.path"
                   [attr.title]="tab.name"
-                  [attr.aria-selected]="effectivePath() === tab.path"
+                  [attr.aria-selected]="terminalsOpen() ? false : effectivePath() === tab.path"
                   [style.background-color]="repositoryTabSidebarColor(tab.path)"
                   [style.color]="repositoryTabSidebarTextColor(tab.path)"
                   [style.outline]="repositoryTabFrame(tab.path)"
@@ -1000,14 +1016,44 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
-          <p class="branch-label">
+          <p class="branch-label" [hidden]="terminalsOpen()">
             <span>Worktrees</span>
             <gm-repository-settings
               [repositoryPath]="effectivePath()"
+              [showControl]="!terminalsOpen()"
               (appearanceChanged)="applyOpenRepositoryAppearance()"
               (displayNameChanged)="renameOpenRepository($event)"
             ></gm-repository-settings>
           </p>
+          @if (terminalsOpen()) {
+            <ul data-testid="terminals-list" gmOverlayScroll>
+              @for (group of terminalGroups(); track group.path) {
+                <li data-testid="terminals-group" [attr.data-path]="group.path" [attr.data-name]="group.name">
+                  <p data-testid="terminals-group-name">{{ group.name }}</p>
+                  <ul>
+                    @for (row of group.rows; track row.name) {
+                      <li
+                        data-testid="terminals-worktree"
+                        [class.is-selected]="isTerminalsWorktree(group.path, row.name)"
+                        [attr.aria-selected]="isTerminalsWorktree(group.path, row.name)"
+                        [attr.data-branch]="row.name"
+                        (click)="chooseTerminalsWorktree(group.path, row.name)"
+                      >
+                        <span class="branch-name">{{ row.name }}</span>
+                        <span
+                          class="terminal-count"
+                          data-testid="terminal-count"
+                          [attr.aria-label]="row.count + ' terminals'"
+                        >
+                          {{ row.count }}
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                </li>
+              }
+            </ul>
+          } @else {
           <ul data-testid="branch-list" gmOverlayScroll>
             @for (branch of branches(); track branch.name) {
               <li
@@ -1135,8 +1181,10 @@ button, input { font: inherit; color: inherit; }
               <p data-testid="workspace-error">{{ message }}</p>
             }
           }
+          }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
+          @if (!terminalsOpen()) {
           @if (selectedBranch(); as branch) {
             @if (contentLoading() && !terminalMaximized()) {
               <p class="empty-sheet" data-testid="content-loading">Loading {{ branch.name }}</p>
@@ -1297,6 +1345,18 @@ button, input { font: inherit; color: inherit; }
             </div>
             }
             @if (showTerminalRow()) {
+              <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
+            }
+            </div>
+          } @else {
+            <p class="empty-sheet">Select a branch</p>
+          }
+          } @else if (terminalsWorktree()) {
+            <div #sheetBody class="sheet-body" [style.grid-template-rows]="'minmax(0, 1fr)'">
+              <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
+            </div>
+          }
+          <ng-template #worktreeTerminalSection>
               @if (terminalExpanded() && !terminalMaximized()) {
                 <div
                   class="splitter"
@@ -1312,6 +1372,7 @@ button, input { font: inherit; color: inherit; }
               }
               <div class="terminal-row" data-testid="terminal-row">
                 <div class="terminal-chrome" data-testid="terminal-header">
+                  @if (!terminalsOpen()) {
                   <button
                     type="button"
                     data-testid="terminal-collapse"
@@ -1326,8 +1387,9 @@ button, input { font: inherit; color: inherit; }
                       }
                     </svg>
                   </button>
-                  @if (!terminalExpanded() && terminalCount(branch.name) > 0) {
-                    <span data-testid="terminal-running-count">{{ terminalCount(branch.name) }}</span>
+                  }
+                  @if (!terminalExpanded() && terminalCount(selectedBranchName() ?? '') > 0) {
+                    <span data-testid="terminal-running-count">{{ terminalCount(selectedBranchName() ?? '') }}</span>
                   }
                   <div class="terminal-tabs" role="tablist">
                     @for (tab of terminalTabs(); track tab.id; let index = $index) {
@@ -1422,6 +1484,7 @@ button, input { font: inherit; color: inherit; }
                       <path fill="currentColor" d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
                     </svg>
                   </button>
+                  @if (!terminalsOpen()) {
                   <button
                     type="button"
                     class="terminal-icon"
@@ -1438,6 +1501,7 @@ button, input { font: inherit; color: inherit; }
                       }
                     </svg>
                   </button>
+                  }
                   <button
                     type="button"
                     class="terminal-icon"
@@ -1538,11 +1602,7 @@ button, input { font: inherit; color: inherit; }
                   (paneFocus)="focusTerminal(tab.id, terminal.id)"
                 />
               </ng-template>
-            }
-            </div>
-          } @else {
-            <p class="empty-sheet">Select a branch</p>
-          }
+          </ng-template>
         </section>
       </main>
       @if (overlayOpen()) {
@@ -2044,6 +2104,27 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly tmuxSessionRecords = signal<TmuxSessionRecord[]>([]);
   readonly overlayOpen = signal(false);
   readonly repositoryTabs = signal<RepositoryTab[]>([]);
+  readonly terminalsOpen = signal(false);
+  readonly terminalGroups = computed(() => {
+    this.storedTerminalEpoch();
+    const sessions = this.tmuxSessionRecords();
+    const current = this.effectivePath();
+    const liveTerminals = this.terminalsByBranch();
+    const liveBranches = this.branches();
+    return this.repositoryTabs().flatMap((tab) => {
+      const saved = this.repositoryWorkspaces.get(tab.path);
+      const branches = tab.path === current ? liveBranches : (saved?.branches ?? []);
+      const terminals = tab.path === current ? liveTerminals : (saved?.terminalsByBranch ?? {});
+      const rows = branches.flatMap((branch) => {
+        const count = countBranchTerminals(tab.path, branch.name, terminals[branch.name], sessions);
+        return count > 0 ? [{ name: branch.name, count }] : [];
+      });
+      return rows.length > 0 ? [{ path: tab.path, name: tab.name, rows }] : [];
+    });
+  });
+  readonly terminalsWorktree = signal<{ path: string; branch: string } | null>(null);
+  private readonly terminalsReturnPath = signal<string | null>(null);
+  private readonly storedTerminalEpoch = signal(0);
   private tabToReveal: string | null = null;
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly openBranch = signal<string | null>(null);
@@ -2119,9 +2200,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly commitFileWidth = signal(this.initialSettings.commitFileWidth);
   readonly terminalRowHeight = signal(this.initialSettings.terminalRowHeight);
   private readonly terminalSectionByBranch = signal<Record<string, TerminalSection>>({});
-  readonly terminalExpanded = computed(() => this.sectionFor(this.selectedBranchName()) !== 'collapsed');
+  readonly terminalExpanded = computed(() => {
+    if (this.terminalsOpen() && this.terminalsWorktree()) {
+      return true;
+    }
+    return this.sectionFor(this.selectedBranchName()) !== 'collapsed';
+  });
   private arrangedTerminalRowHeight = this.initialSettings.terminalRowHeight;
-  readonly terminalMaximized = computed(() => this.sectionFor(this.selectedBranchName()) === 'maximized');
+  readonly terminalMaximized = computed(() => {
+    if (this.terminalsOpen() && this.terminalsWorktree()) {
+      return true;
+    }
+    return this.sectionFor(this.selectedBranchName()) === 'maximized';
+  });
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
@@ -2149,6 +2240,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     apply: (value: number) => void;
   } | null = null;
   readonly terminalState = computed(() => {
+    const chosen = this.terminalsOpen() ? this.terminalsWorktree() : null;
+    if (chosen) {
+      this.storedTerminalEpoch();
+      this.terminalsByBranch();
+      return this.readBranchTerminals(chosen.path, chosen.branch);
+    }
     const branch = this.selectedBranchName();
     if (!branch) {
       return emptyTerminals();
@@ -2377,15 +2474,25 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.endRepositoryTerminals(path);
+    if (this.terminalsWorktree()?.path === path) {
+      this.terminalsWorktree.set(null);
+    }
     this.repositoryWorkspaces.delete(path);
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
+    if (this.terminalsOpen() && this.terminalsReturnPath() === path) {
+      const nextReturn = remaining[index] ?? remaining[index - 1] ?? null;
+      this.terminalsReturnPath.set(nextReturn?.path ?? null);
+    }
     if (this.effectivePath() !== path) {
       this.rememberOpenRepositoryTabs();
+      this.leaveTerminalsIfCountReachesZero();
       return;
     }
     const next = remaining[index] ?? remaining[index - 1];
     if (!next) {
+      this.terminalsOpen.set(false);
+      this.terminalsWorktree.set(null);
       this.selectedName.set(null);
       this.openedPath.set(null);
       this.overlayOpen.set(false);
@@ -2401,6 +2508,42 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.tabToReveal = next.path;
     this.showKeptRepository(next);
     this.rememberOpenRepositoryTabs();
+    this.leaveTerminalsIfCountReachesZero();
+  }
+
+  private leaveTerminalsIfCountReachesZero(): void {
+    if (this.terminalsOpen() && this.terminalsTotal() === 0) {
+      this.leaveTerminals();
+    }
+  }
+
+  private leaveTerminals(): void {
+    this.terminalsOpen.set(false);
+    this.terminalsWorktree.set(null);
+    const tabs = this.repositoryTabs();
+    const remembered = this.terminalsReturnPath();
+    const rememberedTab = remembered === null ? undefined : tabs.find((tab) => tab.path === remembered);
+    const current = this.effectivePath();
+    const currentTab = current === null ? undefined : tabs.find((tab) => tab.path === current);
+    const tab = rememberedTab ?? currentTab;
+    if (!tab) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.overlayOpen.set(false);
+      this.openBranch.set(null);
+      this.openingRepository.set(null);
+      this.clearBranchSelection();
+      this.clearTerminals();
+      this.clearGitWatch();
+      this.applyOpenRepositoryAppearance();
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    if (this.effectivePath() !== tab.path) {
+      this.showKeptRepository(tab);
+      return;
+    }
+    this.applyOpenRepositoryAppearance();
   }
 
   selectRepositoryTab(path: string, event: Event): void {
@@ -2408,7 +2551,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') {
       current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
+    const leavingTerminals = this.terminalsOpen();
+    if (leavingTerminals) {
+      this.terminalsOpen.set(false);
+    }
     if (this.effectivePath() === path) {
+      if (leavingTerminals) {
+        this.applyOpenRepositoryAppearance();
+      }
       return;
     }
     const tab = this.repositoryTabs().find((item) => item.path === path);
@@ -2728,20 +2878,105 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
-  terminalCount(name: string): number {
-    const state = this.terminalsByBranch()[name];
-    const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
-    const repo = this.effectivePath();
-    if (!repo) {
-      return remembered;
+  terminalsTotal(): number {
+    this.storedTerminalEpoch();
+    const current = this.effectivePath();
+    const tabs = this.repositoryTabs();
+    if (tabs.length === 0) {
+      return this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
     }
-    const known = new Set(
-      state?.tabs.flatMap((tab) =>
-        tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
-      ) ?? [],
+    let total = 0;
+    for (const tab of tabs) {
+      if (tab.path === current) {
+        total += this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
+        continue;
+      }
+      const saved = this.repositoryWorkspaces.get(tab.path);
+      if (!saved) {
+        continue;
+      }
+      total += saved.branches.reduce(
+        (sum, branch) =>
+          sum +
+          countBranchTerminals(tab.path, branch.name, saved.terminalsByBranch[branch.name], this.tmuxSessionRecords()),
+        0,
+      );
+    }
+    return total;
+  }
+
+  isTerminalsWorktree(path: string, branch: string): boolean {
+    const chosen = this.terminalsWorktree();
+    return chosen !== null && chosen.path === path && chosen.branch === branch;
+  }
+
+  chooseTerminalsWorktree(path: string, branch: string): void {
+    this.adoptCountedSessions(path, branch);
+    this.terminalsWorktree.set({ path, branch });
+  }
+
+  private adoptCountedSessions(path: string, branch: string): void {
+    const cwd = findCheckout(path, branch);
+    if (!cwd) {
+      return;
+    }
+    const existing = this.readBranchTerminals(path, branch);
+    if (existing.tabs.length > 0) {
+      return;
+    }
+    if (this.activeTerminalMode() === 'none') {
+      return;
+    }
+    if (sessionsForBranch(path, branch).length === 0) {
+      return;
+    }
+    this.writeBranchTerminals(path, branch, this.adoptTmuxSessions(path, branch, cwd));
+  }
+
+  private dropRememberedWorktreeIfGone(): void {
+    const chosen = this.terminalsWorktree();
+    if (chosen === null) {
+      return;
+    }
+    const listed = this.terminalGroups().some(
+      (group) => group.path === chosen.path && group.rows.some((row) => row.name === chosen.branch),
     );
-    const outside = sessionsForBranch(repo, name, this.tmuxSessionRecords()).filter((session) => !known.has(session)).length;
-    return remembered + outside;
+    if (!listed) {
+      this.terminalsWorktree.set(null);
+    }
+  }
+
+  chooseTerminals(event: Event): void {
+    if (this.terminalsTotal() === 0 || this.terminalsOpen()) {
+      event.preventDefault();
+      return;
+    }
+    this.terminalsReturnPath.set(this.effectivePath());
+    this.dropRememberedWorktreeIfGone();
+    this.terminalsOpen.set(true);
+    this.applyOpenRepositoryAppearance();
+  }
+
+  keepTerminalsMenuClosed(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  onTerminalsKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    event.preventDefault();
+    this.chooseTerminals(event);
+  }
+
+  terminalCount(name: string): number {
+    return countBranchTerminals(
+      this.effectivePath(),
+      name,
+      this.terminalsByBranch()[name],
+      this.tmuxSessionRecords(),
+    );
   }
 
   focusTab(tabId: string): void {
@@ -2805,20 +3040,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   killTabFromButton(event: MouseEvent, tabId: string): void {
     event.preventDefault();
     event.stopPropagation();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!branch) {
       return;
     }
     if (this.renaming()?.tabId === tabId) {
       this.renaming.set(null);
     }
-    this.removeTab(branch, tabId);
+    this.removeTab(branch, tabId, chosen?.path);
   }
 
   killPaneFromButton(event: MouseEvent, tabId: string, terminalId: string): void {
     event.preventDefault();
     event.stopPropagation();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!branch) {
       return;
     }
@@ -2826,7 +3063,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (renaming?.tabId === tabId && renaming.terminalId === terminalId) {
       this.renaming.set(null);
     }
-    this.removeTerminal(branch, tabId, terminalId);
+    this.removeTerminal(branch, tabId, terminalId, chosen?.path);
   }
 
   focusTerminal(tabId: string, terminalId: string): void {
@@ -2840,22 +3077,25 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   newTerminal(): void {
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     const terminal = this.spawnTerminal();
     if (!terminal || !branch) {
       return;
     }
     const tab = this.makeTab([terminal]);
     this.updateSelected((state) => withNewTab(state, tab));
-    if (this.sectionFor(branch) !== 'maximized') {
+    if (!chosen && this.sectionFor(branch) !== 'maximized') {
       this.setSection(branch, 'docked');
     }
     this.closeTerminalMenu();
   }
 
   splitTerminal(tabId?: string): void {
-    const branch = this.selectedBranchName();
-    const state = branch ? this.terminalsByBranch()[branch] : undefined;
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    const path = chosen?.path ?? this.effectivePath();
+    const state = branch && path ? this.readBranchTerminals(path, branch) : undefined;
     if (!branch || !state) {
       return;
     }
@@ -2873,7 +3113,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   killFocusedTerminal(): void {
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     const tab = this.focusedTerminalTab();
     if (!branch || !tab) {
       return;
@@ -2882,7 +3123,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!terminal) {
       return;
     }
-    this.removeTerminal(branch, tab.id, terminal.id);
+    this.removeTerminal(branch, tab.id, terminal.id, chosen?.path);
   }
 
   onTerminalEnded(terminalId: string): void {
@@ -3000,7 +3241,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     event.preventDefault();
     event.stopPropagation();
     const renaming = this.renaming();
-    if (!renaming || !this.selectedBranchName()) {
+    const branch = this.chosenTerminalWorktree()?.branch ?? this.selectedBranchName();
+    if (!renaming || !branch) {
       this.renaming.set(null);
       return;
     }
@@ -3016,15 +3258,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   killFromMenu(): void {
     const menu = this.terminalMenu();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!menu || !branch) {
       return;
     }
     if (menu.terminalId === null) {
-      this.removeTab(branch, menu.tabId);
+      this.removeTab(branch, menu.tabId, chosen?.path);
       return;
     }
-    this.removeTerminal(branch, menu.tabId, menu.terminalId);
+    this.removeTerminal(branch, menu.tabId, menu.terminalId, chosen?.path);
   }
 
   splitFromMenu(): void {
@@ -3530,7 +3773,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const element = target instanceof Element ? target : null;
     if (
       element?.closest(
-        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="terminals"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
       )
     ) {
       return;
@@ -3803,6 +4046,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   applyOpenRepositoryAppearance(): void {
     const settings = readAppSettings();
+    if (this.terminalsOpen()) {
+      this.paintedSidebarColor.set(settings.sidebarColor);
+      this.paintedSidebarText.set(settings.sidebarText);
+      return;
+    }
     const path = this.effectivePath();
     const own = path === null ? {} : readRepositoryAppearance(path);
     this.paintedSidebarColor.set(own.sidebarColor ?? settings.sidebarColor);
@@ -3818,7 +4066,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   repositoryTabFrame(path: string): string {
-    if (this.effectivePath() !== path) {
+    if (this.terminalsOpen() || this.effectivePath() !== path) {
       return 'none';
     }
     return `2px solid ${this.repositoryTabSidebarTextColor(path)}`;
@@ -4134,15 +4382,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
+  private chosenTerminalWorktree(): { path: string; branch: string } | null {
+    if (!this.terminalsOpen()) {
+      return null;
+    }
+    return this.terminalsWorktree();
+  }
+
   private spawnTerminal(): TerminalView | null {
-    const repo = this.effectivePath();
-    const branch = this.selectedBranchName();
-    const cwd = this.worktreePath();
+    const chosen = this.chosenTerminalWorktree();
+    const repo = chosen?.path ?? this.effectivePath();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    const cwd = chosen ? (findCheckout(chosen.path, chosen.branch) ?? '') : this.worktreePath();
     if (!repo || !branch || !cwd || this.activeTerminalMode() === 'none') {
       return null;
     }
     const id = this.nextTerminalKey('terminal');
-    const knownSessions = (this.terminalsByBranch()[branch]?.tabs ?? []).flatMap((tab) =>
+    const knownSessions = this.readBranchTerminals(repo, branch).tabs.flatMap((tab) =>
       tab.terminals.map((terminal) => terminal.session),
     );
     try {
@@ -4272,7 +4528,33 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.terminalsByBranch.update((current) => ({ ...current, [branch]: state }));
   }
 
+  private readBranchTerminals(path: string, branch: string): WorktreeTerminalView {
+    if (path === this.effectivePath()) {
+      return this.terminalsByBranch()[branch] ?? emptyTerminals();
+    }
+    return this.repositoryWorkspaces.get(path)?.terminalsByBranch[branch] ?? emptyTerminals();
+  }
+
+  private writeBranchTerminals(path: string, branch: string, state: WorktreeTerminalView): void {
+    if (path === this.effectivePath()) {
+      this.storeBranch(branch, state);
+      return;
+    }
+    const saved = this.repositoryWorkspaces.get(path);
+    if (!saved) {
+      return;
+    }
+    saved.terminalsByBranch = { ...saved.terminalsByBranch, [branch]: state };
+    this.storedTerminalEpoch.update((value) => value + 1);
+  }
+
   private updateSelected(change: (state: WorktreeTerminalView) => WorktreeTerminalView): void {
+    const chosen = this.chosenTerminalWorktree();
+    if (chosen) {
+      const state = this.readBranchTerminals(chosen.path, chosen.branch);
+      this.writeBranchTerminals(chosen.path, chosen.branch, change(state));
+      return;
+    }
     const branch = this.selectedBranchName();
     if (!branch) {
       return;
@@ -4283,31 +4565,55 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  private removeTerminal(branch: string, tabId: string, terminalId: string): void {
-    const state = this.terminalsByBranch()[branch];
-    const tab = state?.tabs.find((item) => item.id === tabId);
+  private removeTerminal(branch: string, tabId: string, terminalId: string, path?: string): void {
+    const repo = path ?? this.effectivePath();
+    if (!repo) {
+      return;
+    }
+    const state = this.readBranchTerminals(repo, branch);
+    const tab = state.tabs.find((item) => item.id === tabId);
     const terminal = tab?.terminals.find((item) => item.id === terminalId);
-    if (!state || !terminal) {
+    if (!terminal) {
       return;
     }
     const result = withoutTerminal(state, tabId, terminalId);
-    this.storeBranch(branch, result.state);
+    this.writeBranchTerminals(repo, branch, result.state);
     stopTerminal(terminal);
-    this.collapseIfEmpty(branch, result.state);
+    if (repo === this.effectivePath()) {
+      this.collapseIfEmpty(branch, result.state);
+    }
+    this.releaseChosenWorktree(repo, branch, result.state);
+    this.leaveTerminalsIfCountReachesZero();
     this.closeTerminalMenu();
   }
 
-  private removeTab(branch: string, tabId: string): void {
-    const state = this.terminalsByBranch()[branch];
-    if (!state) {
+  private releaseChosenWorktree(path: string, branch: string, state: WorktreeTerminalView): void {
+    const chosen = this.terminalsWorktree();
+    if (!chosen || chosen.path !== path || chosen.branch !== branch) {
       return;
     }
+    if (countBranchTerminals(path, branch, state, this.tmuxSessionRecords()) > 0) {
+      return;
+    }
+    this.terminalsWorktree.set(null);
+  }
+
+  private removeTab(branch: string, tabId: string, path?: string): void {
+    const repo = path ?? this.effectivePath();
+    if (!repo) {
+      return;
+    }
+    const state = this.readBranchTerminals(repo, branch);
     const result = withoutTab(state, tabId);
-    this.storeBranch(branch, result.state);
+    this.writeBranchTerminals(repo, branch, result.state);
     for (const terminal of result.removed) {
       stopTerminal(terminal);
     }
-    this.collapseIfEmpty(branch, result.state);
+    if (repo === this.effectivePath()) {
+      this.collapseIfEmpty(branch, result.state);
+    }
+    this.releaseChosenWorktree(repo, branch, result.state);
+    this.leaveTerminalsIfCountReachesZero();
     this.closeTerminalMenu();
   }
 
@@ -4333,7 +4639,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.commandPoll = setInterval(() => {
         try {
           const plan = this.planTerminalRefresh();
-          if (plan.sessions === null && plan.terminals === null) {
+          if (plan.sessions === null && plan.terminals === null && plan.stored.length === 0) {
             return;
           }
           this.zone.run(() => {
@@ -4346,6 +4652,32 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
                 this.setSection(branch, 'collapsed');
               }
             }
+            if (plan.stored.length > 0) {
+              for (const update of plan.stored) {
+                const saved = this.repositoryWorkspaces.get(update.path);
+                if (!saved) {
+                  continue;
+                }
+                saved.terminalsByBranch = update.terminals;
+                if (update.collapsedBranches.length > 0) {
+                  const sections = { ...saved.terminalSectionByBranch };
+                  for (const branch of update.collapsedBranches) {
+                    delete sections[branch];
+                  }
+                  saved.terminalSectionByBranch = sections;
+                }
+              }
+              this.storedTerminalEpoch.update((value) => value + 1);
+            }
+            const chosen = this.terminalsWorktree();
+            if (chosen) {
+              this.releaseChosenWorktree(
+                chosen.path,
+                chosen.branch,
+                this.readBranchTerminals(chosen.path, chosen.branch),
+              );
+            }
+            this.leaveTerminalsIfCountReachesZero();
           });
         } catch {
           // The next poll retries the terminal inspection.
@@ -4357,6 +4689,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private planTerminalRefresh(): {
     sessions: TmuxSessionRecord[] | null;
     terminals: { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null;
+    stored: { path: string; terminals: Record<string, WorktreeTerminalView>; collapsedBranches: string[] }[];
   } {
     const snapshots = this.shouldWatchTmux() ? listTmuxSessionSnapshots() : null;
     let sessions: TmuxSessionRecord[] | null = null;
@@ -4367,7 +4700,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       }
     }
     const bySession = new Map(snapshots?.map((snapshot) => [snapshot.name, snapshot]) ?? []);
-    const current = this.terminalsByBranch();
+    const current = this.refreshTerminalBranches(this.terminalsByBranch(), snapshots, bySession);
+    const live = this.terminalsByBranch();
+    const stored: { path: string; terminals: Record<string, WorktreeTerminalView>; collapsedBranches: string[] }[] = [];
+    for (const [path, workspace] of this.repositoryWorkspaces) {
+      if (workspace.terminalsByBranch === live) {
+        continue;
+      }
+      const refreshed = this.refreshTerminalBranches(workspace.terminalsByBranch, snapshots, bySession);
+      if (refreshed) {
+        stored.push({ path, terminals: refreshed.next, collapsedBranches: refreshed.collapsedBranches });
+      }
+    }
+    return {
+      sessions,
+      terminals: current,
+      stored,
+    };
+  }
+
+  private refreshTerminalBranches(
+    current: Record<string, WorktreeTerminalView>,
+    snapshots: TmuxSessionSnapshot[] | null,
+    bySession: Map<string, TmuxSessionSnapshot>,
+  ): { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null {
     let next = current;
     const collapsedBranches: string[] = [];
     for (const [branch, state] of Object.entries(current)) {
@@ -4393,19 +4749,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         }
       }
     }
-    return {
-      sessions,
-      terminals: next === current ? null : { next, collapsedBranches },
-    };
+    return next === current ? null : { next, collapsedBranches };
   }
 
   private shouldWatchTmux(): boolean {
     if (this.activeTerminalMode() === 'tmux') {
       return true;
     }
-    return Object.values(this.terminalsByBranch()).some((state) =>
-      state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.host === 'tmux')),
-    );
+    if (terminalRecordHasTmux(this.terminalsByBranch())) {
+      return true;
+    }
+    const live = this.terminalsByBranch();
+    for (const workspace of this.repositoryWorkspaces.values()) {
+      if (workspace.terminalsByBranch !== live && terminalRecordHasTmux(workspace.terminalsByBranch)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private followRemote(path: string): void {
@@ -4844,6 +5204,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private finishChoose(name: string, path: string | null): void {
+    if (this.terminalsOpen()) {
+      this.terminalsOpen.set(false);
+    }
     const leaving = this.effectivePath();
     if (leaving !== null && leaving !== path) {
       this.rememberWorkspace(leaving);
@@ -4937,7 +5300,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     const paths = this.repositoryTabs().map((tab) => tab.path);
-    const opened = this.openedPath();
+    const opened = this.terminalsOpen() ? this.terminalsReturnPath() : this.openedPath();
     const selectedPath = opened !== null && paths.includes(opened) ? opened : null;
     saveOpenRepositoryTabs(paths, selectedPath, this.appSettingsEnv);
   }
@@ -5286,6 +5649,31 @@ interface TerminalMenuState {
   terminalId: string | null;
   x: number;
   y: number;
+}
+
+function countBranchTerminals(
+  repo: string | null,
+  name: string,
+  state: WorktreeTerminalView | undefined,
+  sessions: readonly TmuxSessionRecord[],
+): number {
+  const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
+  if (!repo) {
+    return remembered;
+  }
+  const known = new Set(
+    state?.tabs.flatMap((tab) =>
+      tab.terminals.map((terminal) => terminal.session).filter((session) => session.length > 0),
+    ) ?? [],
+  );
+  const outside = sessionsForBranch(repo, name, sessions).filter((session) => !known.has(session)).length;
+  return remembered + outside;
+}
+
+function terminalRecordHasTmux(branches: Record<string, WorktreeTerminalView>): boolean {
+  return Object.values(branches).some((state) =>
+    state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.host === 'tmux')),
+  );
 }
 
 function branchHasTerminal(state: WorktreeTerminalView, terminalId: string): boolean {

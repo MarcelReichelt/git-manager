@@ -492,6 +492,9 @@ describe('Terminals on the grouped worktrees', () => {
     expect(getComputedStyle(pierName).letterSpacing).toBe('0.1em');
     expect(getComputedStyle(pierName).opacity).toBe('0.7');
     expect(getComputedStyle(pierName).fontFamily).toContain('JetBrains Mono');
+    expect(getComputedStyle(pierName).height).toBe('28px');
+    expect(getComputedStyle(pierName).margin).toBe('0px 4px 8px');
+    expect(getComputedStyle(pierName).display).toBe('flex');
     expect(groups.map((group) => group.getAttribute('data-path'))).toEqual([pier, quay]);
 
     const pierRows = [...groups[0].querySelectorAll('[data-testid="terminals-worktree"]')] as HTMLElement[];

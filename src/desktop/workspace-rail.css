@@ -200,6 +200,9 @@ aside {
 }
 
 [data-testid='terminals-group-name'] {
+  display: flex;
+  align-items: center;
+  height: 28px;
   margin: 0 4px 8px;
   color: inherit;
   font-family: "JetBrains Mono", ui-monospace, monospace;

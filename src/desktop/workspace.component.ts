@@ -59,6 +59,7 @@ import { copyText } from './copy-text';
 import { launchIde } from './ide-launch';
 import { browseForFolder } from './folder-browser';
 import { runAfterPaint } from './after-paint';
+import { placeContextMenu, placeSubmenu } from './menu-placement';
 import { requestWindowAction, type WindowAction } from './window-chrome';
 import { RepositorySettings } from './repository-settings.component';
 import { OverlayScroll } from './overlay-scrollbar';
@@ -1923,6 +1924,7 @@ button, input { font: inherit; color: inherit; }
           role="menu"
           [style.left.px]="menu.x"
           [style.top.px]="menu.y"
+          (mouseover)="hoverTerminalMenu($event)"
         >
           <button type="button" role="menuitem" data-testid="terminal-rename" (click)="beginRename()">Rename</button>
           <button type="button" role="menuitem" data-testid="terminal-menu-kill" (click)="killFromMenu()">Kill</button>
@@ -1948,21 +1950,40 @@ button, input { font: inherit; color: inherit; }
             </button>
           }
           @if (moveTargets().length > 0) {
-            <div data-testid="terminal-menu-move" role="group" aria-label="Move to">
-              <p class="terminal-menu-label" data-testid="terminal-menu-move-label">Move to</p>
-              @for (target of moveTargets(); track target.tabId) {
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-testid="terminal-menu-move-target"
-                  (click)="moveTerminalTo(target.tabId)"
-                >
-                  {{ target.label }}
-                </button>
-              }
-            </div>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="terminal-menu-move"
+              aria-haspopup="menu"
+              [attr.aria-expanded]="moveSubmenuOpen()"
+              (mouseenter)="showMoveSubmenu()"
+              (mouseleave)="scheduleHideMoveSubmenu()"
+            >
+              Move to
+            </button>
           }
         </div>
+        @if (moveSubmenuOpen() && moveTargets().length > 0) {
+          <div
+            class="terminal-menu terminal-submenu"
+            data-testid="terminal-menu-move-submenu"
+            role="menu"
+            aria-label="Move to"
+            (mouseenter)="showMoveSubmenu()"
+            (mouseleave)="scheduleHideMoveSubmenu()"
+          >
+            @for (target of moveTargets(); track target.tabId) {
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="terminal-menu-move-target"
+                (click)="moveTerminalTo(target.tabId)"
+              >
+                {{ target.label }}
+              </button>
+            }
+          </div>
+        }
       }
     }
     @if (repositorySettings()?.settingsDialog(); as settingsDialog) {
@@ -2048,6 +2069,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly worktreePath = signal('');
   readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
+  readonly moveSubmenuOpen = signal(false);
+  private moveSubmenuTimer: ReturnType<typeof setTimeout> | null = null;
   readonly repositoryTabMenu = signal<{ path: string; x: number; y: number } | null>(null);
   readonly renaming = signal<{ tabId: string; terminalId: string | null } | null>(null);
   readonly renameValue = signal('');
@@ -2262,9 +2285,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   ngAfterViewChecked(): void {
     this.captureMaximizedBody();
     this.revealPendingTab();
+    this.fitAnchoredMenu('[data-testid="terminal-menu"]', this.terminalMenu());
+    this.fitAnchoredMenu('[data-testid="repository-tab-menu"]', this.repositoryTabMenu());
+    this.fitMoveSubmenu();
   }
 
   ngOnDestroy(): void {
+    this.hideMoveSubmenu();
     this.clearGitWatch();
     this.remoteFollow += 1;
     this.rememberOpenRepositoryTabs();
@@ -2616,7 +2643,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   selectBranch(name: string, event?: Event): void {
     event?.stopPropagation();
-    this.terminalMenu.set(null);
+    this.closeTerminalMenu();
     this.renaming.set(null);
     const path = this.effectivePath();
     if (path === null) {
@@ -2862,6 +2889,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   openTerminalMenu(event: MouseEvent, tabId: string, terminalId: string | null): void {
     event.preventDefault();
     event.stopPropagation();
+    this.hideMoveSubmenu();
     this.renaming.set(null);
     this.terminalMenu.set({
       tabId,
@@ -2869,6 +2897,36 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       x: event.clientX,
       y: event.clientY,
     });
+  }
+
+  hoverTerminalMenu(event: MouseEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest('[data-testid="terminal-menu-move"]')) {
+      this.showMoveSubmenu();
+      return;
+    }
+    this.hideMoveSubmenu();
+  }
+
+  showMoveSubmenu(): void {
+    this.clearMoveSubmenuTimer();
+    this.moveSubmenuOpen.set(true);
+  }
+
+  hideMoveSubmenu(): void {
+    this.clearMoveSubmenuTimer();
+    this.moveSubmenuOpen.set(false);
+  }
+
+  scheduleHideMoveSubmenu(): void {
+    this.clearMoveSubmenuTimer();
+    this.moveSubmenuTimer = setTimeout(() => {
+      this.moveSubmenuTimer = null;
+      this.moveSubmenuOpen.set(false);
+    }, 150);
   }
 
   openPaneMenu(event: MouseEvent, tab: TerminalTabView, terminalId: string): void {
@@ -2893,7 +2951,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     this.renameValue.set(editableName(tab, menu.terminalId));
     this.renaming.set({ tabId: menu.tabId, terminalId: menu.terminalId });
-    this.terminalMenu.set(null);
+    this.closeTerminalMenu();
     queueMicrotask(() => {
       const input = document.querySelector('[data-testid="terminal-name-input"]');
       if (input instanceof HTMLInputElement) {
@@ -3530,7 +3588,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     if (this.terminalMenu() !== null) {
-      this.terminalMenu.set(null);
+      this.closeTerminalMenu();
       return;
     }
     if (this.openBranch() !== null) {
@@ -4325,7 +4383,56 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private closeTerminalMenu(): void {
+    this.hideMoveSubmenu();
     this.terminalMenu.set(null);
+  }
+
+  private clearMoveSubmenuTimer(): void {
+    if (this.moveSubmenuTimer !== null) {
+      clearTimeout(this.moveSubmenuTimer);
+      this.moveSubmenuTimer = null;
+    }
+  }
+
+  private fitAnchoredMenu(selector: string, anchor: { x: number; y: number } | null): void {
+    if (anchor === null) {
+      return;
+    }
+    const element = this.hostElement.nativeElement.querySelector(selector);
+    if (!(element instanceof HTMLElement) || element.classList.contains('terminal-submenu')) {
+      return;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+    const placed = placeContextMenu(anchor, rect, { width: window.innerWidth, height: window.innerHeight });
+    element.style.left = `${placed.x}px`;
+    element.style.top = `${placed.y}px`;
+  }
+
+  private fitMoveSubmenu(): void {
+    if (!this.moveSubmenuOpen()) {
+      return;
+    }
+    const item = this.hostElement.nativeElement.querySelector('[data-testid="terminal-menu-move"]');
+    const submenu = this.hostElement.nativeElement.querySelector('[data-testid="terminal-menu-move-submenu"]');
+    if (!(item instanceof HTMLElement) || !(submenu instanceof HTMLElement)) {
+      return;
+    }
+    const parent = item.getBoundingClientRect();
+    const rect = submenu.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+    const placed = placeSubmenu(
+      { left: parent.left, right: parent.right, top: parent.top },
+      rect,
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    submenu.style.left = `${placed.x}px`;
+    submenu.style.top = `${placed.y}px`;
+    submenu.classList.add('is-placed');
   }
 
   private endRepositoryTerminals(path: string): void {
@@ -4398,10 +4505,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     const target = event.target;
     const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-    if (element?.closest('[data-testid="terminal-menu"]')) {
+    if (
+      element?.closest('[data-testid="terminal-menu"]') ||
+      element?.closest('[data-testid="terminal-menu-move-submenu"]')
+    ) {
       return;
     }
-    this.terminalMenu.set(null);
+    this.closeTerminalMenu();
   }
 
   private refreshBranches(): void {

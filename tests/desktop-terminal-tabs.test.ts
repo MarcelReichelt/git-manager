@@ -126,6 +126,15 @@ function menuButtons(fixture: ComponentFixture<WorkspaceComponent>): HTMLButtonE
   return Array.from(menu.querySelectorAll('button')) as HTMLButtonElement[];
 }
 
+function openMoveSubmenu(fixture: ComponentFixture<WorkspaceComponent>): void {
+  const move = fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]');
+  if (!(move instanceof HTMLElement)) {
+    throw new Error('Move to is not shown');
+  }
+  move.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  fixture.detectChanges();
+}
+
 function moveTargetLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
   return Array.from(
     fixture.nativeElement.querySelectorAll('[data-testid="terminal-menu-move-target"]'),
@@ -986,11 +995,11 @@ describe('terminal tabs', () => {
       'Split',
       'Unsplit',
       'Swap',
-      tabNames(fixture)[1],
+      'Move to',
     ]);
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-label"]')?.textContent?.trim(),
-    ).toBe('Move to');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-submenu"]')).toBeNull();
+    openMoveSubmenu(fixture);
+    expect(moveTargetLabels(fixture)).toEqual([tabNames(fixture)[1]]);
     dismissMenu(fixture);
 
     const alpha = tabs()[0]!.querySelectorAll('[data-testid="terminal-tab-name"]')[0] as HTMLElement;
@@ -1076,14 +1085,23 @@ describe('terminal tabs', () => {
     expect(tabNames(fixture)).toEqual(['1 alpha', '2 beta', '3 gamma']);
     rightClick(tabs()[0]!);
     fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-label"]')?.textContent?.trim(),
-    ).toBe('Move to');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')?.textContent?.trim()).toBe(
+      'Move to',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-submenu"]')).toBeNull();
+    expect(menuButtons(fixture).map((button) => button.textContent?.trim())).toEqual([
+      'Rename',
+      'Kill',
+      'Split',
+      'Move to',
+    ]);
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['2 beta', '3 gamma']);
 
     dismissMenu(fixture);
     rightClick(tabs()[1]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['1 alpha', '3 gamma']);
 
     dismissMenu(fixture);
@@ -1092,11 +1110,13 @@ describe('terminal tabs', () => {
     await waitFor(() => paneHeaders(fixture!).length === 2);
     rightClick(tabs()[0]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['3 gamma']);
 
     dismissMenu(fixture);
     rightClick(fixture.nativeElement.querySelector('[data-testid="terminal-pane-header"]')!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['1 alpha', '3 gamma']);
 
     dismissMenu(fixture);
@@ -1109,6 +1129,7 @@ describe('terminal tabs', () => {
     clickBranch(fixture, 'master');
     rightClick(tabs()[0]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['2 extra']);
   });
 
@@ -1133,6 +1154,7 @@ describe('terminal tabs', () => {
     clickTab(fixture, 0);
     rightClick(tabs()[0]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     const target = fixture.nativeElement.querySelector(
       '[data-testid="terminal-menu-move-target"]',
     ) as HTMLButtonElement;
@@ -1174,6 +1196,7 @@ describe('terminal tabs', () => {
     clickTab(fixture, 0);
     rightClick(headers()[1]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     expect(moveTargetLabels(fixture)).toEqual(['2 logs']);
     (fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-target"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -1210,6 +1233,7 @@ describe('terminal tabs', () => {
     clickTab(fixture, 0);
     rightClick(headers()[1]!);
     fixture.detectChanges();
+    openMoveSubmenu(fixture);
     (fixture.nativeElement.querySelector('[data-testid="terminal-menu-move-target"]') as HTMLButtonElement).click();
     fixture.detectChanges();
 
@@ -1256,6 +1280,54 @@ describe('terminal tabs', () => {
     rightClick(tabs()[0]!.querySelector('[data-testid="terminal-tab-name"]')!);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu-move"]')).toBeNull();
+  });
+
+  it('keeps the context menu inside the window when the pointer is at the bottom', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => tabNames(fixture!)[0] === '1 bash');
+    const previousHeight = window.innerHeight;
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+    const tab = fixture.nativeElement.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    const height = 120;
+    const width = 160;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.getAttribute('data-testid') === 'terminal-menu') {
+        return {
+          x: 40,
+          y: 560,
+          width,
+          height,
+          top: 560,
+          left: 40,
+          right: 200,
+          bottom: 680,
+          toJSON() {
+            return {};
+          },
+        } as DOMRect;
+      }
+      return originalRect.call(this);
+    };
+    try {
+      tab.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 560 }),
+      );
+      fixture.detectChanges();
+      const menu = fixture.nativeElement.querySelector('[data-testid="terminal-menu"]') as HTMLElement;
+      expect(Number.parseFloat(menu.style.top) + height).toBeLessThanOrEqual(600 - 8);
+      expect(Number.parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight });
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    }
   });
 
   it('offers Swap on a split tab, a name, and a pane header, and nowhere else', async () => {

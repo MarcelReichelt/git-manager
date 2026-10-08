@@ -12,7 +12,7 @@ import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
 import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { listWorktreeBranches, whenRemoteRefreshIdle } from '../src/branches';
-import { WorkspaceComponent } from '../src/desktop/workspace.component';
+import { WorkspaceComponent, checkoutWatchTargets } from '../src/desktop/workspace.component';
 import { readAppSettings, readPinnedWorktrees } from '../src/app-settings';
 import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
@@ -6528,6 +6528,46 @@ describe('desktop workspace', () => {
     }
   });
 
+  it('shows skeletons in the repository tab before the worktree list is read', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
+    roots.push(root);
+    const pier = join(root, 'pier');
+    initGitRepo(pier);
+    writeFileSync(join(pier, 'README.md'), '# pier\n');
+    git(pier, ['add', '.']);
+    git(pier, ['commit', '-m', 'init']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    addRepository(pier, 'Pier');
+    const fixture = await renderLive();
+    const queued: Array<() => void> = [];
+    setAfterPaintScheduler((task) => queued.push(task));
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    const opening = queued.splice(0);
+    const reading: Array<() => void> = [];
+    setAfterPaintScheduler((task) => reading.push(task));
+    for (const task of opening) {
+      task();
+    }
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="opening-repository"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="worktree-skeleton"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="content-skeleton"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-row"]')).toBeNull();
+
+    setAfterPaintScheduler((task) => task());
+    for (const task of reading) {
+      task();
+    }
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="worktree-skeleton"]')).toBeNull();
+    expect(branchNames(fixture)).toEqual(['master']);
+  });
+
   it('prunes remote-tracking refs when a repository is opened from the card', async () => {
     const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-desktop-'));
     roots.push(root);
@@ -7618,7 +7658,8 @@ describe('desktop workspace', () => {
     featureRow().click();
     fixture.detectChanges();
 
-    writeFileSync(join(feature, 'notes.txt'), 'hello\n');
+    mkdirSync(join(feature, 'src'));
+    writeFileSync(join(feature, 'src', 'notes.txt'), 'hello\n');
     await untilVisible(fixture, (root) => {
       const row = root.querySelector('[data-branch="feature"]');
       return row?.querySelector('[data-testid="changed-file-count"]')?.textContent?.trim() === '1';
@@ -7630,7 +7671,7 @@ describe('desktop workspace', () => {
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(repoPath);
 
-    git(feature, ['add', 'notes.txt']);
+    git(feature, ['add', 'src/notes.txt']);
     git(feature, ['commit', '-m', 'Add notes']);
     await untilVisible(fixture, (root) => {
       const row = root.querySelector('[data-branch="feature"]');
@@ -8452,6 +8493,29 @@ function hasRef(repoPath: string, ref: string): boolean {
     return false;
   }
 }
+
+describe('checkoutWatchTargets', () => {
+  it('watches the checkout and its source directories and leaves dependency directories out', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-watch-'));
+    mkdirSync(join(root, 'src'));
+    mkdirSync(join(root, 'node_modules', 'leftpad'), { recursive: true });
+    mkdirSync(join(root, '.git'));
+    mkdirSync(join(root, 'dist'));
+
+    const targets = checkoutWatchTargets(root);
+    const paths = targets.map((target) => target.path);
+
+    expect(paths).toContain(root);
+    expect(targets.find((target) => target.path === root)?.recursive).toBe(false);
+    expect(paths).toContain(join(root, 'src'));
+    expect(targets.find((target) => target.path === join(root, 'src'))?.recursive).toBe(true);
+    expect(paths).toContain(join(root, '.git'));
+    expect(targets.find((target) => target.path === join(root, '.git'))?.recursive).toBe(true);
+    expect(paths).not.toContain(join(root, 'node_modules'));
+    expect(paths).not.toContain(join(root, 'dist'));
+    rmSync(root, { recursive: true, force: true });
+  });
+});
 
 function holdPaint(): { release(): void } {
   const queued: Array<() => void> = [];

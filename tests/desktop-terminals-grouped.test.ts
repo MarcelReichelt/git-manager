@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { createBranchSession, killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
+import { createBranchSession, killTmuxSession, listTmuxSessions, sessionDirectory, sessionsForBranch } from '../src/desktop/tmux-sessions';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { whenRemoteRefreshIdle } from '../src/branches';
 import { killShell } from '../src/desktop/shell-host';
@@ -1022,6 +1022,123 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
       'Maximize terminal',
     );
+  });
+
+  it('turns a counted tmux session into a terminal tab and keeps the focused terminal tab', async () => {
+    const { pier } = registerPair(roots);
+    createBranchSession(pier, 'feature', join(pier, '.workspaces', 'feature'), 1);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    expect(branchTerminalCount(fixture, 'feature')).toBe('1');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')).toHaveLength(0);
+
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]').length === 2);
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    const focusedBefore = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
+    const resting = tabs.find((tab) => tab.getAttribute('aria-selected') !== 'true');
+    if (!resting || !focusedBefore) {
+      throw new Error('The worktree has no resting terminal tab');
+    }
+    resting.click();
+    fixture.detectChanges();
+    const focusedLabel = resting.textContent?.trim() ?? '';
+    expect(focusedLabel).not.toBe('');
+    expect(focusedLabel).not.toBe(focusedBefore.textContent?.trim());
+    expect(branchTerminalCount(fixture, 'feature')).toBe('1');
+    expect(sessionsForBranch(pier, 'feature')).toHaveLength(1);
+
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await waitFor(() => fixture.nativeElement.querySelectorAll('[data-testid="content-sheet"] [data-testid="terminal-tab"]').length === 1);
+    fixture.detectChanges();
+
+    expect(sessionsForBranch(pier, 'feature')).toHaveLength(1);
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="content-sheet"] [data-testid="terminal-pane"]')).not.toBeNull();
+
+    terminalsWorktree(fixture, 'Pier', 'master').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const masterTabs = [...fixture.nativeElement.querySelectorAll('[data-testid="content-sheet"] [data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(masterTabs).toHaveLength(2);
+    expect(masterTabs.find((tab) => tab.getAttribute('aria-selected') === 'true')?.textContent?.trim()).toBe(focusedLabel);
+  });
+
+  it('changes the chosen worktree terminals with New, Split, Kill, and Rename', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    clickIcon(fixture, 'terminal-new');
+    expect(terminalsCount(fixture)).toBe('3');
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('2');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="content-sheet"] [data-testid="terminal-tab"]')).toHaveLength(2);
+
+    clickIcon(fixture, 'terminal-split-button');
+    expect(terminalsCount(fixture)).toBe('4');
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('3');
+
+    const selected = fixture.nativeElement.querySelector(
+      '[data-testid="content-sheet"] [data-testid="terminal-tab"][aria-selected="true"]',
+    ) as HTMLElement;
+    selected.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 48, clientY: 48 }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="terminal-rename"]').click();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('[data-testid="terminal-name-input"]') as HTMLInputElement;
+    input.value = 'harbor';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="content-sheet"] [data-testid="terminal-tab"][aria-selected="true"]')
+        ?.textContent?.trim(),
+    ).toContain('harbor');
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('3');
+
+    clickIcon(fixture, 'terminal-kill');
+    expect(terminalsCount(fixture)).toBe('3');
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').querySelector('[data-testid="terminal-count"]')?.textContent?.trim()).toBe('2');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+    expect(branchTerminalCount(fixture, 'feature')).toBe('2');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')].some((tab) =>
+        tab.textContent?.includes('harbor'),
+      ),
+    ).toBe(true);
   });
 });
 

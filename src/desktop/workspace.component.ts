@@ -2904,7 +2904,26 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   chooseTerminalsWorktree(path: string, branch: string): void {
+    this.adoptCountedSessions(path, branch);
     this.terminalsWorktree.set({ path, branch });
+  }
+
+  private adoptCountedSessions(path: string, branch: string): void {
+    const cwd = findCheckout(path, branch);
+    if (!cwd) {
+      return;
+    }
+    const existing = this.readBranchTerminals(path, branch);
+    if (existing.tabs.length > 0) {
+      return;
+    }
+    if (this.activeTerminalMode() === 'none') {
+      return;
+    }
+    if (sessionsForBranch(path, branch).length === 0) {
+      return;
+    }
+    this.writeBranchTerminals(path, branch, this.adoptTmuxSessions(path, branch, cwd));
   }
 
   chooseTerminals(event: Event): void {
@@ -3035,22 +3054,25 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   newTerminal(): void {
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     const terminal = this.spawnTerminal();
     if (!terminal || !branch) {
       return;
     }
     const tab = this.makeTab([terminal]);
     this.updateSelected((state) => withNewTab(state, tab));
-    if (this.sectionFor(branch) !== 'maximized') {
+    if (!chosen && this.sectionFor(branch) !== 'maximized') {
       this.setSection(branch, 'docked');
     }
     this.closeTerminalMenu();
   }
 
   splitTerminal(tabId?: string): void {
-    const branch = this.selectedBranchName();
-    const state = branch ? this.terminalsByBranch()[branch] : undefined;
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    const path = chosen?.path ?? this.effectivePath();
+    const state = branch && path ? this.readBranchTerminals(path, branch) : undefined;
     if (!branch || !state) {
       return;
     }
@@ -3068,7 +3090,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   killFocusedTerminal(): void {
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     const tab = this.focusedTerminalTab();
     if (!branch || !tab) {
       return;
@@ -3077,7 +3100,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!terminal) {
       return;
     }
-    this.removeTerminal(branch, tab.id, terminal.id);
+    this.removeTerminal(branch, tab.id, terminal.id, chosen?.path);
   }
 
   onTerminalEnded(terminalId: string): void {
@@ -3195,7 +3218,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     event.preventDefault();
     event.stopPropagation();
     const renaming = this.renaming();
-    if (!renaming || !this.selectedBranchName()) {
+    const branch = this.chosenTerminalWorktree()?.branch ?? this.selectedBranchName();
+    if (!renaming || !branch) {
       this.renaming.set(null);
       return;
     }
@@ -4334,15 +4358,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
+  private chosenTerminalWorktree(): { path: string; branch: string } | null {
+    if (!this.terminalsOpen()) {
+      return null;
+    }
+    return this.terminalsWorktree();
+  }
+
   private spawnTerminal(): TerminalView | null {
-    const repo = this.effectivePath();
-    const branch = this.selectedBranchName();
-    const cwd = this.worktreePath();
+    const chosen = this.chosenTerminalWorktree();
+    const repo = chosen?.path ?? this.effectivePath();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    const cwd = chosen ? (findCheckout(chosen.path, chosen.branch) ?? '') : this.worktreePath();
     if (!repo || !branch || !cwd || this.activeTerminalMode() === 'none') {
       return null;
     }
     const id = this.nextTerminalKey('terminal');
-    const knownSessions = (this.terminalsByBranch()[branch]?.tabs ?? []).flatMap((tab) =>
+    const knownSessions = (this.readBranchTerminals(repo, branch).tabs ?? []).flatMap((tab) =>
       tab.terminals.map((terminal) => terminal.session),
     );
     try {
@@ -4479,7 +4511,26 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.repositoryWorkspaces.get(path)?.terminalsByBranch[branch] ?? emptyTerminals();
   }
 
+  private writeBranchTerminals(path: string, branch: string, state: WorktreeTerminalView): void {
+    if (path === this.effectivePath()) {
+      this.storeBranch(branch, state);
+      return;
+    }
+    const saved = this.repositoryWorkspaces.get(path);
+    if (!saved) {
+      return;
+    }
+    saved.terminalsByBranch = { ...saved.terminalsByBranch, [branch]: state };
+    this.storedTerminalEpoch.update((value) => value + 1);
+  }
+
   private updateSelected(change: (state: WorktreeTerminalView) => WorktreeTerminalView): void {
+    const chosen = this.chosenTerminalWorktree();
+    if (chosen) {
+      const state = this.readBranchTerminals(chosen.path, chosen.branch);
+      this.writeBranchTerminals(chosen.path, chosen.branch, change(state));
+      return;
+    }
     const branch = this.selectedBranchName();
     if (!branch) {
       return;
@@ -4490,17 +4541,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
-  private removeTerminal(branch: string, tabId: string, terminalId: string): void {
-    const state = this.terminalsByBranch()[branch];
-    const tab = state?.tabs.find((item) => item.id === tabId);
+  private removeTerminal(branch: string, tabId: string, terminalId: string, path?: string): void {
+    const repo = path ?? this.effectivePath();
+    if (!repo) {
+      return;
+    }
+    const state = this.readBranchTerminals(repo, branch);
+    const tab = state.tabs.find((item) => item.id === tabId);
     const terminal = tab?.terminals.find((item) => item.id === terminalId);
-    if (!state || !terminal) {
+    if (!terminal) {
       return;
     }
     const result = withoutTerminal(state, tabId, terminalId);
-    this.storeBranch(branch, result.state);
+    this.writeBranchTerminals(repo, branch, result.state);
     stopTerminal(terminal);
-    this.collapseIfEmpty(branch, result.state);
+    if (repo === this.effectivePath()) {
+      this.collapseIfEmpty(branch, result.state);
+    }
     this.closeTerminalMenu();
   }
 

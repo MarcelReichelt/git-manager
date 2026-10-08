@@ -2742,7 +2742,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   terminalsTotal(): number {
-    return 0;
+    return this.branches().reduce((sum, branch) => sum + this.terminalCount(branch.name), 0);
   }
 
   openTerminals(event: Event): void {

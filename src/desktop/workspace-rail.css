@@ -54,6 +54,7 @@
   color: #ffffff;
   font: inherit;
   cursor: pointer;
+  opacity: 1;
 }
 
 [data-testid='terminals-prompt'],

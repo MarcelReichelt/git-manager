@@ -17,6 +17,7 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 
 describe('Terminals on the grouped worktrees', () => {
   const roots: string[] = [];
+  const fixtures: ComponentFixture<WorkspaceComponent>[] = [];
   const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
   const previousAppSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
   let restoreSearch: (() => void) | undefined;
@@ -43,6 +44,9 @@ describe('Terminals on the grouped worktrees', () => {
     } else {
       process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
     }
+    for (const fixture of fixtures.splice(0)) {
+      fixture.destroy();
+    }
     const removing = roots.splice(0);
     for (const name of listTmuxSessions()) {
       const directory = sessionDirectory(name);
@@ -62,6 +66,7 @@ describe('Terminals on the grouped worktrees', () => {
     }).compileComponents();
 
     const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixtures.push(fixture);
     apply?.(fixture);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -157,7 +162,77 @@ describe('Terminals on the grouped worktrees', () => {
     expect(chip.getAttribute('aria-selected')).not.toBe('true');
     expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
   });
+
+  it('counts each shell on the open repository tab', async () => {
+    const repoPath = createRepository(roots);
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+
+    const chip = fixture.nativeElement.querySelector('[data-testid="terminals"]');
+    expect(chip.querySelector('[data-testid="terminals-count"]').textContent.trim()).toBe('1');
+    expect(chip.getAttribute('aria-label')).toBe('1 terminals');
+    expect(getComputedStyle(chip).opacity).toBe('1');
+    expect(getComputedStyle(chip).cursor).toBe('pointer');
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="master"] [data-testid="terminal-count"]').textContent.trim(),
+    ).toBe('1');
+  });
+
+  it('counts a split terminal tab as two shells', async () => {
+    const repoPath = createRepository(roots);
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    clickIcon(fixture, 'terminal-split-button');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '2');
+
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')).toHaveLength(1);
+    expect(terminalsCount(fixture)).toBe('2');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('2 terminals');
+  });
 });
+
+function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
+  const button = fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`${testId} is not shown`);
+  }
+  button.click();
+  fixture.detectChanges();
+}
+
+function terminalsCount(fixture: ComponentFixture<WorkspaceComponent>): string {
+  return fixture.nativeElement.querySelector('[data-testid="terminals-count"]')?.textContent?.trim() ?? '';
+}
+
+function branchTerminalCount(fixture: ComponentFixture<WorkspaceComponent>, name: string): string | null {
+  const count = fixture.nativeElement
+    .querySelector(`[data-testid="branch-row"][data-branch="${name}"]`)
+    ?.querySelector('[data-testid="terminal-count"]');
+  if (!count) {
+    return null;
+  }
+  const text = count.textContent?.trim() ?? '';
+  return text.length === 0 ? null : text;
+}
+
+async function waitFor(check: () => boolean): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < 8000) {
+    if (check()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error('timed out waiting for Terminals');
+}
 
 function terminalsHoverRule(): boolean {
   for (const sheet of document.styleSheets) {

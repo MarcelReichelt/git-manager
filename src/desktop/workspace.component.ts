@@ -1040,10 +1040,11 @@ button, input { font: inherit; color: inherit; }
                     height="16"
                     aria-label="Pinned"
                   >
-                    <path
-                      fill="currentColor"
-                      d="M8 1.2a2.4 2.4 0 0 1 2.4 2.4c0 .46-.13.88-.35 1.24l1.22 1.22a.9.9 0 0 1-.64 1.54H8.8V14.2a.8.8 0 0 1-1.6 0V7.6H5.37a.9.9 0 0 1-.64-1.54l1.22-1.22A2.4 2.4 0 0 1 8 1.2Z"
-                    />
+                    <g fill="currentColor" transform="rotate(-38 8 8)">
+                      <path d="M7.35 6.4h1.3L8 13.6Z" />
+                      <ellipse cx="8" cy="5.7" rx="5" ry="2.15" />
+                      <ellipse cx="8" cy="4.85" rx="5" ry="2.35" />
+                    </g>
                   </svg>
                 }
                 <span class="branch-stats">

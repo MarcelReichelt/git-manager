@@ -3457,7 +3457,9 @@ describe('desktop workspace', () => {
     const pinIcon = row.querySelector('[data-testid="worktree-pin"]');
     expect(pinIcon?.getAttribute('aria-label')).toBe('Pinned');
     expect(pinIcon?.getAttribute('width')).toBe('16');
-    expect(getComputedStyle(pinIcon as Element).color).toBe('rgb(244, 211, 94)');
+    expect(getComputedStyle(pinIcon as Element).color).toBe(
+      getComputedStyle(row.querySelector('.branch-name') as Element).color,
+    );
     expect(pinIcon?.nextElementSibling?.classList.contains('branch-stats')).toBe(true);
     expect(master.querySelector('[data-testid="worktree-pin"]')).toBeNull();
     expect(

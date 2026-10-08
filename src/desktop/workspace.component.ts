@@ -4380,7 +4380,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     const id = this.nextTerminalKey('terminal');
-    const knownSessions = (this.readBranchTerminals(repo, branch).tabs ?? []).flatMap((tab) =>
+    const knownSessions = this.readBranchTerminals(repo, branch).tabs.flatMap((tab) =>
       tab.terminals.map((terminal) => terminal.session),
     );
     try {

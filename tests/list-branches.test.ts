@@ -292,6 +292,23 @@ describe('listBranches', () => {
     ]);
   });
 
+  it('keeps a newer pinned worktree under the default branch', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-12-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-03-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'feature');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
   it('keeps an older pinned worktree ahead of a newer unpinned one', () => {
     const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);

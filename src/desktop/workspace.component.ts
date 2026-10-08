@@ -1030,6 +1030,21 @@ button, input { font: inherit; color: inherit; }
                     {{ terminalCount(branch.name) }}
                   </span>
                 }
+                @if (pinnedWorktrees().includes(branch.name)) {
+                  <svg
+                    class="worktree-pin"
+                    data-testid="worktree-pin"
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    aria-label="Pinned"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M8 1.25a2.25 2.25 0 0 0-1.1 4.21l-.28 1.9-1.05 1.05a.75.75 0 0 0 .53 1.28H7.25v3.56a.75.75 0 0 0 1.5 0V9.69h1.15a.75.75 0 0 0 .53-1.28L9.38 7.36l-.28-1.9A2.25 2.25 0 0 0 8 1.25Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"
+                    />
+                  </svg>
+                }
                 <span class="branch-stats">
                   @if (branchActivityLabel(branch.name); as label) {
                     <span data-testid="branch-activity">{{ label }}</span>

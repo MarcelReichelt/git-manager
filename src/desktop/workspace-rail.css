@@ -230,6 +230,11 @@ ul { margin: 0; padding: 0; list-style: none; }
   line-height: 1;
 }
 
+.worktree-pin {
+  flex: none;
+  color: inherit;
+}
+
 .branch-stats {
   color: inherit;
   font-family: "JetBrains Mono", ui-monospace, monospace;

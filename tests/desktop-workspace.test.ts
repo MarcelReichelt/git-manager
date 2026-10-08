@@ -3454,6 +3454,13 @@ describe('desktop workspace', () => {
 
     expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
     expect(row.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
+    const pinIcon = row.querySelector('[data-testid="worktree-pin"]');
+    expect(pinIcon?.getAttribute('aria-label')).toBe('Pinned');
+    expect(pinIcon?.nextElementSibling?.classList.contains('branch-stats')).toBe(true);
+    expect(master.querySelector('[data-testid="worktree-pin"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="zeta"] [data-testid="worktree-pin"]'),
+    ).toBeNull();
 
     fixture.destroy();
     const restarted = await renderRepository(repoPath);
@@ -3462,9 +3469,11 @@ describe('desktop workspace', () => {
     again.querySelector('[data-testid="branch-menu"]').click();
     restarted.detectChanges();
     expect(again.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
+    expect(again.querySelector('[data-testid="worktree-pin"]')).not.toBeNull();
     (again.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
     restarted.detectChanges();
     expect(branchNames(restarted)).toEqual(['master', 'zeta', 'feature']);
+    expect(again.querySelector('[data-testid="worktree-pin"]')).toBeNull();
   });
 
   it('removes a worktree pin when that worktree is removed', async () => {

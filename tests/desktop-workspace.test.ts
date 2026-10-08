@@ -3456,6 +3456,8 @@ describe('desktop workspace', () => {
     expect(row.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
     const pinIcon = row.querySelector('[data-testid="worktree-pin"]');
     expect(pinIcon?.getAttribute('aria-label')).toBe('Pinned');
+    expect(pinIcon?.getAttribute('width')).toBe('16');
+    expect(getComputedStyle(pinIcon as Element).color).toBe('rgb(244, 211, 94)');
     expect(pinIcon?.nextElementSibling?.classList.contains('branch-stats')).toBe(true);
     expect(master.querySelector('[data-testid="worktree-pin"]')).toBeNull();
     expect(
@@ -3474,6 +3476,35 @@ describe('desktop workspace', () => {
     restarted.detectChanges();
     expect(branchNames(restarted)).toEqual(['master', 'zeta', 'feature']);
     expect(again.querySelector('[data-testid="worktree-pin"]')).toBeNull();
+  });
+
+  it('keeps a pinned worktree under the checkout the repository was added at', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-12-01T00:00:00Z', 'zeta');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)).toEqual(['zeta', 'feature']);
+    const primary = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    primary.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(primary.querySelector('[data-testid="pin-worktree"]')).toBeNull();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="zeta"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    (row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(branchNames(fixture)).toEqual(['feature', 'zeta']);
+    expect(row.querySelector('[data-testid="worktree-pin"]')).not.toBeNull();
+    expect(primary.querySelector('[data-testid="worktree-pin"]')).toBeNull();
   });
 
   it('removes a worktree pin when that worktree is removed', async () => {

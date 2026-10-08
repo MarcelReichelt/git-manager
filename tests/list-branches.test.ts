@@ -388,6 +388,22 @@ describe('listBranches', () => {
     ]);
   });
 
+  it('keeps a pinned worktree under the checkout the repository was added at', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    initGitRepo(repoPath);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-12-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual(['feature', 'zeta']);
+  });
+
   it('orders checked out worktrees by last change when the default branch is absent', () => {
     const root = makeTempDir('git-worktree-manager-list-branches-');
     roots.push(root);

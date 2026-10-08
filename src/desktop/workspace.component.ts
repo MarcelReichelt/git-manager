@@ -127,6 +127,7 @@ import {
   readCommitFiles,
   readCommitsOnlyOnBranch,
   readDefaultBranch,
+  readPrimaryCheckoutBranch,
   readRecentCommits,
   recentCommitPageSize,
   readWorkingTreeDiff,
@@ -1035,13 +1036,13 @@ button, input { font: inherit; color: inherit; }
                     class="worktree-pin"
                     data-testid="worktree-pin"
                     viewBox="0 0 16 16"
-                    width="12"
-                    height="12"
+                    width="16"
+                    height="16"
                     aria-label="Pinned"
                   >
                     <path
                       fill="currentColor"
-                      d="M8 1.25a2.25 2.25 0 0 0-1.1 4.21l-.28 1.9-1.05 1.05a.75.75 0 0 0 .53 1.28H7.25v3.56a.75.75 0 0 0 1.5 0V9.69h1.15a.75.75 0 0 0 .53-1.28L9.38 7.36l-.28-1.9A2.25 2.25 0 0 0 8 1.25Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"
+                      d="M8 1.2a2.4 2.4 0 0 1 2.4 2.4c0 .46-.13.88-.35 1.24l1.22 1.22a.9.9 0 0 1-.64 1.54H8.8V14.2a.8.8 0 0 1-1.6 0V7.6H5.37a.9.9 0 0 1-.64-1.54l1.22-1.22A2.4 2.4 0 0 1 8 1.2Z"
                     />
                   </svg>
                 }
@@ -1075,7 +1076,7 @@ button, input { font: inherit; color: inherit; }
                   class="branch-actions"
                   [class.is-open]="openBranch() === branch.name"
                 >
-                    @if (branch.name !== defaultBranchName() && effectivePath() !== null) {
+                    @if (canPinWorktree(branch.name)) {
                       <button
                         type="button"
                         data-testid="pin-worktree"
@@ -2050,6 +2051,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly selectedCommitSubject = signal<string | null>(null);
   readonly realBranches = signal<SampleBranch[]>([]);
   readonly pinnedWorktrees = signal<string[]>([]);
+  readonly primaryBranchName = signal<string | undefined>(undefined);
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedRecentCommits = signal<BranchCommit[]>([]);
@@ -3924,10 +3926,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     );
   }
 
+  canPinWorktree(name: string): boolean {
+    return this.effectivePath() !== null && name !== this.defaultBranchName() && name !== this.primaryBranchName();
+  }
+
   toggleWorktreePin(name: string, event: Event): void {
     event.stopPropagation();
     const path = this.effectivePath();
-    if (path === null || name === this.defaultBranchName()) {
+    if (path === null || !this.canPinWorktree(name)) {
       return;
     }
     if (this.pinnedWorktrees().includes(name)) {
@@ -4560,8 +4566,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const path = this.effectivePath();
     if (path === null) {
       this.pinnedWorktrees.set([]);
+      this.primaryBranchName.set(undefined);
       this.clearGitWatch();
       return;
+    }
+    const primary = readPrimaryCheckoutBranch(path);
+    if (primary !== this.primaryBranchName()) {
+      this.primaryBranchName.set(primary);
     }
     const pinned = readPinnedWorktrees(path);
     if (pinned.join('\0') !== this.pinnedWorktrees().join('\0')) {

@@ -438,31 +438,38 @@ export function listWorktreeBranches(repoPath: string, known?: readonly BranchRo
   return orderWorktreeRows(
     rowsByLastChange(repoPath, rows),
     readDefaultBranch(repoPath),
+    readPrimaryCheckoutBranch(repoPath),
     readPinnedWorktrees(repoPath),
   );
+}
+
+export function readPrimaryCheckoutBranch(repoPath: string): string | undefined {
+  return checkedOutBranch(repoPath);
 }
 
 function orderWorktreeRows<T extends { name: string }>(
   rows: readonly T[],
   defaultBranch: string | undefined,
+  primaryBranch: string | undefined,
   pinned: readonly string[],
 ): T[] {
   const listed = pinDefaultBranch(rows, defaultBranch);
-  const defaultIsFirst = defaultBranch !== undefined && listed[0]?.name === defaultBranch;
-  const rest = defaultIsFirst ? listed.slice(1) : listed;
   const pinnedNames = new Set(pinned);
-  const pinnedRows: T[] = [];
-  const otherRows: T[] = [];
-  for (const row of rest) {
-    if (pinnedNames.has(row.name)) {
-      pinnedRows.push(row);
-    } else {
-      otherRows.push(row);
-    }
+  const anchor = listed.some((row) => row.name === primaryBranch)
+    ? primaryBranch
+    : listed.some((row) => row.name === defaultBranch)
+      ? defaultBranch
+      : undefined;
+  const pinnedRows = listed.filter(
+    (row) => pinnedNames.has(row.name) && row.name !== anchor && row.name !== defaultBranch,
+  );
+  const pinnedSet = new Set(pinnedRows.map((row) => row.name));
+  const body = listed.filter((row) => !pinnedSet.has(row.name));
+  if (anchor === undefined) {
+    return [...pinnedRows, ...body];
   }
-  return defaultIsFirst && listed[0] !== undefined
-    ? [listed[0], ...pinnedRows, ...otherRows]
-    : [...pinnedRows, ...otherRows];
+  const anchorIndex = body.findIndex((row) => row.name === anchor);
+  return [...body.slice(0, anchorIndex + 1), ...pinnedRows, ...body.slice(anchorIndex + 1)];
 }
 
 function rowsByLastChange(repoPath: string, rows: readonly BranchRow[]): BranchRow[] {

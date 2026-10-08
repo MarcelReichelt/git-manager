@@ -232,7 +232,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .worktree-pin {
   flex: none;
-  color: inherit;
+  width: 16px;
+  height: 16px;
+  color: var(--gold);
 }
 
 .branch-stats {

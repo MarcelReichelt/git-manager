@@ -58,6 +58,11 @@
   outline-offset: -2px;
 }
 
+[data-testid='terminals'] svg {
+  display: block;
+  flex: none;
+}
+
 [data-testid='terminals'].is-idle {
   opacity: 0.4;
   cursor: default;
@@ -176,6 +181,10 @@ aside {
   text-transform: uppercase;
 }
 
+.branch-label[hidden] {
+  display: none;
+}
+
 .branch-label > span {
   opacity: 0.7;
 }
@@ -186,12 +195,18 @@ aside {
   overflow: auto;
 }
 
+[data-testid='terminals-group'] + [data-testid='terminals-group'] {
+  margin-top: 8px;
+}
+
 [data-testid='terminals-group-name'] {
-  margin: 12px 4px 4px;
+  margin: 0 4px 8px;
   color: inherit;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  text-transform: none;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
 }
 
 [data-testid='terminals-worktree'] {
@@ -207,8 +222,12 @@ aside {
 }
 
 [data-testid='terminals-worktree'].is-selected {
-  background-color: var(--forest);
-  color: #ffffff;
+  background-color: var(--surface);
+  color: var(--forest);
+}
+
+[data-testid='terminals-worktree'].is-selected .branch-name {
+  font-weight: 500;
 }
 
 ul { margin: 0; padding: 0; list-style: none; }

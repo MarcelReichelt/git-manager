@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -185,7 +185,11 @@ describe('Terminals on the grouped worktrees', () => {
     const count = chip.querySelector('[data-testid="terminals-count"]');
 
     expect(getComputedStyle(chip).backgroundColor).toBe('rgb(0, 0, 0)');
-    expect(prompt.textContent.trim()).toBe('>');
+    expect(prompt.tagName.toLowerCase()).toBe('svg');
+    expect(prompt.getAttribute('width')).toBe('16');
+    expect(prompt.getAttribute('height')).toBe('16');
+    expect(prompt.querySelector('path')).not.toBeNull();
+    expect(prompt.textContent.trim()).toBe('');
     expect(getComputedStyle(prompt).color).toBe('rgb(255, 255, 255)');
     expect(count.textContent.trim()).toBe('0');
     expect(getComputedStyle(count).color).toBe('rgb(255, 255, 255)');
@@ -433,7 +437,7 @@ describe('Terminals on the grouped worktrees', () => {
 
     const aside = fixture.nativeElement.querySelector('aside');
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
-    expect(aside.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect((aside.querySelector('p.branch-label') as HTMLElement).hidden).toBe(true);
     expect(aside.querySelector('[data-testid="repository-settings"]')).toBeNull();
     expect(aside.querySelector('[data-testid="create-worktree"]')).toBeNull();
     expect(getComputedStyle(aside).backgroundColor).toBe('rgb(6, 95, 70)');
@@ -482,7 +486,12 @@ describe('Terminals on the grouped worktrees', () => {
       'pier',
       'Quay',
     ]);
-    expect(getComputedStyle(groups[0].querySelector('[data-testid="terminals-group-name"]')).textTransform).toBe('none');
+    const pierName = groups[0].querySelector('[data-testid="terminals-group-name"]') as HTMLElement;
+    expect(getComputedStyle(pierName).textTransform).toBe('uppercase');
+    expect(getComputedStyle(pierName).fontSize).toBe('10px');
+    expect(getComputedStyle(pierName).letterSpacing).toBe('0.1em');
+    expect(getComputedStyle(pierName).opacity).toBe('0.7');
+    expect(getComputedStyle(pierName).fontFamily).toContain('JetBrains Mono');
     expect(groups.map((group) => group.getAttribute('data-path'))).toEqual([pier, quay]);
 
     const pierRows = [...groups[0].querySelectorAll('[data-testid="terminals-worktree"]')] as HTMLElement[];
@@ -574,7 +583,7 @@ describe('Terminals on the grouped worktrees', () => {
     await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
     fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect((fixture.nativeElement.querySelector('p.branch-label') as HTMLElement).hidden).toBe(true);
 
     fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
     fixture.detectChanges();
@@ -648,7 +657,7 @@ describe('Terminals on the grouped worktrees', () => {
     fixture.nativeElement.querySelector('[data-testid="app-settings"]').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="app-settings-dialog"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect((fixture.nativeElement.querySelector('p.branch-label') as HTMLElement).hidden).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
     fixture.nativeElement.querySelector('[data-testid="close-app-settings"]').click();
     fixture.detectChanges();
@@ -661,7 +670,7 @@ describe('Terminals on the grouped worktrees', () => {
     fixture.detectChanges();
     const dialog = fixture.nativeElement.querySelector('[data-testid="repository-settings-dialog"]');
     expect(dialog).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect((fixture.nativeElement.querySelector('p.branch-label') as HTMLElement).hidden).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
     const name = dialog.querySelector('[data-testid="repository-display-name"]') as HTMLInputElement;
     name.value = 'North Quay';
@@ -719,7 +728,7 @@ describe('Terminals on the grouped worktrees', () => {
     killShell(dockTerminal);
     await waitFor(() => {
       fixture.detectChanges();
-      return fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim() === 'Worktrees';
+      return (fixture.nativeElement.querySelector('p.branch-label') as HTMLElement | null)?.hidden === false;
     });
 
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Dock"]').getAttribute('aria-selected')).toBe(
@@ -820,7 +829,7 @@ describe('Terminals on the grouped worktrees', () => {
     killShell(dockTerminal);
     await waitFor(() => {
       fixture.detectChanges();
-      return fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim() === 'Worktrees';
+      return (fixture.nativeElement.querySelector('p.branch-label') as HTMLElement | null)?.hidden === false;
     });
 
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
@@ -829,7 +838,7 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
   });
 
-  it('keeps the grouped list and shows the chosen worktree selected in white on the app settings sidebar color', async () => {
+  it('keeps the grouped list and shows the chosen worktree on a light selected row', async () => {
     const { quay } = registerPair(roots);
     writeFileSync(
       process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
@@ -863,11 +872,59 @@ describe('Terminals on the grouped worktrees', () => {
     expect(groupNames(fixture)).toEqual(['Pier', 'Quay']);
     expect(feature.getAttribute('aria-selected')).toBe('true');
     expect(feature.classList.contains('is-selected')).toBe(true);
-    expect(getComputedStyle(feature).color).toBe('rgb(255, 255, 255)');
-    expect(getComputedStyle(feature).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(feature).backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(feature).color).toBe('rgb(6, 95, 70)');
     const quayRow = terminalsWorktree(fixture, 'Quay', 'master');
     expect(quayRow.getAttribute('aria-selected')).toBe('false');
     expect(quayRow.classList.contains('is-selected')).toBe(false);
+  });
+
+  it('selects the last chosen worktree again after switching repository tabs', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    const featureTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).toBeNull();
+    const settingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '';
+    expect(readFileSync(settingsPath, 'utf8')).not.toContain('feature');
+
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(terminalsWorktree(fixture, 'Pier', 'feature').getAttribute('aria-selected')).toBe('true');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id')).toBe(featureTerminal);
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-heading"]')).toBeNull();
+
+    fixture.destroy();
+    fixtures.splice(fixtures.indexOf(fixture), 1);
+    const again = await renderLive();
+    again.nativeElement.querySelector('[data-testid="terminals"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    again.detectChanges();
+    expect(again.nativeElement.querySelector('[data-testid="terminals-worktree"].is-selected')).toBeNull();
   });
 
   it('shows only the chosen worktree terminal section, maximized, with the branch heading, changes, and commits hidden', async () => {
@@ -1164,7 +1221,7 @@ describe('Terminals on the grouped worktrees', () => {
 
     clickIcon(fixture, 'terminal-kill');
 
-    expect(fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim()).toBe('Terminals');
+    expect((fixture.nativeElement.querySelector('p.branch-label') as HTMLElement).hidden).toBe(true);
     expect(groupNames(fixture)).toEqual(['Quay']);
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-worktree"][data-branch="feature"]')).toBeNull();
     expect(terminalsCount(fixture)).toBe('1');

@@ -2470,7 +2470,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') {
       current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
+    const leavingTerminals = this.terminalsOpen();
+    if (leavingTerminals) {
+      this.terminalsOpen.set(false);
+    }
     if (this.effectivePath() === path) {
+      if (leavingTerminals) {
+        this.applyOpenRepositoryAppearance();
+      }
       return;
     }
     const tab = this.repositoryTabs().find((item) => item.path === path);
@@ -4999,6 +5006,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private finishChoose(name: string, path: string | null): void {
+    if (this.terminalsOpen()) {
+      this.terminalsOpen.set(false);
+    }
     const leaving = this.effectivePath();
     if (leaving !== null && leaving !== path) {
       this.rememberWorkspace(leaving);

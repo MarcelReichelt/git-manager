@@ -546,6 +546,87 @@ describe('Terminals on the grouped worktrees', () => {
     expect(new Set(groups.map((group) => group.getAttribute('data-path')))).toEqual(new Set([east, west]));
     expect(groups[0].getAttribute('data-path')).toBe(firstPath);
   });
+
+  it('shows the chosen repository tab workspace and leaves Terminals', async () => {
+    const { quay } = registerPair(roots);
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      '{"sidebarColor":"#065f46","sidebarText":"white","terminalRowHeight":180}\n',
+    );
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-worktree-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "black"', ''].join('\n'),
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    expect(terminalRowPixels(fixture)).toBe('180');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+    expect(terminalRowPixels(fixture)).toBe('180');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(255, 255, 255)');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(terminalRowPixels(fixture)).toBe('180');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('aside')).color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('leaves Terminals when a registered repository is opened from the card', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-branch="master"]')).not.toBeNull();
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
@@ -604,6 +685,12 @@ function terminalsHoverRule(): boolean {
     }
   }
   return false;
+}
+
+function terminalRowPixels(fixture: ComponentFixture<WorkspaceComponent>): string {
+  const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement | null;
+  const match = /(\d+)px\s*$/.exec(body?.style.gridTemplateRows ?? '');
+  return match?.[1] ?? '';
 }
 
 function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {

@@ -970,7 +970,11 @@ button, input { font: inherit; color: inherit; }
             <button
               type="button"
               data-testid="terminals"
+              [class.is-idle]="terminalsTotal() === 0"
               [attr.aria-label]="terminalsTotal() + ' terminals'"
+              [attr.aria-selected]="terminalsOpen()"
+              (click)="openTerminals($event)"
+              (keydown)="onTerminalsKeydown($event)"
             >
               <span data-testid="terminals-prompt" aria-hidden="true">&gt;</span>
               <span data-testid="terminals-count">{{ terminalsTotal() }}</span>
@@ -2052,6 +2056,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly tmuxSessionRecords = signal<TmuxSessionRecord[]>([]);
   readonly overlayOpen = signal(false);
   readonly repositoryTabs = signal<RepositoryTab[]>([]);
+  readonly terminalsOpen = signal(false);
   private tabToReveal: string | null = null;
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly openBranch = signal<string | null>(null);
@@ -2738,6 +2743,21 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   terminalsTotal(): number {
     return 0;
+  }
+
+  openTerminals(event: Event): void {
+    if (this.terminalsTotal() === 0 || this.terminalsOpen()) {
+      event.preventDefault();
+      return;
+    }
+  }
+
+  onTerminalsKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    event.preventDefault();
+    this.openTerminals(event);
   }
 
   terminalCount(name: string): number {

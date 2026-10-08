@@ -137,7 +137,50 @@ describe('Terminals on the grouped worktrees', () => {
     expect(getComputedStyle(count).color).toBe('rgb(255, 255, 255)');
     expect(chip.getAttribute('aria-label')).toBe('0 terminals');
   });
+
+  it('keeps a zero Terminals count visible, dimmed, and inert', async () => {
+    const repoPath = createRepository(roots);
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    const chip = fixture.nativeElement.querySelector('[data-testid="terminals"]') as HTMLButtonElement;
+
+    expect(chip.querySelector('[data-testid="terminals-count"]').textContent.trim()).toBe('0');
+    expect(getComputedStyle(chip).opacity).toBe('0.4');
+    expect(getComputedStyle(chip).cursor).toBe('default');
+    expect(terminalsHoverRule()).toBe(false);
+
+    chip.click();
+    chip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    chip.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(chip.getAttribute('aria-selected')).not.toBe('true');
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
+  });
 });
+
+function terminalsHoverRule(): boolean {
+  for (const sheet of document.styleSheets) {
+    let rules: CSSRuleList | undefined;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      rules = undefined;
+    }
+    if (!rules) {
+      continue;
+    }
+    for (const rule of rules) {
+      if (!(rule instanceof CSSStyleRule)) {
+        continue;
+      }
+      if (rule.selectorText.includes('terminals') && rule.selectorText.includes(':hover')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 function createRepository(roots: string[]): string {
   const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-terminals-'));

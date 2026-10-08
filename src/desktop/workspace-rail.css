@@ -61,6 +61,11 @@
   color: #ffffff;
 }
 
+[data-testid='terminals'].is-idle {
+  opacity: 0.4;
+  cursor: default;
+}
+
 [data-testid='app-settings'] svg {
   display: block;
 }

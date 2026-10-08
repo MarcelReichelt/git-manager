@@ -937,6 +937,92 @@ describe('Terminals on the grouped worktrees', () => {
     expect(menu).not.toBeNull();
     expect(menu.querySelector('[data-testid="terminal-rename"]')?.textContent?.trim()).toBe('Rename');
   });
+
+  it('uses the app settings terminal background, terminal foreground, and terminal font', async () => {
+    registerPair(roots);
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      `${JSON.stringify({
+        terminalBackground: '#065f46',
+        terminalForeground: '#ffffff',
+        terminalFont: 'JetBrains Mono',
+      })}\n`,
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await waitFor(() => fixture.nativeElement.querySelector('.xterm-scrollable-element') !== null);
+    fixture.detectChanges();
+
+    const pane = fixture.nativeElement.querySelector('[data-testid="content-sheet"] [data-testid="terminal-pane"]') as HTMLElement;
+    expect(pane.getAttribute('style') ?? '').toMatch(/background-color:\s*(#065f46|rgb\(6,\s*95,\s*70\))/);
+    const surface = pane.querySelector('.xterm-scrollable-element') as HTMLElement;
+    expect(surface.style.backgroundColor).toBe('rgb(6, 95, 70)');
+    const styles = [...pane.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    expect(styles).toContain('.xterm-rows { pointer-events: none; color: #ffffff;');
+    expect(styles).toContain('font-family: JetBrains Mono, monospace;');
+  });
+
+  it('leaves the repository tab selected branch and terminal section height unchanged', async () => {
+    registerPair(roots);
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      '{"terminalRowHeight":180}\n',
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+    expect(terminalRowPixels(fixture)).toBe('180');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(terminalRowPixels(fixture)).toBe('180');
+
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(terminalRowPixels(fixture)).toBe('180');
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('feature');
+    expect(terminalRowPixels(fixture)).toBe('180');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe(
+      'Maximize terminal',
+    );
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

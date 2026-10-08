@@ -1370,6 +1370,7 @@ button, input { font: inherit; color: inherit; }
               }
               <div class="terminal-row" data-testid="terminal-row">
                 <div class="terminal-chrome" data-testid="terminal-header">
+                  @if (!terminalsOpen()) {
                   <button
                     type="button"
                     data-testid="terminal-collapse"
@@ -1384,6 +1385,7 @@ button, input { font: inherit; color: inherit; }
                       }
                     </svg>
                   </button>
+                  }
                   @if (!terminalExpanded() && terminalCount(selectedBranchName() ?? '') > 0) {
                     <span data-testid="terminal-running-count">{{ terminalCount(selectedBranchName() ?? '') }}</span>
                   }
@@ -1480,6 +1482,7 @@ button, input { font: inherit; color: inherit; }
                       <path fill="currentColor" d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z" />
                     </svg>
                   </button>
+                  @if (!terminalsOpen()) {
                   <button
                     type="button"
                     class="terminal-icon"
@@ -1496,6 +1499,7 @@ button, input { font: inherit; color: inherit; }
                       }
                     </svg>
                   </button>
+                  }
                   <button
                     type="button"
                     class="terminal-icon"

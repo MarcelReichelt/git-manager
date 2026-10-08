@@ -905,6 +905,38 @@ describe('Terminals on the grouped worktrees', () => {
     expect(sheet.querySelector(`[data-testid="terminal-pane"][data-terminal-id="${quayTerminal}"]`)).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
   });
+
+  it('offers terminal tabs, New, Split, Kill, Rename, and the terminal menu, without Collapse or Restore', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.querySelector('[data-testid="terminal-tab"]')).not.toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-new"]')).not.toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-kill"]')).not.toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-collapse"]')).toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-maximize"]')).toBeNull();
+
+    const tab = sheet.querySelector('[data-testid="terminal-tab"]') as HTMLElement;
+    tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    fixture.detectChanges();
+
+    const menu = fixture.nativeElement.querySelector('[data-testid="terminal-menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu.querySelector('[data-testid="terminal-rename"]')?.textContent?.trim()).toBe('Rename');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

@@ -1343,6 +1343,18 @@ button, input { font: inherit; color: inherit; }
             </div>
             }
             @if (showTerminalRow()) {
+              <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
+            }
+            </div>
+          } @else {
+            <p class="empty-sheet">Select a branch</p>
+          }
+          } @else if (terminalsWorktree()) {
+            <div #sheetBody class="sheet-body" [style.grid-template-rows]="'minmax(0, 1fr)'">
+              <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
+            </div>
+          }
+          <ng-template #worktreeTerminalSection>
               @if (terminalExpanded() && !terminalMaximized()) {
                 <div
                   class="splitter"
@@ -1372,8 +1384,8 @@ button, input { font: inherit; color: inherit; }
                       }
                     </svg>
                   </button>
-                  @if (!terminalExpanded() && terminalCount(branch.name) > 0) {
-                    <span data-testid="terminal-running-count">{{ terminalCount(branch.name) }}</span>
+                  @if (!terminalExpanded() && terminalCount(selectedBranchName() ?? '') > 0) {
+                    <span data-testid="terminal-running-count">{{ terminalCount(selectedBranchName() ?? '') }}</span>
                   }
                   <div class="terminal-tabs" role="tablist">
                     @for (tab of terminalTabs(); track tab.id; let index = $index) {
@@ -1584,12 +1596,7 @@ button, input { font: inherit; color: inherit; }
                   (paneFocus)="focusTerminal(tab.id, terminal.id)"
                 />
               </ng-template>
-            }
-            </div>
-          } @else {
-            <p class="empty-sheet">Select a branch</p>
-          }
-          }
+          </ng-template>
         </section>
       </main>
       @if (overlayOpen()) {
@@ -2187,9 +2194,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly commitFileWidth = signal(this.initialSettings.commitFileWidth);
   readonly terminalRowHeight = signal(this.initialSettings.terminalRowHeight);
   private readonly terminalSectionByBranch = signal<Record<string, TerminalSection>>({});
-  readonly terminalExpanded = computed(() => this.sectionFor(this.selectedBranchName()) !== 'collapsed');
+  readonly terminalExpanded = computed(() => {
+    if (this.terminalsOpen() && this.terminalsWorktree()) {
+      return true;
+    }
+    return this.sectionFor(this.selectedBranchName()) !== 'collapsed';
+  });
   private arrangedTerminalRowHeight = this.initialSettings.terminalRowHeight;
-  readonly terminalMaximized = computed(() => this.sectionFor(this.selectedBranchName()) === 'maximized');
+  readonly terminalMaximized = computed(() => {
+    if (this.terminalsOpen() && this.terminalsWorktree()) {
+      return true;
+    }
+    return this.sectionFor(this.selectedBranchName()) === 'maximized';
+  });
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
@@ -2217,6 +2234,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     apply: (value: number) => void;
   } | null = null;
   readonly terminalState = computed(() => {
+    const chosen = this.terminalsOpen() ? this.terminalsWorktree() : null;
+    if (chosen) {
+      this.storedTerminalEpoch();
+      this.terminalsByBranch();
+      return this.readBranchTerminals(chosen.path, chosen.branch);
+    }
     const branch = this.selectedBranchName();
     if (!branch) {
       return emptyTerminals();
@@ -4443,6 +4466,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private storeBranch(branch: string, state: WorktreeTerminalView): void {
     this.terminalsByBranch.update((current) => ({ ...current, [branch]: state }));
+  }
+
+  private readBranchTerminals(path: string, branch: string): WorktreeTerminalView {
+    if (path === this.effectivePath()) {
+      return this.terminalsByBranch()[branch] ?? emptyTerminals();
+    }
+    return this.repositoryWorkspaces.get(path)?.terminalsByBranch[branch] ?? emptyTerminals();
   }
 
   private updateSelected(change: (state: WorktreeTerminalView) => WorktreeTerminalView): void {

@@ -869,6 +869,42 @@ describe('Terminals on the grouped worktrees', () => {
     expect(quayRow.getAttribute('aria-selected')).toBe('false');
     expect(quayRow.classList.contains('is-selected')).toBe(false);
   });
+
+  it('shows only the chosen worktree terminal section, maximized, with the branch heading, changes, and commits hidden', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    const featureTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+    expect(featureTerminal).not.toBe('');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    const quayTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
+    expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
+    expect(sheet.querySelector('[data-testid="terminal-split"]')).toBeNull();
+    expect((sheet.querySelector('.sheet-body') as HTMLElement).style.gridTemplateRows).toBe('minmax(0, 1fr)');
+    expect(sheet.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id')).toBe(featureTerminal);
+    expect(sheet.querySelector(`[data-testid="terminal-pane"][data-terminal-id="${quayTerminal}"]`)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

@@ -3807,6 +3807,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
 
@@ -4094,6 +4096,8 @@ describe('desktop workspace', () => {
       '[data-testid="branch-row"][data-branch="rewrite"]',
     );
     expect(rewrite.getAttribute('data-status')).toBe('local-only');
+    rewrite.click();
+    fixture.detectChanges();
     expect(rewrite.querySelector('[data-testid="changed-file-count"]').textContent.trim()).toBe('1');
     expect(rewrite.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('2');
     expect(rewrite.querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
@@ -4936,6 +4940,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
@@ -4990,6 +4996,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
@@ -5051,6 +5059,8 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.click();
+    fixture.detectChanges();
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
@@ -7605,6 +7615,8 @@ describe('desktop workspace', () => {
     expect(featureRow().querySelector('[data-testid="changed-file-count"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="ahead"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+    featureRow().click();
+    fixture.detectChanges();
 
     writeFileSync(join(feature, 'notes.txt'), 'hello\n');
     await untilVisible(fixture, (root) => {
@@ -7653,6 +7665,8 @@ describe('desktop workspace', () => {
     expect(featureRow().getAttribute('data-status')).toBe('local-and-remote');
     expect(featureRow().querySelector('[data-testid="ahead"]').textContent.trim()).toBe('0');
     expect(featureRow().querySelector('[data-testid="behind"]').textContent.trim()).toBe('0');
+    featureRow().click();
+    fixture.detectChanges();
 
     git(feature, ['commit', '--allow-empty', '-m', 'local only']);
     await untilVisible(
@@ -7814,7 +7828,7 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['branch', '--list', 'notes'])).toBe('notes');
   });
 
-  it('refreshes the worktree list in the same order as a fresh read', async () => {
+  it('refreshes the default branch and the selected worktree, and leaves the others as they were', async () => {
     const repoPath = createEmptyRepository(roots);
     const feature = join(repoPath, '.workspaces', 'feature');
     const zeta = join(repoPath, '.workspaces', 'zeta');
@@ -7831,15 +7845,40 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
 
     writeFileSync(join(zeta, 'notes.txt'), 'newer\n');
+    const started = Date.now();
+    while (Date.now() - started < 800) {
+      fixture.detectChanges();
+      expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
+      expect(
+        fixture.nativeElement.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]').textContent.trim(),
+      ).toBe('0');
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+
+    fixture.nativeElement.querySelector('[data-branch="zeta"]').click();
     await untilVisible(fixture, (root) => {
       const names = [...root.querySelectorAll('[data-testid="branch-row"]')].map(
         (row) => row.getAttribute('data-branch') ?? '',
       );
-      return names.join(',') === 'master,zeta,feature';
+      return (
+        names.join(',') === 'master,zeta,feature' &&
+        root.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]')?.textContent?.trim() === '1'
+      );
     });
 
-    expect(branchNames(fixture)).toEqual(['master', 'zeta', 'feature']);
     expect(branchNames(fixture)).toEqual(listWorktreeBranches(repoPath).map((branch) => branch.name));
+
+    writeFileSync(join(repoPath, 'local.txt'), 'on master\n');
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-branch="master"] [data-testid="changed-file-count"]')?.textContent?.trim() === '1',
+    );
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="zeta"] [data-testid="changed-file-count"]').textContent.trim(),
+    ).toBe('1');
+    expect(
+      fixture.nativeElement.querySelector('[data-branch="feature"] [data-testid="changed-file-count"]').textContent.trim(),
+    ).toBe('0');
   });
 
   it('keeps ahead and behind on the remote state already fetched', async () => {
@@ -7870,6 +7909,8 @@ describe('desktop workspace', () => {
     git(otherPath, ['add', 'remote.txt']);
     git(otherPath, ['commit', '-m', 'remote only']);
     git(otherPath, ['push', 'origin', 'feature']);
+    featureRow().click();
+    fixture.detectChanges();
     writeFileSync(join(feature, 'local.txt'), 'local\n');
     await untilVisible(
       fixture,

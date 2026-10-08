@@ -2220,6 +2220,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private gitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private gitWatchGeneration = 0;
   private gitWatchActive = false;
+  private gitWatchCheckouts: { path: string; measured: boolean; primary: boolean }[] = [];
+  private readonly worktreeChangedAt = new Map<string, Map<string, number>>();
   private paneSplitDrag: {
     pointerId: number;
     startX: number;
@@ -2476,6 +2478,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.terminalsWorktree.set(null);
     }
     this.repositoryWorkspaces.delete(path);
+    this.worktreeChangedAt.delete(path);
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
     if (this.terminalsOpen() && this.terminalsReturnPath() === path) {
@@ -2839,6 +2842,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.contentLoading.set(true);
     this.runWhenPainted(() => {
       try {
+        this.refreshBranches();
         this.loadBranchContent(name);
         this.contentLoading.set(false);
       } catch (error) {
@@ -4274,7 +4278,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         void createWorktree(repo, branchName).then(
           () => {
             this.zone.run(() => {
-              this.refreshBranches();
+              this.refreshBranches([branchName]);
               this.createDialogOpen.set(false);
               this.createBranchName.set('');
               this.creatingWorktree.set(false);
@@ -4309,7 +4313,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.runWhenPainted(() => {
       try {
         action();
-        this.refreshBranches();
+        this.refreshBranches(effect === 'remove' ? [] : [name]);
         if (effect === 'remove') {
           if (selected === name) {
             this.clearBranchSelection();
@@ -4577,6 +4581,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const result = withoutTerminal(state, tabId, terminalId);
     this.writeBranchTerminals(repo, branch, result.state);
     stopTerminal(terminal);
+    this.rememberTmuxSessions();
     if (repo === this.effectivePath()) {
       this.collapseIfEmpty(branch, result.state);
     }
@@ -4607,6 +4612,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     for (const terminal of result.removed) {
       stopTerminal(terminal);
     }
+    this.rememberTmuxSessions();
     if (repo === this.effectivePath()) {
       this.collapseIfEmpty(branch, result.state);
     }
@@ -4934,7 +4940,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.closeTerminalMenu();
   }
 
-  private refreshBranches(): void {
+  private refreshBranches(also: readonly string[] = []): void {
     const path = this.effectivePath();
     if (path === null) {
       this.pinnedWorktrees.set([]);
@@ -4942,8 +4948,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.clearGitWatch();
       return;
     }
+    const measure = this.branchesToMeasure(also);
     withWorktreeList(path, () => {
-      const opened = readOpenBranches(path);
+      const opened = readOpenBranches(path, {
+        branches: measure,
+        changedAt: this.worktreeChangedAt.get(path),
+      });
+      this.worktreeChangedAt.set(path, new Map(opened.changedAt));
       if (opened.primaryBranch !== this.primaryBranchName()) {
         this.primaryBranchName.set(opened.primaryBranch);
       }
@@ -4951,18 +4962,32 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.pinnedWorktrees.set([...opened.pinned]);
       }
       this.claimOldSessions(path, opened.rows);
-      const next = opened.worktrees.map((branch) => ({
-        name: branch.name,
-        status: branch.status,
-        changedFileCount: branch.changedFileCount,
-        ahead: branch.ahead,
-        behind: branch.behind,
-      }));
+      const measured = new Set(measure);
+      const previous = new Map(this.realBranches().map((branch) => [branch.name, branch]));
+      const next = opened.worktrees.map((branch) => {
+        const prior = previous.get(branch.name);
+        if (!prior || measured.has(branch.name)) {
+          return {
+            name: branch.name,
+            status: branch.status,
+            changedFileCount: branch.changedFileCount,
+            ahead: branch.ahead,
+            behind: branch.behind,
+          };
+        }
+        return {
+          name: branch.name,
+          status: branch.status,
+          changedFileCount: prior.changedFileCount,
+          ahead: prior.ahead,
+          behind: prior.behind,
+        };
+      });
       if (!sameWorktreeRows(this.realBranches(), next)) {
         this.realBranches.set(next);
       }
       this.rememberTmuxSessions();
-      this.syncGitWatch(opened.checkouts);
+      this.syncGitWatch(opened.paths, measure, opened.primaryPath);
       try {
         this.refreshSelectedWorktreeContent();
       } catch {
@@ -5104,14 +5129,49 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return { commits, complete };
   }
 
-  private syncGitWatch(checkouts: readonly string[]): void {
+  private branchesToMeasure(also: readonly string[]): string[] {
+    const names = new Set<string>(also);
+    const base = this.defaultBranchName();
+    const selected = this.selectedBranchName();
+    if (base !== undefined) {
+      names.add(base);
+    }
+    if (selected !== null) {
+      names.add(selected);
+    }
+    return [...names];
+  }
+
+  private syncGitWatch(
+    paths: ReadonlyMap<string, string>,
+    measured: readonly string[],
+    primaryPath: string | undefined,
+  ): void {
     const path = this.effectivePath();
     if (path === null) {
       this.clearGitWatch();
       return;
     }
     this.gitWatchActive = true;
-    const wanted = new Set(outermostDirectories(checkouts));
+    const measuredSet = new Set(measured);
+    this.gitWatchCheckouts = [...paths.entries()].map(([branch, checkout]) => ({
+      path: checkout,
+      measured: measuredSet.has(branch),
+      primary: primaryPath !== undefined && checkout === primaryPath,
+    }));
+    if (
+      primaryPath !== undefined &&
+      !this.gitWatchCheckouts.some((checkout) => checkout.path === primaryPath)
+    ) {
+      this.gitWatchCheckouts.push({ path: primaryPath, measured: false, primary: true });
+    }
+    const wanted = new Set(
+      outermostDirectories(
+        this.gitWatchCheckouts
+          .filter((checkout) => checkout.measured || checkout.primary)
+          .map((checkout) => checkout.path),
+      ),
+    );
     for (const [dir, watcher] of this.gitWatchers) {
       if (!wanted.has(dir)) {
         this.closeGitWatcher(dir, watcher);
@@ -5122,7 +5182,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         continue;
       }
       try {
-        const watcher = watch(dir, { recursive: true }, () => {
+        const watcher = watch(dir, { recursive: true }, (_event, filename) => {
+          const name =
+            typeof filename === 'string' ? filename : filename instanceof Buffer ? filename.toString('utf8') : null;
+          if (name !== null && this.gitEventIsIgnored(dir, name)) {
+            return;
+          }
           this.scheduleLocalGitRefresh();
         });
         watcher.on('error', () => {
@@ -5161,6 +5226,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     });
   }
 
+  private gitEventIsIgnored(root: string, filename: string): boolean {
+    const absolute = resolve(root, filename);
+    let match: { path: string; measured: boolean; primary: boolean } | undefined;
+    for (const checkout of this.gitWatchCheckouts) {
+      if (absolute === checkout.path || absolute.startsWith(`${checkout.path}${sep}`)) {
+        if (!match || checkout.path.length > match.path.length) {
+          match = checkout;
+        }
+      }
+    }
+    if (!match || match.measured) {
+      return false;
+    }
+    if (match.primary && this.pathIsGitMetadata(match.path, absolute)) {
+      return false;
+    }
+    return true;
+  }
+
+  private pathIsGitMetadata(checkout: string, absolute: string): boolean {
+    const gitDir = `${checkout}${sep}.git`;
+    return absolute === gitDir || absolute.startsWith(`${gitDir}${sep}`);
+  }
+
   private closeGitWatcher(dir: string, watcher: FSWatcher): void {
     this.gitWatchers.delete(dir);
     try {
@@ -5172,6 +5261,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private clearGitWatch(): void {
     this.gitWatchActive = false;
+    this.gitWatchCheckouts = [];
     this.gitWatchGeneration += 1;
     if (this.gitRefreshTimer !== null) {
       clearTimeout(this.gitRefreshTimer);

@@ -2487,6 +2487,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const next = remaining[index] ?? remaining[index - 1];
     if (!next) {
       this.terminalsOpen.set(false);
+      this.terminalsWorktree.set(null);
       this.selectedName.set(null);
       this.openedPath.set(null);
       this.overlayOpen.set(false);
@@ -2513,6 +2514,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private leaveTerminals(): void {
     this.terminalsOpen.set(false);
+    this.terminalsWorktree.set(null);
     const tabs = this.repositoryTabs();
     const remembered = this.terminalsReturnPath();
     const rememberedTab = remembered === null ? undefined : tabs.find((tab) => tab.path === remembered);
@@ -2547,6 +2549,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const leavingTerminals = this.terminalsOpen();
     if (leavingTerminals) {
       this.terminalsOpen.set(false);
+      this.terminalsWorktree.set(null);
     }
     if (this.effectivePath() === path) {
       if (leavingTerminals) {
@@ -3019,20 +3022,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   killTabFromButton(event: MouseEvent, tabId: string): void {
     event.preventDefault();
     event.stopPropagation();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!branch) {
       return;
     }
     if (this.renaming()?.tabId === tabId) {
       this.renaming.set(null);
     }
-    this.removeTab(branch, tabId);
+    this.removeTab(branch, tabId, chosen?.path);
   }
 
   killPaneFromButton(event: MouseEvent, tabId: string, terminalId: string): void {
     event.preventDefault();
     event.stopPropagation();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!branch) {
       return;
     }
@@ -3040,7 +3045,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (renaming?.tabId === tabId && renaming.terminalId === terminalId) {
       this.renaming.set(null);
     }
-    this.removeTerminal(branch, tabId, terminalId);
+    this.removeTerminal(branch, tabId, terminalId, chosen?.path);
   }
 
   focusTerminal(tabId: string, terminalId: string): void {
@@ -3235,15 +3240,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   killFromMenu(): void {
     const menu = this.terminalMenu();
-    const branch = this.selectedBranchName();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
     if (!menu || !branch) {
       return;
     }
     if (menu.terminalId === null) {
-      this.removeTab(branch, menu.tabId);
+      this.removeTab(branch, menu.tabId, chosen?.path);
       return;
     }
-    this.removeTerminal(branch, menu.tabId, menu.terminalId);
+    this.removeTerminal(branch, menu.tabId, menu.terminalId, chosen?.path);
   }
 
   splitFromMenu(): void {
@@ -4559,6 +4565,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.collapseIfEmpty(branch, result.state);
     }
     this.releaseChosenWorktree(repo, branch, result.state);
+    this.leaveTerminalsIfCountReachesZero();
     this.closeTerminalMenu();
   }
 
@@ -4573,17 +4580,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.terminalsWorktree.set(null);
   }
 
-  private removeTab(branch: string, tabId: string): void {
-    const state = this.terminalsByBranch()[branch];
-    if (!state) {
+  private removeTab(branch: string, tabId: string, path?: string): void {
+    const repo = path ?? this.effectivePath();
+    if (!repo) {
       return;
     }
+    const state = this.readBranchTerminals(repo, branch);
     const result = withoutTab(state, tabId);
-    this.storeBranch(branch, result.state);
+    this.writeBranchTerminals(repo, branch, result.state);
     for (const terminal of result.removed) {
       stopTerminal(terminal);
     }
-    this.collapseIfEmpty(branch, result.state);
+    if (repo === this.effectivePath()) {
+      this.collapseIfEmpty(branch, result.state);
+    }
+    this.releaseChosenWorktree(repo, branch, result.state);
+    this.leaveTerminalsIfCountReachesZero();
     this.closeTerminalMenu();
   }
 
@@ -4638,6 +4650,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
                 }
               }
               this.storedTerminalEpoch.update((value) => value + 1);
+            }
+            const chosen = this.terminalsWorktree();
+            if (chosen) {
+              this.releaseChosenWorktree(
+                chosen.path,
+                chosen.branch,
+                this.readBranchTerminals(chosen.path, chosen.branch),
+              );
             }
             this.leaveTerminalsIfCountReachesZero();
           });
@@ -5168,6 +5188,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private finishChoose(name: string, path: string | null): void {
     if (this.terminalsOpen()) {
       this.terminalsOpen.set(false);
+      this.terminalsWorktree.set(null);
     }
     const leaving = this.effectivePath();
     if (leaving !== null && leaving !== path) {

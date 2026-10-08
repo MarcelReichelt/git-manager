@@ -1174,6 +1174,41 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-worktree"][aria-selected="true"]')).toBeNull();
     expect(terminalsWorktree(fixture, 'Quay', 'master').getAttribute('aria-selected')).toBe('false');
   });
+
+  it('returns to the remembered repository tab when the last terminal ends', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    expect(branchTerminalCount(fixture, 'master')).toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    clickIcon(fixture, 'terminal-kill');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim()).toBe('Worktrees');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(terminalsCount(fixture)).toBe('0');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {

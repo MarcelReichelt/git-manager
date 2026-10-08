@@ -828,6 +828,47 @@ describe('Terminals on the grouped worktrees', () => {
     );
     expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
   });
+
+  it('keeps the grouped list and shows the chosen worktree selected in white on the app settings sidebar color', async () => {
+    const { quay } = registerPair(roots);
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      '{"sidebarColor":"#065f46","sidebarText":"black"}\n',
+    );
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-worktree-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "white"', ''].join('\n'),
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    const feature = terminalsWorktree(fixture, 'Pier', 'feature');
+    feature.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
+    expect(groupNames(fixture)).toEqual(['Pier', 'Quay']);
+    expect(feature.getAttribute('aria-selected')).toBe('true');
+    expect(feature.classList.contains('is-selected')).toBe(true);
+    expect(getComputedStyle(feature).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(feature).backgroundColor).toBe('rgb(6, 95, 70)');
+    const quayRow = terminalsWorktree(fixture, 'Quay', 'master');
+    expect(quayRow.getAttribute('aria-selected')).toBe('false');
+    expect(quayRow.classList.contains('is-selected')).toBe(false);
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
@@ -892,6 +933,15 @@ function terminalRowPixels(fixture: ComponentFixture<WorkspaceComponent>): strin
   const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement | null;
   const match = /(\d+)px\s*$/.exec(body?.style.gridTemplateRows ?? '');
   return match?.[1] ?? '';
+}
+
+function terminalsWorktree(fixture: ComponentFixture<WorkspaceComponent>, repository: string, branch: string): HTMLElement {
+  const group = fixture.nativeElement.querySelector(`[data-testid="terminals-group"][data-name="${repository}"]`);
+  const row = group?.querySelector(`[data-testid="terminals-worktree"][data-branch="${branch}"]`);
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`${repository} ${branch} is not in the grouped list`);
+  }
+  return row;
 }
 
 function groupNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {

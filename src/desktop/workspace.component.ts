@@ -1030,7 +1030,13 @@ button, input { font: inherit; color: inherit; }
                   <p data-testid="terminals-group-name">{{ group.name }}</p>
                   <ul>
                     @for (row of group.rows; track row.name) {
-                      <li data-testid="terminals-worktree" [attr.data-branch]="row.name">
+                      <li
+                        data-testid="terminals-worktree"
+                        [class.is-selected]="isTerminalsWorktree(group.path, row.name)"
+                        [attr.aria-selected]="isTerminalsWorktree(group.path, row.name)"
+                        [attr.data-branch]="row.name"
+                        (click)="chooseTerminalsWorktree(group.path, row.name)"
+                      >
                         <span class="branch-name">{{ row.name }}</span>
                         <span
                           class="terminal-count"
@@ -2103,6 +2109,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return rows.length > 0 ? [{ path: tab.path, name: tab.name, rows }] : [];
     });
   });
+  readonly terminalsWorktree = signal<{ path: string; branch: string } | null>(null);
   private readonly terminalsReturnPath = signal<string | null>(null);
   private readonly storedTerminalEpoch = signal(0);
   private tabToReveal: string | null = null;
@@ -2862,6 +2869,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       );
     }
     return total;
+  }
+
+  isTerminalsWorktree(path: string, branch: string): boolean {
+    const chosen = this.terminalsWorktree();
+    return chosen !== null && chosen.path === path && chosen.branch === branch;
+  }
+
+  chooseTerminalsWorktree(path: string, branch: string): void {
+    this.terminalsWorktree.set({ path, branch });
   }
 
   chooseTerminals(event: Event): void {

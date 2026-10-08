@@ -201,6 +201,14 @@ aside {
   height: 36px;
   margin: 0 0 4px;
   padding: 0 8px;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+}
+
+[data-testid='terminals-worktree'].is-selected {
+  background-color: var(--forest);
+  color: #ffffff;
 }
 
 ul { margin: 0; padding: 0; list-style: none; }

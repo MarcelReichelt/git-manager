@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -381,6 +381,71 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-menu"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab-menu"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-menu"]')).toBeNull();
+  });
+
+  it('selects the last repository tab on the next launch and leaves Terminals unselected', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
+
+    fixture.destroy();
+    fixtures.splice(fixtures.indexOf(fixture), 1);
+
+    const again = await renderLive();
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(again.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(again.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(again.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
+  });
+
+  it('shows Terminals in the app settings colors with an empty content sheet', async () => {
+    const { quay } = registerPair(roots);
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      '{"sidebarColor":"#065f46","sidebarText":"black","contentColor":"#abcdef"}\n',
+    );
+    mkdirSync(join(quay, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(quay, '.git-worktree-manager', 'config.toml'),
+      ['[appearance]', 'sidebar_color = "#123456"', 'sidebar_text = "white"', ''].join('\n'),
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    const aside = fixture.nativeElement.querySelector('aside');
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]');
+    expect(aside.querySelector('p.branch-label span').textContent.trim()).toBe('Terminals');
+    expect(aside.querySelector('[data-testid="repository-settings"]')).toBeNull();
+    expect(aside.querySelector('[data-testid="create-worktree"]')).toBeNull();
+    expect(getComputedStyle(aside).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(aside).color).toBe('rgb(0, 0, 0)');
+    expect(getComputedStyle(fixture.nativeElement).backgroundColor).toBe('rgb(6, 95, 70)');
+    expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="window-minimize"]')).color).toBe('rgb(0, 0, 0)');
+    const quayTab = fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]');
+    expect(getComputedStyle(quayTab).backgroundColor).toBe('rgb(18, 52, 86)');
+    expect(getComputedStyle(quayTab).color).toBe('rgb(255, 255, 255)');
+    expect(sheet.textContent.trim()).toBe('');
+    expect(sheet.querySelector('[data-testid="branch-heading"], h2, [data-testid="changes"]')).toBeNull();
+    expect(getComputedStyle(sheet).backgroundColor).toBe('rgb(171, 205, 239)');
   });
 });
 

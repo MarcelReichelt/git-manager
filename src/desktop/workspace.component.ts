@@ -1014,6 +1014,11 @@ button, input { font: inherit; color: inherit; }
           </div>
         </header>
         <aside>
+          @if (terminalsOpen()) {
+            <p class="branch-label">
+              <span>Terminals</span>
+            </p>
+          } @else {
           <p class="branch-label">
             <span>Worktrees</span>
             <gm-repository-settings
@@ -1149,9 +1154,11 @@ button, input { font: inherit; color: inherit; }
               <p data-testid="workspace-error">{{ message }}</p>
             }
           }
+          }
         </aside>
         <section class="content-sheet" data-testid="content-sheet">
-          @if (selectedBranch(); as branch) {
+          @if (terminalsOpen()) {
+          } @else if (selectedBranch(); as branch) {
             @if (contentLoading() && !terminalMaximized()) {
               <p class="empty-sheet" data-testid="content-loading">Loading {{ branch.name }}</p>
             } @else if (!terminalMaximized()) {
@@ -2059,6 +2066,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly overlayOpen = signal(false);
   readonly repositoryTabs = signal<RepositoryTab[]>([]);
   readonly terminalsOpen = signal(false);
+  private readonly terminalsReturnPath = signal<string | null>(null);
   private readonly storedTerminalEpoch = signal(0);
   private tabToReveal: string | null = null;
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -2776,7 +2784,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       event.preventDefault();
       return;
     }
+    this.terminalsReturnPath.set(this.effectivePath());
     this.terminalsOpen.set(true);
+    this.applyOpenRepositoryAppearance();
   }
 
   keepTerminalsMenuClosed(event: MouseEvent): void {
@@ -3860,6 +3870,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   applyOpenRepositoryAppearance(): void {
     const settings = readAppSettings();
+    if (this.terminalsOpen()) {
+      this.paintedSidebarColor.set(settings.sidebarColor);
+      this.paintedSidebarText.set(settings.sidebarText);
+      return;
+    }
     const path = this.effectivePath();
     const own = path === null ? {} : readRepositoryAppearance(path);
     this.paintedSidebarColor.set(own.sidebarColor ?? settings.sidebarColor);

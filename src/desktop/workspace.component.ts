@@ -2440,12 +2440,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.repositoryWorkspaces.delete(path);
     const remaining = tabs.filter((tab) => tab.path !== path);
     this.repositoryTabs.set(remaining);
+    if (this.terminalsReturnPath() === path) {
+      const nextReturn = remaining[index] ?? remaining[index - 1] ?? null;
+      this.terminalsReturnPath.set(nextReturn?.path ?? null);
+    }
     if (this.effectivePath() !== path) {
       this.rememberOpenRepositoryTabs();
+      this.leaveTerminalsIfCountReachesZero();
       return;
     }
     const next = remaining[index] ?? remaining[index - 1];
     if (!next) {
+      this.terminalsOpen.set(false);
       this.selectedName.set(null);
       this.openedPath.set(null);
       this.overlayOpen.set(false);
@@ -2461,6 +2467,41 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.tabToReveal = next.path;
     this.showKeptRepository(next);
     this.rememberOpenRepositoryTabs();
+    this.leaveTerminalsIfCountReachesZero();
+  }
+
+  private leaveTerminalsIfCountReachesZero(): void {
+    if (this.terminalsOpen() && this.terminalsTotal() === 0) {
+      this.leaveTerminals();
+    }
+  }
+
+  private leaveTerminals(): void {
+    this.terminalsOpen.set(false);
+    const tabs = this.repositoryTabs();
+    const remembered = this.terminalsReturnPath();
+    const rememberedTab = remembered === null ? undefined : tabs.find((tab) => tab.path === remembered);
+    const current = this.effectivePath();
+    const currentTab = current === null ? undefined : tabs.find((tab) => tab.path === current);
+    const tab = rememberedTab ?? currentTab;
+    if (!tab) {
+      this.selectedName.set(null);
+      this.openedPath.set(null);
+      this.overlayOpen.set(false);
+      this.openBranch.set(null);
+      this.openingRepository.set(null);
+      this.clearBranchSelection();
+      this.clearTerminals();
+      this.clearGitWatch();
+      this.applyOpenRepositoryAppearance();
+      this.rememberOpenRepositoryTabs();
+      return;
+    }
+    if (this.effectivePath() !== tab.path) {
+      this.showKeptRepository(tab);
+      return;
+    }
+    this.applyOpenRepositoryAppearance();
   }
 
   selectRepositoryTab(path: string, event: Event): void {
@@ -4478,6 +4519,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
               }
               this.storedTerminalEpoch.update((value) => value + 1);
             }
+            this.leaveTerminalsIfCountReachesZero();
           });
         } catch {
           // The next poll retries the terminal inspection.
@@ -5100,7 +5142,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     const paths = this.repositoryTabs().map((tab) => tab.path);
-    const opened = this.openedPath();
+    const opened = this.terminalsOpen() ? this.terminalsReturnPath() : this.openedPath();
     const selectedPath = opened !== null && paths.includes(opened) ? opened : null;
     saveOpenRepositoryTabs(paths, selectedPath, this.appSettingsEnv);
   }

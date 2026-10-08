@@ -674,6 +674,160 @@ describe('Terminals on the grouped worktrees', () => {
     expect(headers).toEqual(['Pier', 'North Quay']);
     expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
   });
+
+  it('removes a closed repository group and returns to the tab on the right when the count reaches 0', async () => {
+    registerGrouped(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    const pierTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Dock');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    const dockTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(terminalsCount(fixture)).toBe('3');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
+    expect(groupNames(fixture)).toEqual(['pier', 'Dock']);
+    expect(terminalsCount(fixture)).toBe('2');
+
+    killShell(pierTerminal);
+    killShell(dockTerminal);
+    await waitFor(() => {
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim() === 'Worktrees';
+    });
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Dock"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="pier"]').getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+  });
+
+  it('returns to the repository tab on the left when the closed tab had no right neighbor', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Quay').querySelector('[data-testid="repository-tab-close"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('false');
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('p.branch-label span').textContent.trim()).toBe('Worktrees');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).toBeNull();
+  });
+
+  it('shows the repository card when the last repository tab is closed from Terminals', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => terminalsCount(fixture) === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'Pier').querySelector('[data-testid="repository-tab-close"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-card"]')).not.toBeNull();
+  });
+
+  it('keeps the return repository tab when a different repository tab is closed', async () => {
+    registerGrouped(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    const quayTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Dock');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    const dockTerminal = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id') ?? '';
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+
+    openRepositoryTabMenu(fixture, 'pier').querySelector('[data-testid="repository-tab-close"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-selected')).toBe('true');
+    expect(groupNames(fixture)).toEqual(['Quay', 'Dock']);
+
+    killShell(quayTerminal);
+    killShell(dockTerminal);
+    await waitFor(() => {
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('p.branch-label span')?.textContent?.trim() === 'Worktrees';
+    });
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+  });
 });
 
 function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string): void {
@@ -738,6 +892,12 @@ function terminalRowPixels(fixture: ComponentFixture<WorkspaceComponent>): strin
   const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement | null;
   const match = /(\d+)px\s*$/.exec(body?.style.gridTemplateRows ?? '');
   return match?.[1] ?? '';
+}
+
+function groupNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  return [...fixture.nativeElement.querySelectorAll('[data-testid="terminals-group"]')].map(
+    (group) => (group as HTMLElement).getAttribute('data-name') ?? '',
+  );
 }
 
 function branchNames(fixture: ComponentFixture<WorkspaceComponent>): string[] {

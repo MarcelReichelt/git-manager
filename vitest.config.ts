@@ -20,6 +20,7 @@ export default defineConfig({
             'tests/desktop-terminal-tabs.test.ts',
             'tests/desktop-terminal-mode.test.ts',
             'tests/desktop-terminal-prefix.test.ts',
+            'tests/desktop-terminals-grouped.test.ts',
             'tests/e2e/**',
             '**/node_modules/**',
             '**/dist/**',
@@ -54,6 +55,7 @@ export default defineConfig({
             'tests/desktop-terminal-tabs.test.ts',
             'tests/desktop-terminal-mode.test.ts',
             'tests/desktop-terminal-prefix.test.ts',
+            'tests/desktop-terminals-grouped.test.ts',
           ],
           setupFiles: ['src/desktop/test-setup.ts'],
           server: {

@@ -21,6 +21,7 @@
 
 [data-testid='repository-tab'],
 [data-testid='open-repository-card'],
+[data-testid='terminals'],
 [data-testid='app-settings'],
 .window-controls button {
   -webkit-app-region: no-drag;
@@ -38,6 +39,13 @@
 [data-testid='app-mark'] {
   display: block;
   flex: none;
+}
+
+[data-testid='terminals'] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
 }
 
 [data-testid='app-settings'] svg {

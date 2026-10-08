@@ -967,6 +967,14 @@ button, input { font: inherit; color: inherit; }
               <circle cx="5.2" cy="12" r="1.6" fill="#ffffff" />
               <circle cx="11.4" cy="8" r="1.6" fill="#ffffff" />
             </svg>
+            <button
+              type="button"
+              data-testid="terminals"
+              [attr.aria-label]="terminalsTotal() + ' terminals'"
+            >
+              <span data-testid="terminals-prompt" aria-hidden="true">&gt;</span>
+              <span data-testid="terminals-count">{{ terminalsTotal() }}</span>
+            </button>
             <div data-testid="repository-tabs">
               @for (tab of repositoryTabs(); track tab.path) {
                 <button
@@ -2728,6 +2736,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
+  terminalsTotal(): number {
+    return 0;
+  }
+
   terminalCount(name: string): number {
     const state = this.terminalsByBranch()[name];
     const remembered = state === undefined ? 0 : state.tabs.reduce((sum, tab) => sum + tab.terminals.length, 0);
@@ -3530,7 +3542,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const element = target instanceof Element ? target : null;
     if (
       element?.closest(
-        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
+        '[data-testid="repository-tab"], [data-testid="open-repository-card"], [data-testid="terminals"], [data-testid="repository-settings"], [data-testid="app-settings"], [data-testid="window-minimize"], [data-testid="window-maximize"], [data-testid="window-close"]',
       )
     ) {
       return;

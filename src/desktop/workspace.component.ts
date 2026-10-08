@@ -2057,6 +2057,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly overlayOpen = signal(false);
   readonly repositoryTabs = signal<RepositoryTab[]>([]);
   readonly terminalsOpen = signal(false);
+  private readonly storedTerminalEpoch = signal(0);
   private tabToReveal: string | null = null;
   private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly openBranch = signal<string | null>(null);
@@ -2742,6 +2743,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   terminalsTotal(): number {
+    this.storedTerminalEpoch();
     const current = this.effectivePath();
     const tabs = this.repositoryTabs();
     if (tabs.length === 0) {
@@ -4380,7 +4382,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.commandPoll = setInterval(() => {
         try {
           const plan = this.planTerminalRefresh();
-          if (plan.sessions === null && plan.terminals === null) {
+          if (plan.sessions === null && plan.terminals === null && plan.stored.length === 0) {
             return;
           }
           this.zone.run(() => {
@@ -4393,6 +4395,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
                 this.setSection(branch, 'collapsed');
               }
             }
+            if (plan.stored.length > 0) {
+              for (const update of plan.stored) {
+                const saved = this.repositoryWorkspaces.get(update.path);
+                if (!saved) {
+                  continue;
+                }
+                saved.terminalsByBranch = update.terminals;
+                if (update.collapsedBranches.length > 0) {
+                  const sections = { ...saved.terminalSectionByBranch };
+                  for (const branch of update.collapsedBranches) {
+                    delete sections[branch];
+                  }
+                  saved.terminalSectionByBranch = sections;
+                }
+              }
+              this.storedTerminalEpoch.update((value) => value + 1);
+            }
           });
         } catch {
           // The next poll retries the terminal inspection.
@@ -4404,6 +4423,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private planTerminalRefresh(): {
     sessions: TmuxSessionRecord[] | null;
     terminals: { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null;
+    stored: { path: string; terminals: Record<string, WorktreeTerminalView>; collapsedBranches: string[] }[];
   } {
     const snapshots = this.shouldWatchTmux() ? listTmuxSessionSnapshots() : null;
     let sessions: TmuxSessionRecord[] | null = null;
@@ -4414,7 +4434,30 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       }
     }
     const bySession = new Map(snapshots?.map((snapshot) => [snapshot.name, snapshot]) ?? []);
-    const current = this.terminalsByBranch();
+    const current = this.refreshTerminalBranches(this.terminalsByBranch(), snapshots, bySession);
+    const live = this.terminalsByBranch();
+    const stored: { path: string; terminals: Record<string, WorktreeTerminalView>; collapsedBranches: string[] }[] = [];
+    for (const [path, workspace] of this.repositoryWorkspaces) {
+      if (workspace.terminalsByBranch === live) {
+        continue;
+      }
+      const refreshed = this.refreshTerminalBranches(workspace.terminalsByBranch, snapshots, bySession);
+      if (refreshed) {
+        stored.push({ path, terminals: refreshed.next, collapsedBranches: refreshed.collapsedBranches });
+      }
+    }
+    return {
+      sessions,
+      terminals: current,
+      stored,
+    };
+  }
+
+  private refreshTerminalBranches(
+    current: Record<string, WorktreeTerminalView>,
+    snapshots: TmuxSessionSnapshot[] | null,
+    bySession: Map<string, TmuxSessionSnapshot>,
+  ): { next: Record<string, WorktreeTerminalView>; collapsedBranches: string[] } | null {
     let next = current;
     const collapsedBranches: string[] = [];
     for (const [branch, state] of Object.entries(current)) {
@@ -4440,19 +4483,23 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         }
       }
     }
-    return {
-      sessions,
-      terminals: next === current ? null : { next, collapsedBranches },
-    };
+    return next === current ? null : { next, collapsedBranches };
   }
 
   private shouldWatchTmux(): boolean {
     if (this.activeTerminalMode() === 'tmux') {
       return true;
     }
-    return Object.values(this.terminalsByBranch()).some((state) =>
-      state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.host === 'tmux')),
-    );
+    if (terminalRecordHasTmux(this.terminalsByBranch())) {
+      return true;
+    }
+    const live = this.terminalsByBranch();
+    for (const workspace of this.repositoryWorkspaces.values()) {
+      if (workspace.terminalsByBranch !== live && terminalRecordHasTmux(workspace.terminalsByBranch)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private followRemote(path: string): void {
@@ -5352,6 +5399,12 @@ function countBranchTerminals(
   );
   const outside = sessionsForBranch(repo, name, sessions).filter((session) => !known.has(session)).length;
   return remembered + outside;
+}
+
+function terminalRecordHasTmux(branches: Record<string, WorktreeTerminalView>): boolean {
+  return Object.values(branches).some((state) =>
+    state.tabs.some((tab) => tab.terminals.some((terminal) => terminal.host === 'tmux')),
+  );
 }
 
 function branchHasTerminal(state: WorktreeTerminalView, terminalId: string): boolean {

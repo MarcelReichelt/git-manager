@@ -6,6 +6,7 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { createBranchSession, killTmuxSession, listTmuxSessions, sessionDirectory } from '../src/desktop/tmux-sessions';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { whenRemoteRefreshIdle } from '../src/branches';
+import { killShell } from '../src/desktop/shell-host';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 import { addRepository } from '../src/registry';
 
@@ -303,6 +304,35 @@ describe('Terminals on the grouped worktrees', () => {
     expect(terminalsCount(fixture)).toBe('0');
     expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('0 terminals');
     expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="terminals"]')).opacity).toBe('0.4');
+  });
+
+  it('drops the count when a shell ends on a repository tab that is not selected', async () => {
+    registerPair(roots);
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    const pane = fixture.nativeElement.querySelector('[data-testid="terminal-pane"]');
+    const terminalId = pane?.getAttribute('data-terminal-id') ?? '';
+    expect(terminalId).not.toBe('');
+
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    expect(terminalsCount(fixture)).toBe('1');
+
+    killShell(terminalId);
+    await waitFor(() => {
+      fixture.detectChanges();
+      return terminalsCount(fixture) === '0';
+    });
+
+    expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Quay"]').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(terminalsCount(fixture)).toBe('0');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminals"]').getAttribute('aria-label')).toBe('0 terminals');
   });
 });
 

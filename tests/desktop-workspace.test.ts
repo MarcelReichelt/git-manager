@@ -13,7 +13,7 @@ import { resetWindowChrome, setWindowChrome } from '../src/desktop/window-chrome
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
 import { listWorktreeBranches, whenRemoteRefreshIdle } from '../src/branches';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
-import { readAppSettings } from '../src/app-settings';
+import { readAppSettings, readPinnedWorktrees } from '../src/app-settings';
 import { addRepository, findRepository, unregisterRepository } from '../src/registry';
 
 const emptyGitConfig = join(tmpdir(), 'git-worktree-manager-desktop-gitconfig');
@@ -3421,6 +3421,87 @@ describe('desktop workspace', () => {
     expect(local.querySelector('fieldset').contains(push)).toBe(false);
     expect(push.parentElement).toBe(local.querySelector('[data-testid="hover-menu"]'));
     expect(local.querySelector('[data-testid="remove-worktree"]')).not.toBeNull();
+  });
+
+  it('pins a worktree under the default branch and keeps that pin across a restart', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    expect(branchNames(fixture)).toEqual(['master', 'zeta', 'feature']);
+    const master = fixture.nativeElement.querySelector('[data-branch="master"]');
+    master.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    expect(master.querySelector('[data-testid="pin-worktree"]')).toBeNull();
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    const pin = row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement;
+    expect(pin.textContent?.trim()).toBe('Pin');
+    pin.click();
+    fixture.detectChanges();
+
+    expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
+    expect(row.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
+
+    fixture.destroy();
+    const restarted = await renderRepository(repoPath);
+    expect(branchNames(restarted)).toEqual(['master', 'feature', 'zeta']);
+    const again = restarted.nativeElement.querySelector('[data-branch="feature"]');
+    again.querySelector('[data-testid="branch-menu"]').click();
+    restarted.detectChanges();
+    expect(again.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
+    (again.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
+    restarted.detectChanges();
+    expect(branchNames(restarted)).toEqual(['master', 'zeta', 'feature']);
+  });
+
+  it('removes a worktree pin when that worktree is removed', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    const zeta = join(repoPath, '.workspaces', 'zeta');
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    git(repoPath, ['worktree', 'add', zeta, 'zeta']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="branch-menu"]').click();
+    fixture.detectChanges();
+    (row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
+
+    (row.querySelector('[data-testid="remove-worktree"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(readPinnedWorktrees(repoPath)).toEqual([]);
+    expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    fixture.destroy();
+    const restored = await renderRepository(repoPath);
+    expect(branchNames(restored)).toEqual(['master', 'zeta', 'feature']);
+    const recreated = restored.nativeElement.querySelector('[data-branch="feature"]');
+    recreated.querySelector('[data-testid="branch-menu"]').click();
+    restored.detectChanges();
+    expect(recreated.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Pin');
   });
 
   it('omits update, merge, and remove from the default branch menu', async () => {

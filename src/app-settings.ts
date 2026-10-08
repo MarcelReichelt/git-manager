@@ -117,6 +117,36 @@ export function saveDefaultLayout(
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
+export function readPinnedWorktrees(repoPath: string): string[] {
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
+  if (!existsSync(configPath)) {
+    return [];
+  }
+  return readBranchNames(readRepositoryConfig(configPath).pinned);
+}
+
+export function pinWorktree(repoPath: string, branch: string): void {
+  if (branch === '') {
+    return;
+  }
+  const pinned = readPinnedWorktrees(repoPath);
+  if (pinned.includes(branch)) {
+    return;
+  }
+  writePinnedWorktrees(repoPath, [...pinned, branch]);
+}
+
+export function unpinWorktree(repoPath: string, branch: string): void {
+  const pinned = readPinnedWorktrees(repoPath);
+  if (!pinned.includes(branch)) {
+    return;
+  }
+  writePinnedWorktrees(
+    repoPath,
+    pinned.filter((name) => name !== branch),
+  );
+}
+
 export function saveRepositoryLayoutMode(
   repoPath: string,
   mode: 'workspaces' | 'sibling',
@@ -399,6 +429,25 @@ function readRepositoryLayoutMode(repoPath: string): string | undefined {
     return undefined;
   }
   return String(mode);
+}
+
+function writePinnedWorktrees(repoPath: string, pinned: readonly string[]): void {
+  const configPath = join(repoPath, '.git-worktree-manager', 'config.toml');
+  mkdirSync(dirname(configPath), { recursive: true });
+  const current = readRepositoryConfig(configPath);
+  if (pinned.length === 0) {
+    delete current.pinned;
+  } else {
+    current.pinned = [...pinned];
+  }
+  writeFileSync(configPath, TOML.stringify(current as Parameters<typeof TOML.stringify>[0]));
+}
+
+function readBranchNames(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((name): name is string => typeof name === 'string' && name !== '');
 }
 
 function readPathList(value: unknown): string[] {

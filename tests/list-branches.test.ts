@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { pinWorktree } from '../src/app-settings.js';
 import {
   listBranches,
   listWorktreeBranches,
@@ -260,6 +261,66 @@ describe('listBranches', () => {
     const edited = join(zeta, 'README.md');
     writeFileSync(edited, '# old edit\n');
     touchAt(edited, '2020-01-01T00:00:00Z');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+    ]);
+  });
+
+  it('lists pinned worktrees under the default branch, each group by last change', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    git(repoPath, ['branch', 'other']);
+    const other = join(repoPath, '.workspaces', 'other');
+    git(repoPath, ['worktree', 'add', other, 'other']);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    commitAt(other, '2020-12-01T00:00:00Z', 'other');
+    pinWorktree(repoPath, 'feature');
+    pinWorktree(repoPath, 'zeta');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'zeta',
+      'feature',
+      'other',
+    ]);
+  });
+
+  it('keeps an older pinned worktree ahead of a newer unpinned one', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'feature');
+
+    expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
+      'master',
+      'feature',
+      'zeta',
+    ]);
+  });
+
+  it('ignores a pin for a branch that has no worktree and a pin on another repository', () => {
+    const root = makeTempDir('git-worktree-manager-list-branches-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const { feature, zeta } = addFeatureAndZeta(repoPath);
+    commitAt(repoPath, '2020-01-01T00:00:00Z', 'old master');
+    commitAt(feature, '2020-03-01T00:00:00Z', 'feature');
+    commitAt(zeta, '2020-06-01T00:00:00Z', 'zeta');
+    pinWorktree(repoPath, 'missing');
+    const other = join(root, 'other');
+    initGitRepo(other);
+    pinWorktree(other, 'feature');
 
     expect(listWorktreeBranches(repoPath).map((branch) => branch.name)).toEqual([
       'master',

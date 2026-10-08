@@ -26,8 +26,10 @@ import {
 import { mergeIntoMaster, updateFromMaster } from '../merge.js';
 import {
   formatCreateLayout,
+  pinWorktree,
   readAppSettings,
   readOpenRepositoryTabs,
+  readPinnedWorktrees,
   readRepositoryAppearance,
   resolveAppSettingsPath,
   resetAppColors,
@@ -43,6 +45,7 @@ import {
   saveTerminalFont,
   saveTerminalForeground,
   saveTerminalMode,
+  unpinWorktree,
   type AppSettings,
   type SidebarText,
   type TerminalMode,
@@ -1057,6 +1060,15 @@ button, input { font: inherit; color: inherit; }
                   class="branch-actions"
                   [class.is-open]="openBranch() === branch.name"
                 >
+                    @if (branch.name !== defaultBranchName() && effectivePath() !== null) {
+                      <button
+                        type="button"
+                        data-testid="pin-worktree"
+                        (click)="toggleWorktreePin(branch.name, $event)"
+                      >
+                        {{ pinnedWorktrees().includes(branch.name) ? 'Unpin' : 'Pin' }}
+                      </button>
+                    }
                     @if (branch.name !== defaultBranchName()) {
                       <fieldset>
                         <legend>Merge</legend>
@@ -2022,6 +2034,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly selectedFilePath = signal<string | null>(null);
   readonly selectedCommitSubject = signal<string | null>(null);
   readonly realBranches = signal<SampleBranch[]>([]);
+  readonly pinnedWorktrees = signal<string[]>([]);
   readonly loadedFiles = signal<ChangedFile[]>([]);
   readonly loadedCommits = signal<BranchCommit[]>([]);
   readonly loadedRecentCommits = signal<BranchCommit[]>([]);
@@ -3896,6 +3909,20 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     );
   }
 
+  toggleWorktreePin(name: string, event: Event): void {
+    event.stopPropagation();
+    const path = this.effectivePath();
+    if (path === null || name === this.defaultBranchName()) {
+      return;
+    }
+    if (this.pinnedWorktrees().includes(name)) {
+      unpinWorktree(path, name);
+    } else {
+      pinWorktree(path, name);
+    }
+    this.refreshBranches();
+  }
+
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
     this.runBranchAction(
@@ -4517,8 +4544,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private refreshBranches(): void {
     const path = this.effectivePath();
     if (path === null) {
+      this.pinnedWorktrees.set([]);
       this.clearGitWatch();
       return;
+    }
+    const pinned = readPinnedWorktrees(path);
+    if (pinned.join('\0') !== this.pinnedWorktrees().join('\0')) {
+      this.pinnedWorktrees.set(pinned);
     }
     const rows = listBranches(path);
     this.claimOldSessions(path, rows);

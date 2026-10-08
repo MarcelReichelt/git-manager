@@ -1,6 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { readPinnedWorktrees } from './app-settings.js';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -434,7 +435,34 @@ function checkoutPaths(repoPath: string): Map<string, string> {
 export function listWorktreeBranches(repoPath: string, known?: readonly BranchRow[]): BranchRow[] {
   const checkedOut = checkedOutBranches(repoPath);
   const rows = (known ?? listBranches(repoPath)).filter((branch) => checkedOut.has(branch.name));
-  return pinDefaultBranch(rowsByLastChange(repoPath, rows), readDefaultBranch(repoPath));
+  return orderWorktreeRows(
+    rowsByLastChange(repoPath, rows),
+    readDefaultBranch(repoPath),
+    readPinnedWorktrees(repoPath),
+  );
+}
+
+function orderWorktreeRows<T extends { name: string }>(
+  rows: readonly T[],
+  defaultBranch: string | undefined,
+  pinned: readonly string[],
+): T[] {
+  const listed = pinDefaultBranch(rows, defaultBranch);
+  const defaultIsFirst = defaultBranch !== undefined && listed[0]?.name === defaultBranch;
+  const rest = defaultIsFirst ? listed.slice(1) : listed;
+  const pinnedNames = new Set(pinned);
+  const pinnedRows: T[] = [];
+  const otherRows: T[] = [];
+  for (const row of rest) {
+    if (pinnedNames.has(row.name)) {
+      pinnedRows.push(row);
+    } else {
+      otherRows.push(row);
+    }
+  }
+  return defaultIsFirst && listed[0] !== undefined
+    ? [listed[0], ...pinnedRows, ...otherRows]
+    : [...pinnedRows, ...otherRows];
 }
 
 function rowsByLastChange(repoPath: string, rows: readonly BranchRow[]): BranchRow[] {

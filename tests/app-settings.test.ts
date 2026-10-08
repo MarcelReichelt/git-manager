@@ -19,6 +19,8 @@ import {
   saveDefaultLayout,
   saveIdeCommand,
   saveOpenRepositoryTabs,
+  pinWorktree,
+  readPinnedWorktrees,
   saveRepositoryLayoutMode,
   saveRepositorySidebarColor,
   saveRepositorySidebarText,
@@ -29,6 +31,7 @@ import {
   saveTerminalFont,
   saveTerminalForeground,
   saveTerminalMode,
+  unpinWorktree,
 } from '../src/app-settings.js';
 import { addRepository, listRepositories } from '../src/registry.js';
 
@@ -1040,6 +1043,35 @@ describe('app settings', () => {
 
     expect(readOpenRepositoryTabs(env)).toEqual({ paths: [], selectedPath: null });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({ theme: 'mint' });
+  });
+
+  it('keeps worktree pins for that repository and leaves the rest of its config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    mkdirSync(repoPath);
+    saveRepositoryLayoutMode(repoPath, 'sibling');
+
+    expect(readPinnedWorktrees(repoPath)).toEqual([]);
+    pinWorktree(repoPath, 'feature');
+    pinWorktree(repoPath, 'feature');
+    pinWorktree(repoPath, 'zeta');
+
+    expect(readPinnedWorktrees(repoPath)).toEqual(['feature', 'zeta']);
+    expect(createLayoutForRepository(repoPath).label).toBe('Sibling');
+
+    unpinWorktree(repoPath, 'feature');
+    unpinWorktree(repoPath, 'missing');
+
+    expect(readPinnedWorktrees(repoPath)).toEqual(['zeta']);
+    expect(createLayoutForRepository(repoPath).label).toBe('Sibling');
+
+    unpinWorktree(repoPath, 'zeta');
+
+    expect(readPinnedWorktrees(repoPath)).toEqual([]);
+    expect(TOML.parse(readFileSync(join(repoPath, '.git-worktree-manager', 'config.toml'), 'utf8'))).toEqual({
+      layout: { mode: 'sibling' },
+    });
   });
 
   it('does not create a repository config when clearing sidebar color or sidebar text that were never set', () => {

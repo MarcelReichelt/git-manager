@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import TOML from '@iarna/toml';
 import { createJiti } from 'jiti';
-import { createLayoutForRepository } from './app-settings.js';
+import { createLayoutForRepository, unpinWorktree } from './app-settings.js';
 import { findRepository } from './registry.js';
 
 type LayoutMode = 'workspaces' | 'sibling';
@@ -310,4 +310,5 @@ export function removeWorktree(repoQuery: string, branch: string): void {
     cwd: repository.path,
     stdio: 'inherit',
   });
+  unpinWorktree(repository.path, branch);
 }

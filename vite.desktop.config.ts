@@ -54,10 +54,11 @@ function keepNodeBuiltinsExternal(): Plugin {
         return null;
       }
       const body = [...required, ...lines.slice(index)].join('\n');
-      return body.replaceAll(
-        'import.meta.url',
-        '(document.currentScript && document.currentScript.src)',
-      );
+      // The page is a classic script, so import.meta.url is invalid. Jiti loads
+      // its TypeScript transform when a plugin runs, after the page script has
+      // finished. A script URL from that moment is null, and createRequire
+      // rejects it. The transform path is relative to the jiti package.
+      return body.replaceAll('import.meta.url', 'require.resolve("jiti")');
     },
     transformIndexHtml(html) {
       return html

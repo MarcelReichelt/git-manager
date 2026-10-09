@@ -15,13 +15,42 @@ interface RepoConfig {
     modules?: string[];
     pre_worktree_create?: { commands?: string[] };
     post_worktree_create?: { commands?: string[] };
+    pre_worktree_remove?: { commands?: string[] };
+    post_worktree_remove?: { commands?: string[] };
   };
 }
 
+export type WorktreeBranchSource =
+  | { kind: 'local' }
+  | { kind: 'new' }
+  | { kind: 'remote'; remote: string };
+
+export interface WorktreeCreateContext {
+  branch: string;
+  worktreePath: string;
+  repositoryPath: string;
+  branchSource: WorktreeBranchSource;
+}
+
+export interface WorktreeRemoveContext {
+  branch: string;
+  worktreePath: string;
+  repositoryPath: string;
+  deleteBranch: boolean;
+}
+
+type HookContext = WorktreeCreateContext | WorktreeRemoveContext;
+
 interface WorktreePlugin {
   name: string;
-  preWorktreeCreate?: () => 'abort' | void | Promise<'abort' | void>;
-  postWorktreeCreate?: () => void | Promise<void>;
+  preWorktreeCreate?: (
+    context: WorktreeCreateContext,
+  ) => 'abort' | void | Promise<'abort' | void>;
+  postWorktreeCreate?: (context: WorktreeCreateContext) => void | Promise<void>;
+  preWorktreeRemove?: (
+    context: WorktreeRemoveContext,
+  ) => 'abort' | void | Promise<'abort' | void>;
+  postWorktreeRemove?: (context: WorktreeRemoveContext) => void | Promise<void>;
 }
 
 function folderName(branch: string): string {
@@ -149,9 +178,49 @@ function hasRef(repoPath: string, ref: string): boolean {
   }
 }
 
-function runHookCommands(repoPath: string, commands: string[] | undefined): void {
+function worktreeBranchSource(mode: BranchCheckout): WorktreeBranchSource {
+  if (mode === 'local') {
+    return { kind: 'local' };
+  }
+  if (mode === 'new') {
+    return { kind: 'new' };
+  }
+  return { kind: 'remote', remote: mode.remote };
+}
+
+function hookEnvironment(context: HookContext): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_WORKTREE_MANAGER_BRANCH: context.branch,
+    GIT_WORKTREE_MANAGER_WORKTREE_PATH: context.worktreePath,
+    GIT_WORKTREE_MANAGER_REPOSITORY_PATH: context.repositoryPath,
+  };
+  delete env.GIT_WORKTREE_MANAGER_BRANCH_SOURCE;
+  delete env.GIT_WORKTREE_MANAGER_REMOTE;
+  delete env.GIT_WORKTREE_MANAGER_DELETE_BRANCH;
+  if ('branchSource' in context) {
+    env.GIT_WORKTREE_MANAGER_BRANCH_SOURCE = context.branchSource.kind;
+    if (context.branchSource.kind === 'remote') {
+      env.GIT_WORKTREE_MANAGER_REMOTE = context.branchSource.remote;
+    }
+  }
+  if ('deleteBranch' in context) {
+    env.GIT_WORKTREE_MANAGER_DELETE_BRANCH = context.deleteBranch ? 'true' : 'false';
+  }
+  return env;
+}
+
+function runHookCommands(
+  repoPath: string,
+  commands: string[] | undefined,
+  context: HookContext,
+): void {
   for (const command of commands ?? []) {
-    execSync(command, { cwd: repoPath, stdio: 'inherit' });
+    execSync(command, {
+      cwd: repoPath,
+      stdio: 'inherit',
+      env: hookEnvironment(context),
+    });
   }
 }
 
@@ -165,27 +234,71 @@ async function loadPlugins(
   const jiti = createJiti(join(repoPath, 'package.json'));
   const plugins: WorktreePlugin[] = [];
   for (const modulePath of modules) {
-    const plugin = await jiti.import<WorktreePlugin>(resolve(repoPath, modulePath), {
-      default: true,
-    });
-    plugins.push(plugin);
+    // jiti.import() uses dynamic import(). The desktop window is a classic
+    // script, so that import tries to fetch node builtins such as node:fs.
+    const loaded = jiti(resolve(repoPath, modulePath)) as WorktreePlugin & {
+      default?: WorktreePlugin;
+    };
+    plugins.push(loaded.default ?? loaded);
   }
   return plugins;
 }
 
-async function runPrePlugins(plugins: WorktreePlugin[]): Promise<void> {
+async function runPrePlugins(
+  plugins: WorktreePlugin[],
+  context: WorktreeCreateContext,
+): Promise<void> {
   for (const plugin of plugins) {
-    const result = await plugin.preWorktreeCreate?.();
+    const result = await plugin.preWorktreeCreate?.(context);
     if (result === 'abort') {
       throw new Error(`${plugin.name} aborted worktree create`);
     }
   }
 }
 
-async function runPostPlugins(plugins: WorktreePlugin[]): Promise<void> {
+async function runPostPlugins(
+  plugins: WorktreePlugin[],
+  context: WorktreeCreateContext,
+): Promise<void> {
   for (const plugin of plugins) {
-    await plugin.postWorktreeCreate?.();
+    await plugin.postWorktreeCreate?.(context);
   }
+}
+
+async function runPreRemovePlugins(
+  plugins: WorktreePlugin[],
+  context: WorktreeRemoveContext,
+): Promise<void> {
+  for (const plugin of plugins) {
+    const result = await plugin.preWorktreeRemove?.(context);
+    if (result === 'abort') {
+      throw new Error(`${plugin.name} aborted worktree remove`);
+    }
+  }
+}
+
+async function runPostRemovePlugins(
+  plugins: WorktreePlugin[],
+  context: WorktreeRemoveContext,
+): Promise<void> {
+  for (const plugin of plugins) {
+    await plugin.postWorktreeRemove?.(context);
+  }
+}
+
+function removableCheckout(repoQuery: string, branch: string): { repoPath: string; checkout: string } {
+  const repository = findRepository(repoQuery);
+  if (!repository) {
+    throw new Error(`Repository not found: ${repoQuery}`);
+  }
+  return {
+    repoPath: repository.path,
+    checkout: findBranchCheckout(repository.path, branch),
+  };
+}
+
+export function assertWorktreeRemovable(repoQuery: string, branch: string): void {
+  removableCheckout(repoQuery, branch);
 }
 
 function copyConfiguredFiles(
@@ -272,10 +385,16 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   const mode = resolveBranch(repository.path, branch);
+  const context: WorktreeCreateContext = {
+    branch,
+    worktreePath: checkout,
+    repositoryPath: repository.path,
+    branchSource: worktreeBranchSource(mode),
+  };
 
   const plugins = await loadPlugins(repository.path, config.hooks?.modules);
-  runHookCommands(repository.path, config.hooks?.pre_worktree_create?.commands);
-  await runPrePlugins(plugins);
+  runHookCommands(repository.path, config.hooks?.pre_worktree_create?.commands, context);
+  await runPrePlugins(plugins, context);
 
   mkdirSync(dirname(checkout), { recursive: true });
   if (mode === 'local') {
@@ -295,20 +414,37 @@ export async function createWorktree(repoQuery: string, branch: string): Promise
   }
 
   copyConfiguredFiles(repository.path, checkout, config.copy?.files);
-  runHookCommands(repository.path, config.hooks?.post_worktree_create?.commands);
-  await runPostPlugins(plugins);
+  runHookCommands(repository.path, config.hooks?.post_worktree_create?.commands, context);
+  await runPostPlugins(plugins, context);
   return checkout;
 }
 
-export function removeWorktree(repoQuery: string, branch: string): void {
-  const repository = findRepository(repoQuery);
-  if (!repository) {
-    throw new Error(`Repository not found: ${repoQuery}`);
+export async function removeWorktree(
+  repoQuery: string,
+  branch: string,
+  options: { deleteBranch: boolean; force?: boolean },
+): Promise<void> {
+  const { repoPath, checkout } = removableCheckout(repoQuery, branch);
+  const config = readRepoConfig(repoPath);
+  const context: WorktreeRemoveContext = {
+    branch,
+    worktreePath: checkout,
+    repositoryPath: repoPath,
+    deleteBranch: options.deleteBranch,
+  };
+  const plugins = await loadPlugins(repoPath, config.hooks?.modules);
+  runHookCommands(repoPath, config.hooks?.pre_worktree_remove?.commands, context);
+  await runPreRemovePlugins(plugins, context);
+  const removeArgs = ['worktree', 'remove'];
+  if (options.force) {
+    removeArgs.push('--force');
   }
-  const checkout = findBranchCheckout(repository.path, branch);
-  execFileSync('git', ['worktree', 'remove', checkout], {
-    cwd: repository.path,
-    stdio: 'inherit',
-  });
-  unpinWorktree(repository.path, branch);
+  removeArgs.push(checkout);
+  runGit(repoPath, removeArgs);
+  if (options.deleteBranch) {
+    runGit(repoPath, ['branch', '-D', branch]);
+  }
+  unpinWorktree(repoPath, branch);
+  runHookCommands(repoPath, config.hooks?.post_worktree_remove?.commands, context);
+  await runPostRemovePlugins(plugins, context);
 }

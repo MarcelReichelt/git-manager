@@ -601,11 +601,13 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='create-worktree-dialog'] [data-testid='workspace-error'],
-[data-testid='merge-into-master-dialog'] [data-testid='workspace-error'] {
+[data-testid='merge-into-master-dialog'] [data-testid='workspace-error'],
+[data-testid='remove-worktree-dialog'] [data-testid='workspace-error'] {
   color: var(--coral);
 }
 
-[data-testid='merge-into-master-dialog'] {
+[data-testid='merge-into-master-dialog'],
+[data-testid='remove-worktree-dialog'] {
   position: fixed;
   inset: 0;
   z-index: 6;
@@ -615,7 +617,8 @@ button, input { font: inherit; color: inherit; }
   background: rgba(26, 60, 43, 0.45);
 }
 
-[data-testid='merge-into-master-dialog'] .dialog-panel {
+[data-testid='merge-into-master-dialog'] .dialog-panel,
+[data-testid='remove-worktree-dialog'] .dialog-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -627,7 +630,12 @@ button, input { font: inherit; color: inherit; }
   color: var(--grid);
 }
 
-[data-testid='merge-into-master-dialog'] h2 {
+[data-testid='remove-worktree-dialog'] .dialog-panel {
+  width: 32rem;
+}
+
+[data-testid='merge-into-master-dialog'] h2,
+[data-testid='remove-worktree-dialog'] h2 {
   margin-bottom: 4px;
   color: var(--forest);
   font-family: "Space Grotesk", sans-serif;
@@ -646,7 +654,10 @@ button, input { font: inherit; color: inherit; }
 }
 
 [data-testid='confirm-merge-into-master'],
-[data-testid='cancel-merge-into-master'] {
+[data-testid='cancel-merge-into-master'],
+[data-testid='confirm-remove-worktree'],
+[data-testid='confirm-delete-branch'],
+[data-testid='cancel-remove-worktree'] {
   box-sizing: border-box;
   padding: 8px 12px;
   border: 1px solid rgba(58, 58, 56, 0.2);
@@ -656,10 +667,17 @@ button, input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-[data-testid='confirm-merge-into-master'] {
+[data-testid='confirm-merge-into-master'],
+[data-testid='confirm-remove-worktree'] {
   background-color: var(--forest);
   color: white;
   border-color: var(--forest);
+}
+
+[data-testid='confirm-delete-branch'].is-danger {
+  background-color: #b42318;
+  border-color: #b42318;
+  color: #ffffff;
 }
 
 [data-testid='app-settings-dialog'] {
@@ -1183,7 +1201,7 @@ button, input { font: inherit; color: inherit; }
             <button type="button" data-testid="create-worktree" (click)="openCreateDialog()">Create worktree</button>
           </div>
           @if (workspaceError(); as message) {
-            @if (!createDialogOpen() && !mergeDialogBranch()) {
+            @if (!createDialogOpen() && !mergeDialogBranch() && !removeDialogBranch()) {
               <p data-testid="workspace-error">{{ message }}</p>
             }
           }
@@ -1757,6 +1775,28 @@ button, input { font: inherit; color: inherit; }
         </section>
       </div>
     }
+    @if (removeDialogBranch(); as branch) {
+      <div data-testid="remove-worktree-dialog" role="dialog" aria-label="Remove worktree" (click)="dismissRemoveFromBackdrop($event)">
+        <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
+          <h2>Remove worktree</h2>
+          @if (branchActivity()?.label === 'Removing worktree') {
+            <p data-testid="remove-activity">Removing worktree</p>
+          }
+          <p data-testid="remove-worktree-branch">{{ branch }}</p>
+          <p data-testid="remove-worktree-note">
+            The checkout goes away. Keep the local branch, or delete it. A remote branch stays. Deleting the local branch removes it even when it is not merged. Pre-remove hooks run before the checkout is deleted. Post-remove hooks run after.
+          </p>
+          @if (workspaceError(); as message) {
+            <p data-testid="workspace-error">{{ message }}</p>
+          }
+          <div class="dialog-actions">
+            <button type="button" data-testid="confirm-remove-worktree" [disabled]="branchActivity()?.label === 'Removing worktree'" (click)="confirmRemoveWorktree(false)">Keep branch</button>
+            <button type="button" data-testid="confirm-delete-branch" [class.is-danger]="removeForceDelete()" [disabled]="branchActivity()?.label === 'Removing worktree'" (click)="confirmRemoveWorktree(true)">{{ removeForceDelete() ? 'Force delete branch' : 'Delete local branch' }}</button>
+            <button type="button" data-testid="cancel-remove-worktree" [disabled]="branchActivity()?.label === 'Removing worktree'" (click)="cancelRemove()">Cancel</button>
+          </div>
+        </section>
+      </div>
+    }
     @if (appSettingsOpen()) {
       <div data-testid="app-settings-dialog" role="dialog" aria-label="App settings" (click)="dismissAppSettingsFromBackdrop($event)">
         <section class="dialog-panel" gmOverlayScroll (click)="$event.stopPropagation()">
@@ -2242,6 +2282,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly createBranchName = signal('');
   readonly createBranchOptions = signal<string[]>([]);
   readonly mergeDialogBranch = signal<string | null>(null);
+  readonly removeDialogBranch = signal<string | null>(null);
+  readonly removeForceDelete = signal(false);
   readonly mergeSquash = signal(false);
   readonly workspaceError = signal<string | null>(null);
   readonly worktreePath = signal('');
@@ -3920,6 +3962,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.cancelMerge();
       return;
     }
+    if (this.removeDialogBranch() && this.branchActivity()?.label !== 'Removing worktree') {
+      this.cancelRemove();
+      return;
+    }
     if (this.createDialogOpen()) {
       this.cancelCreate();
       return;
@@ -4289,17 +4335,63 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
-    this.runBranchAction(
-      name,
-      'Removing worktree',
-      () => {
-        removeWorktree(this.effectivePath() ?? '', name);
-        if (this.openBranch() === name) {
-          this.openBranch.set(null);
-        }
-      },
-      'remove',
-    );
+    this.workspaceError.set(null);
+    this.removeForceDelete.set(false);
+    this.removeDialogBranch.set(name);
+  }
+
+  cancelRemove(): void {
+    if (this.branchActivity()?.label === 'Removing worktree') {
+      return;
+    }
+    this.workspaceError.set(null);
+    this.removeForceDelete.set(false);
+    this.removeDialogBranch.set(null);
+  }
+
+  dismissRemoveFromBackdrop(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.cancelRemove();
+    }
+  }
+
+  confirmRemoveWorktree(deleteBranch: boolean): void {
+    const name = this.removeDialogBranch();
+    const repo = this.effectivePath();
+    if (!name || !repo || this.branchActivity()?.label === 'Removing worktree') {
+      return;
+    }
+    this.workspaceError.set(null);
+    this.branchActivity.set({ branch: name, label: 'Removing worktree' });
+    const selected = this.selectedBranchName();
+    const force = deleteBranch && this.removeForceDelete();
+    this.runWhenPainted(() => {
+      void removeWorktree(repo, name, { deleteBranch, force }).then(
+        () => {
+          this.zone.run(() => {
+            if (this.openBranch() === name) {
+              this.openBranch.set(null);
+            }
+            this.refreshBranches([]);
+            if (selected === name) {
+              this.clearBranchSelection();
+            }
+            this.removeDialogBranch.set(null);
+            this.branchActivity.set(null);
+          });
+        },
+        (error: unknown) => {
+          this.zone.run(() => {
+            const message = errorText(error);
+            this.branchActivity.set(null);
+            this.workspaceError.set(message);
+            if (deleteBranch && message.toLowerCase().includes('use --force to delete it')) {
+              this.removeForceDelete.set(true);
+            }
+          });
+        },
+      );
+    });
   }
 
   publishBranch(name: string, event: Event): void {

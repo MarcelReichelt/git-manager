@@ -8,7 +8,7 @@ The registry stores each repository's path and display name. Layout is not a reg
 | `list` | List registered repositories as display name, a tab, and path, ordered by path |
 | `unregister --path <path>` | Remove a repository from the registry. The path is the registered absolute path |
 | `worktree create <branch> --repo <repo>` | Create a worktree. Prints the checkout path |
-| `worktree remove <branch> --repo <repo>` | Remove that branch's extra checkout and keep the branch |
+| `worktree remove <branch> --repo <repo>` | Remove that branch's extra checkout. Asks whether to delete the local branch |
 | `merge --repo <repo> --update-from-master <branch>` | Merge `master` into that branch's worktree |
 | `merge --repo <repo> --into-master <branch>` | Merge that branch into `master` on the primary checkout |
 
@@ -16,7 +16,7 @@ The registry stores each repository's path and display name. Layout is not a reg
 
 `worktree create` checks the branch out as it already exists locally. A new name creates a local branch at the primary checkout's current commit, with no upstream. A branch that exists only on a remote is fetched first, then checked out as a new local branch tracking that remote. See [Worktrees and layouts](worktrees-and-layouts.md) for which remote is fetched. When the remote has no such branch, create still adds the local branch. When `git fetch` fails for another reason, that error is printed. When a known remote-tracking ref is gone after fetch, create fails with `Branch not found`. An empty name fails with `Enter a branch name`. The folder name replaces path separators and illegal characters with `-`, and create stops when that folder already exists. The primary checkout is left on its current branch.
 
-`worktree remove` refuses the primary checkout with `No worktree for branch`.
+`worktree remove` refuses the primary checkout with `No worktree for branch`. In a terminal it asks whether to delete the local branch. The default answer keeps it. `--delete-branch` deletes the local branch without asking, including when it is not merged. `--keep-branch` leaves the local branch without asking. Pass only one of those flags. Without a terminal and without either flag, remove stops with `Pass --delete-branch or --keep-branch` and deletes nothing. A checkout with changes stops until `--force` is passed. A remote branch stays.
 
 `--into-master` requires the primary checkout to be on `master`. Otherwise the error is `Primary checkout is on <branch>, not master`.
 

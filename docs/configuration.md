@@ -29,7 +29,7 @@ commands = ["yarn"]
 
 `[copy].files` are copied from the registered repository into the new checkout after `git worktree add`. A missing source is skipped.
 
-Hook commands run in the registered repository. Pre-create commands run before the worktree is added. Post-create commands run after the copied files. See [Plugins](plugins.md).
+Hook commands run in the primary checkout. Pre-create commands run before the worktree is added. Post-create commands run after the copied files. Pre-remove commands run before the worktree is deleted. Post-remove commands run after that, and after a requested local branch delete. The environment includes the branch, the worktree path, and the primary checkout path. See [Plugins](plugins.md).
 
 ## App settings
 

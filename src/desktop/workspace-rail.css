@@ -428,6 +428,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .branch-heading {
+  flex: none;
   padding: 16px 16px 12px;
   border-bottom: 1px solid rgba(58, 58, 56, 0.2);
 }
@@ -498,8 +499,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-heading p {
   margin-top: 4px;
+  min-height: 16px;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
+}
+
+.heading-skeleton {
+  width: 11em;
+  height: 12px;
 }
 
 .empty-sheet {
@@ -972,6 +979,23 @@ ul { margin: 0; padding: 0; list-style: none; }
 .skeleton-title { width: 28%; height: 18px; }
 
 .skeleton-short { width: 52%; }
+
+.skeleton-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+.skeleton-list .skeleton-row {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(58, 58, 56, 0.12);
+}
 
 @keyframes skeleton-pulse {
   50% { opacity: 0.45; }

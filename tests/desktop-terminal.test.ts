@@ -680,7 +680,7 @@ describe('branch terminal', () => {
     clickControl(fixture, 'Maximize terminal');
 
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
-    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    expectTerminalStopsAtHeading(sheet);
     expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="diff"]')).toBeNull();
@@ -765,7 +765,7 @@ describe('branch terminal', () => {
 
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
     const body = sheet.querySelector('.sheet-body') as HTMLElement;
-    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    expectTerminalStopsAtHeading(sheet);
     expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="diff"]')).toBeNull();
@@ -1064,7 +1064,7 @@ describe('branch terminal', () => {
     expect(visiblePaneCount(fixture)).toBe(1);
     expect(tabNames(fixture)).toHaveLength(1);
     expect(sheet.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
-    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    expectTerminalStopsAtHeading(sheet);
     expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="terminal-maximize"]')?.getAttribute('aria-label')).toBe('Restore terminal');
@@ -1332,6 +1332,19 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
   });
 });
+
+function expectTerminalStopsAtHeading(sheet: HTMLElement): void {
+  const heading = sheet.querySelector('[data-testid="branch-heading"]');
+  const body = sheet.querySelector('.sheet-body');
+  expect(heading).not.toBeNull();
+  expect(heading?.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+  expect(heading?.querySelector('[data-testid="heading-summary"]')).not.toBeNull();
+  expect(body).not.toBeNull();
+  expect(heading?.nextElementSibling).toBe(body);
+  expect(body?.contains(heading)).toBe(false);
+  expect(body?.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
+  expect(body?.querySelector('[data-testid="branch-heading"]')).toBeNull();
+}
 
 function gridRows(root: HTMLElement): number {
   return root.querySelectorAll('[data-testid="terminal-pane"] .xterm-rows > div').length;

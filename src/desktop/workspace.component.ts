@@ -1192,43 +1192,51 @@ button, input { font: inherit; color: inherit; }
         <section class="content-sheet" data-testid="content-sheet">
           @if (!terminalsOpen()) {
           @if (selectedBranch(); as branch) {
-            @if (contentLoading() && !terminalMaximized()) {
-              <p class="empty-sheet" data-testid="content-loading">Loading {{ branch.name }}</p>
-            } @else if (!terminalMaximized()) {
-            <header class="branch-heading">
-              <div class="branch-title">
-                <h2>
-                  <button
-                    type="button"
-                    data-testid="copy-branch-name"
-                    title="Copy branch name"
-                    (click)="copyBranchName(branch.name)"
-                  >
-                    {{ branch.name }}
-                    <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                      <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
-                      <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
-                    </svg>
-                  </button>
-                </h2>
-                <button type="button" data-testid="open-ide" [disabled]="ideCommand() === ''" (click)="openIde()">
-                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                    <path fill="currentColor" d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.5 0h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0V4.56L8.28 8.78a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l4.22-4.22H10.25a.75.75 0 0 1 0-1.5Z" />
-                  </svg>
-                  IDE
-                </button>
-              </div>
-              <p>
-                @if (headingCommitCount() !== null) {
-                  {{ headingCommitCount() }} commits · {{ visibleFiles().length }} changed files
-                } @else {
-                  {{ visibleFiles().length }} changed files
-                }
-              </p>
-            </header>
-            }
+            <ng-container
+              [ngTemplateOutlet]="branchHeading"
+              [ngTemplateOutletContext]="{ name: branch.name, summary: true }"
+            />
             <div #sheetBody class="sheet-body" [style.grid-template-rows]="terminalRowTracks()">
-            @if (!contentLoading() && !terminalMaximized()) {
+            @if (!terminalMaximized()) {
+            @if (contentLoading()) {
+            <div
+              class="sheet-columns"
+              data-testid="content-loading"
+              aria-busy="true"
+              [attr.aria-label]="'Loading ' + branch.name"
+              [style.grid-template-columns]="'minmax(0, 1fr)'"
+            >
+              <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
+                <div data-testid="changes">
+                  <h3>Changes</h3>
+                  <ul class="skeleton-list" aria-hidden="true">
+                    @for (row of contentSkeleton; track row) {
+                      <li class="skeleton-row"><span class="skeleton-bar"></span></li>
+                    }
+                  </ul>
+                </div>
+                <div
+                  class="splitter"
+                  role="separator"
+                  data-testid="commits-split"
+                  aria-orientation="horizontal"
+                  tabindex="0"
+                  (pointerdown)="beginCommitsSplit($event)"
+                  (pointermove)="moveSplit($event)"
+                  (pointerup)="endSplit($event)"
+                  (dblclick)="halveCommitsSplit()"
+                ></div>
+                <div data-testid="commits">
+                  <h3>{{ branchIsDefault() ? 'Commits' : 'Commits only on this branch' }}</h3>
+                  <ul class="skeleton-list" aria-hidden="true">
+                    @for (row of contentSkeleton; track row) {
+                      <li class="skeleton-row"><span class="skeleton-bar"></span></li>
+                    }
+                  </ul>
+                </div>
+              </div>
+            </div>
+            } @else {
             <div class="sheet-columns" [style.grid-template-columns]="sheetColumns()">
             <div class="sheet-stack" [style.grid-template-rows]="changesPaneHeight() + 'px 8px minmax(0, 1fr)'">
             <div data-testid="changes">
@@ -1350,6 +1358,7 @@ button, input { font: inherit; color: inherit; }
             }
             </div>
             }
+            }
             @if (showTerminalRow()) {
               <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
             }
@@ -1363,11 +1372,56 @@ button, input { font: inherit; color: inherit; }
           } @else {
             <p class="empty-sheet">Select a branch</p>
           }
-          } @else if (terminalsWorktree()) {
+          } @else if (terminalsWorktree(); as chosen) {
+            <ng-container
+              [ngTemplateOutlet]="branchHeading"
+              [ngTemplateOutletContext]="{ name: chosen.branch, summary: false }"
+            />
             <div #sheetBody class="sheet-body" [style.grid-template-rows]="'minmax(0, 1fr)'">
               <ng-container [ngTemplateOutlet]="worktreeTerminalSection" />
             </div>
           }
+          <ng-template #branchHeading let-name="name" let-summary="summary">
+            <header
+              class="branch-heading"
+              data-testid="branch-heading"
+              [attr.aria-busy]="summary && contentLoading() ? true : null"
+            >
+              <div class="branch-title">
+                <h2>
+                  <button
+                    type="button"
+                    data-testid="copy-branch-name"
+                    title="Copy branch name"
+                    (click)="copyBranchName(name)"
+                  >
+                    {{ name }}
+                    <svg data-testid="copy-branch-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z" />
+                      <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+                    </svg>
+                  </button>
+                </h2>
+                <button type="button" data-testid="open-ide" [disabled]="ideCommand() === ''" (click)="openIde()">
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                    <path fill="currentColor" d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.5 0h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0V4.56L8.28 8.78a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l4.22-4.22H10.25a.75.75 0 0 1 0-1.5Z" />
+                  </svg>
+                  IDE
+                </button>
+              </div>
+              @if (summary) {
+                <p data-testid="heading-summary">
+                  @if (contentLoading()) {
+                    <span class="skeleton-bar heading-skeleton" data-testid="heading-skeleton" aria-hidden="true"></span>
+                  } @else if (headingCommitCount() !== null) {
+                    {{ headingCommitCount() }} commits · {{ visibleFiles().length }} changed files
+                  } @else {
+                    {{ visibleFiles().length }} changed files
+                  }
+                </p>
+              }
+            </header>
+          </ng-template>
           <ng-template #worktreeTerminalSection>
               @if (terminalExpanded() && !terminalMaximized()) {
                 <div
@@ -2306,6 +2360,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     () => this.effectivePath() !== null && this.realBranches().length === 0,
   );
   readonly worktreeSkeleton = [0, 1, 2, 3, 4, 5];
+  readonly contentSkeleton = [0, 1, 2, 3, 4];
   readonly selectedBranch = computed(
     () => this.branches().find((branch) => branch.name === this.selectedBranchName()) ?? null,
   );
@@ -3986,8 +4041,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   openIde(): void {
     const command = this.ideCommand();
-    const cwd = this.worktreePath();
     if (command === '') {
+      return;
+    }
+    let cwd = '';
+    try {
+      cwd = this.headingCheckout();
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
       return;
     }
     if (cwd === '') {
@@ -4010,6 +4071,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.workspaceError.set(errorText(error));
       });
     });
+  }
+
+  private headingCheckout(): string {
+    const chosen = this.chosenTerminalWorktree();
+    if (chosen) {
+      return findCheckout(chosen.path, chosen.branch) ?? '';
+    }
+    const repo = this.effectivePath();
+    const branch = this.selectedBranchName();
+    if (repo && branch) {
+      return findCheckout(repo, branch) ?? '';
+    }
+    return this.worktreePath();
   }
 
   chooseSidebarColor(event: Event): void {

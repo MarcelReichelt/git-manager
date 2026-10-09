@@ -36,4 +36,4 @@ The primary checkout stays on its current branch. Configured files are copied in
 
 ## Remove
 
-`worktree remove` deletes the extra checkout for that branch and keeps the branch. The primary checkout is not a removable worktree.
+`worktree remove` deletes the extra checkout for that branch. It asks whether to delete the local branch too. The remote branch stays. `--keep-branch` and `--delete-branch` skip the question. The primary checkout is not a removable worktree. Pre-remove hooks run before the checkout is deleted. Post-remove hooks run after. See [Plugins](plugins.md).

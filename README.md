@@ -12,7 +12,7 @@ Requires **Node.js 20** or later.
 - Worktree create in the workspaces or sibling layout, from that repository's config, or the app default when the config sets no layout
 - A new name creates a local branch at the primary checkout's current commit. An existing local or remote branch is checked out
 - Merge into master or update from master, with squash, and worktree remove. The desktop branch menu can push a local-only branch
-- Create hooks: shell commands and TypeScript plugins, including abort
+- Create and remove hooks: shell commands and TypeScript plugins, including abort
 - Repository settings for the checkout location, the worktree mode, and git remotes
 - App settings for the default layout, the terminal mode, the shell command, the colors, the terminal font, and the IDE command
 
@@ -74,7 +74,7 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 | [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
 | [Configuration](docs/configuration.md) | Registry file, per-repo TOML, and app settings |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |
-| [Plugins](docs/plugins.md) | Create hooks and plugin modules |
+| [Plugins](docs/plugins.md) | Create and remove hooks and plugin modules |
 | [Use cases](docs/use-cases.md) | Create, merge, remove, copy, and hooks |
 | [Troubleshooting](docs/troubleshooting.md) | Install, create, merge, push, and registry errors |
 

@@ -19,6 +19,12 @@ describe('desktop package', () => {
     expect(config).toContain('main: src/desktop/electron-main.mjs');
   });
 
+  it('loads jiti from the package when the desktop page has finished', () => {
+    const config = readFileSync('vite.desktop.config.ts', 'utf8');
+    expect(config).toContain('require.resolve("jiti")');
+    expect(config).not.toContain('document.currentScript');
+  });
+
   it('loads Electron natives before the main process starts a shell', () => {
     const main = readFileSync('src/desktop/shell-main.mjs', 'utf8');
     const install = main.indexOf('installElectronNatives()');

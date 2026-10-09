@@ -87,6 +87,12 @@ A fetch that fails for another reason, such as an unreachable remote, is printed
 
 `No worktree for branch: <branch>` means that branch has no extra checkout. The primary checkout cannot be removed this way.
 
+`Pass --delete-branch or --keep-branch` means remove was not run in a terminal and neither flag was passed. Nothing is deleted.
+
+`Pass only one of --delete-branch or --keep-branch` means both flags were passed.
+
+`<plugin name> aborted worktree remove` means `preWorktreeRemove` returned `'abort'` before `git worktree remove`. The checkout and the branch stay.
+
 ## Push
 
 Push in the branch menu publishes a local-only branch. The remote is `origin` when that remote exists, and otherwise the first remote. `No remote to push to` means the repository has no remote. A rejected push is printed as git reported it. The branch stays local-only.

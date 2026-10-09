@@ -205,6 +205,10 @@ describe('git-worktree-manager worktree create', () => {
         "const ref = execFileSync('git', ['show-ref', '--verify', 'refs/remotes/origin/feature'], { encoding: 'utf8' }).trim();",
         "console.log('fetched-ref ' + ref);",
         "writeFileSync('hook-ran.txt', 'ran');",
+        "writeFileSync('hook-source.json', JSON.stringify({",
+        '  branchSource: process.env.GIT_WORKTREE_MANAGER_BRANCH_SOURCE,',
+        '  remote: process.env.GIT_WORKTREE_MANAGER_REMOTE ?? null,',
+        '}));',
         '',
       ].join('\n'),
     );
@@ -235,6 +239,10 @@ describe('git-worktree-manager worktree create', () => {
       /fetched-ref [0-9a-f]{40} refs\/remotes\/origin\/feature/,
     );
     expect(readFileSync(join(repoPath, 'hook-ran.txt'), 'utf8')).toBe('ran');
+    expect(JSON.parse(readFileSync(join(repoPath, 'hook-source.json'), 'utf8'))).toEqual({
+      branchSource: 'remote',
+      remote: 'origin',
+    });
 
     const checkout = resolve(repoPath, '.workspaces', 'feature');
     expect(existsSync(checkout)).toBe(true);
@@ -337,6 +345,118 @@ describe('git-worktree-manager worktree create', () => {
     expect(existsSync(join(repoPath, '.workspaces', 'login'))).toBe(true);
   });
 
+  it('passes the branch and paths into create plugins', () => {
+    const root = makeTempDir('git-worktree-manager-plugin-context-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    const contextPath = join(repoPath, 'context.json');
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'record.ts'),
+      [
+        "import { existsSync, writeFileSync } from 'node:fs';",
+        'const seen = [];',
+        'export default {',
+        "  name: 'record-context',",
+        '  preWorktreeCreate(ctx) {',
+        '    seen.push({ phase: "pre", ...ctx, worktreeExists: existsSync(ctx.worktreePath) });',
+        '  },',
+        '  postWorktreeCreate(ctx) {',
+        '    seen.push({ phase: "post", ...ctx, worktreeExists: existsSync(ctx.worktreePath) });',
+        `    writeFileSync(${JSON.stringify(contextPath)}, JSON.stringify(seen));`,
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
+      '[hooks]\nmodules = ["plugins/record.ts"]\n',
+    );
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const created = runGitWorktreeManager(
+      ['worktree', 'create', 'feature/login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+
+    const checkout = resolve(repoPath, '.workspaces', 'feature-login');
+    expect(JSON.parse(readFileSync(contextPath, 'utf8'))).toEqual([
+      {
+        phase: 'pre',
+        branch: 'feature/login',
+        worktreePath: checkout,
+        repositoryPath: resolve(repoPath),
+        branchSource: { kind: 'new' },
+        worktreeExists: false,
+      },
+      {
+        phase: 'post',
+        branch: 'feature/login',
+        worktreePath: checkout,
+        repositoryPath: resolve(repoPath),
+        branchSource: { kind: 'new' },
+        worktreeExists: true,
+      },
+    ]);
+  });
+
+  it('passes the branch and paths to create commands', () => {
+    const root = makeTempDir('git-worktree-manager-hook-env-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, 'hooks'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'hooks', 'env.mjs'),
+      [
+        "import { writeFileSync } from 'node:fs';",
+        'writeFileSync(',
+        "  'hook-env.json',",
+        '  JSON.stringify({',
+        '    branch: process.env.GIT_WORKTREE_MANAGER_BRANCH,',
+        '    worktreePath: process.env.GIT_WORKTREE_MANAGER_WORKTREE_PATH,',
+        '    repositoryPath: process.env.GIT_WORKTREE_MANAGER_REPOSITORY_PATH,',
+        '    branchSource: process.env.GIT_WORKTREE_MANAGER_BRANCH_SOURCE,',
+        '    remote: process.env.GIT_WORKTREE_MANAGER_REMOTE ?? null,',
+        '  }),',
+        ');',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
+      '[hooks.pre_worktree_create]\ncommands = ["node hooks/env.mjs"]\n',
+    );
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+
+    const created = runGitWorktreeManager(
+      ['worktree', 'create', 'login', '--repo', 'Harbor'],
+      env,
+    );
+    expect(created.status).toBe(0);
+    expect(JSON.parse(readFileSync(join(repoPath, 'hook-env.json'), 'utf8'))).toEqual({
+      branch: 'login',
+      worktreePath: resolve(repoPath, '.workspaces', 'login'),
+      repositoryPath: resolve(repoPath),
+      branchSource: 'local',
+      remote: null,
+    });
+  });
+
   it('copies .env into the worktree as a file that can be edited', () => {
     const root = makeTempDir('git-worktree-manager-copy-');
     roots.push(root);
@@ -406,7 +526,7 @@ describe('git-worktree-manager worktree create', () => {
     expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
 
     const removed = runGitWorktreeManager(
-      ['worktree', 'remove', 'login', '--repo', 'Harbor'],
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--keep-branch'],
       env,
     );
     expect(removed.status).toBe(0);
@@ -433,8 +553,228 @@ describe('git-worktree-manager worktree create', () => {
       env,
     );
     expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain('No worktree for branch');
     expect(git(repoPath, ['worktree', 'list'])).toContain(resolve(repoPath));
     expect(git(repoPath, ['branch', '--show-current'])).toBe('master');
+  });
+
+  it('refuses remove when both branch flags are set', () => {
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch', '--keep-branch'],
+      {},
+    );
+    expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain('Pass only one of --delete-branch or --keep-branch');
+  });
+
+  it('asks for a branch choice when remove has no terminal and no flag', () => {
+    const root = makeTempDir('git-worktree-manager-remove-flag-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor'],
+      env,
+    );
+
+    expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain('Pass --delete-branch or --keep-branch');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('deletes the local branch and leaves the remote branch', () => {
+    const root = makeTempDir('git-worktree-manager-delete-branch-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const remotePath = join(root, 'origin.git');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['branch', 'login']);
+    git(repoPath, ['push', '-u', 'origin', 'login']);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch'],
+      env,
+    );
+
+    expect(removed.status).toBe(0);
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(() => git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toThrow();
+    expect(git(repoPath, ['rev-parse', '--verify', 'refs/remotes/origin/login'])).toMatch(
+      /^[0-9a-f]{40}$/,
+    );
+  });
+
+  it('refuses a dirty checkout until remove is forced', () => {
+    const root = makeTempDir('git-worktree-manager-remove-dirty-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+    writeFileSync(join(checkout, 'dirty.txt'), 'dirty\n');
+
+    const refused = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch'],
+      env,
+    );
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('use --force to delete it');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toMatch(/^[0-9a-f]{40}$/);
+
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch', '--force'],
+      env,
+    );
+    expect(removed.status).toBe(0);
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(() => git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toThrow();
+  });
+
+  it('stops before removing a worktree when a plugin returns abort', () => {
+    const root = makeTempDir('git-worktree-manager-remove-abort-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'abort.ts'),
+      [
+        'export default {',
+        "  name: 'abort-remove',",
+        "  preWorktreeRemove(): 'abort' {",
+        "    return 'abort';",
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
+      '[hooks]\nmodules = ["plugins/abort.ts"]\n',
+    );
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch'],
+      env,
+    );
+
+    expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain('abort-remove aborted worktree remove');
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('passes the branch, path, and delete choice into remove plugins', () => {
+    const root = makeTempDir('git-worktree-manager-remove-context-');
+    roots.push(root);
+    const repoPath = join(root, 'harbor');
+    const registryPath = join(root, 'registry.db');
+    initGitRepo(repoPath);
+    git(repoPath, ['branch', 'login']);
+    const contextPath = join(repoPath, 'remove-context.json');
+    mkdirSync(join(repoPath, 'plugins'), { recursive: true });
+    writeFileSync(
+      join(repoPath, 'plugins', 'record.ts'),
+      [
+        "import { existsSync, writeFileSync } from 'node:fs';",
+        'const seen = [];',
+        'export default {',
+        "  name: 'record-remove',",
+        '  preWorktreeRemove(ctx) {',
+        '    seen.push({ phase: "pre", ...ctx, worktreeExists: existsSync(ctx.worktreePath) });',
+        '  },',
+        '  postWorktreeRemove(ctx) {',
+        '    seen.push({ phase: "post", ...ctx, worktreeExists: existsSync(ctx.worktreePath) });',
+        `    writeFileSync(${JSON.stringify(contextPath)}, JSON.stringify(seen));`,
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    );
+    mkdirSync(join(repoPath, '.git-worktree-manager'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.git-worktree-manager', 'config.toml'),
+      '[hooks]\nmodules = ["plugins/record.ts"]\n',
+    );
+    const env = gitWorktreeManagerEnv(registryPath);
+    expect(
+      runGitWorktreeManager(['add', '--path', repoPath, '--name', 'Harbor'], env).status,
+    ).toBe(0);
+    expect(
+      runGitWorktreeManager(['worktree', 'create', 'login', '--repo', 'Harbor'], env).status,
+    ).toBe(0);
+    const checkout = resolve(repoPath, '.workspaces', 'login');
+
+    const removed = runGitWorktreeManager(
+      ['worktree', 'remove', 'login', '--repo', 'Harbor', '--delete-branch'],
+      env,
+    );
+
+    expect(removed.status).toBe(0);
+    expect(JSON.parse(readFileSync(contextPath, 'utf8'))).toEqual([
+      {
+        phase: 'pre',
+        branch: 'login',
+        worktreePath: checkout,
+        repositoryPath: resolve(repoPath),
+        deleteBranch: true,
+        worktreeExists: true,
+      },
+      {
+        phase: 'post',
+        branch: 'login',
+        worktreePath: checkout,
+        repositoryPath: resolve(repoPath),
+        deleteBranch: true,
+        worktreeExists: false,
+      },
+    ]);
+    expect(() => git(repoPath, ['rev-parse', '--verify', 'refs/heads/login'])).toThrow();
   });
 
   it('leaves an existing workspaces checkout in place when the app default becomes Sibling', () => {

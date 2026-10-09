@@ -3532,7 +3532,7 @@ describe('desktop workspace', () => {
     expect(branchNames(fixture)).toEqual(['master', 'feature', 'zeta']);
 
     (row.querySelector('[data-testid="remove-worktree"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
+    await confirmKeepBranch(fixture);
 
     expect(readPinnedWorktrees(repoPath)).toEqual([]);
     expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
@@ -5093,12 +5093,97 @@ describe('desktop workspace', () => {
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
-    fixture.detectChanges();
+    await confirmKeepBranch(fixture);
 
     expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
     expect(git(repoPath, ['rev-parse', 'refs/heads/feature'])).toBe(branchSha);
     expect(fixture.nativeElement.querySelector('[data-testid="branch-row"][data-branch="feature"]')).toBeNull();
     expect(branchNames(fixture)).toEqual(['master']);
+  });
+
+  it('leaves the worktree when remove is cancelled', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="remove-worktree"]').click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('[data-testid="remove-worktree-dialog"]');
+    expect(dialog.querySelector('[data-testid="remove-worktree-branch"]').textContent.trim()).toBe('feature');
+    dialog.querySelector('[data-testid="cancel-remove-worktree"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="remove-worktree-dialog"]')).toBeNull();
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).not.toBeNull();
+  });
+
+  it('deletes only the local branch when remove confirms that', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const origin = join(repoPath, '..', 'origin.git');
+    execFileSync('git', ['init', '--bare', '-b', 'master', origin], { stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', origin]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['push', '-u', 'origin', 'feature']);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="remove-worktree"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="confirm-delete-branch"]').click();
+    await untilVisible(fixture, (root) => root.querySelector('[data-testid="remove-worktree-dialog"]') === null);
+
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(hasRef(repoPath, 'refs/heads/feature')).toBe(false);
+    expect(hasRef(repoPath, 'refs/remotes/origin/feature')).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
+  });
+
+  it('turns delete into force delete when the checkout has changes', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    writeFileSync(join(checkout, 'dirty.txt'), 'dirty\n');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    row.querySelector('[data-testid="remove-worktree"]').click();
+    fixture.detectChanges();
+    const deleteButton = () =>
+      fixture.nativeElement.querySelector('[data-testid="confirm-delete-branch"]') as HTMLButtonElement;
+    expect(deleteButton().textContent.trim()).toBe('Delete local branch');
+    deleteButton().click();
+    await untilVisible(
+      fixture,
+      (root) => root.querySelector('[data-testid="confirm-delete-branch"]')?.textContent?.trim() === 'Force delete branch',
+    );
+
+    const forceButton = deleteButton();
+    expect(getComputedStyle(forceButton).backgroundColor).toBe('rgb(180, 35, 24)');
+    expect(getComputedStyle(forceButton).color).toBe('rgb(255, 255, 255)');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]').textContent).toContain(
+      'use --force to delete it',
+    );
+    expect(git(repoPath, ['worktree', 'list'])).toContain(checkout);
+    forceButton.click();
+    await untilVisible(fixture, (root) => root.querySelector('[data-testid="remove-worktree-dialog"]') === null);
+
+    expect(git(repoPath, ['worktree', 'list'])).not.toContain(checkout);
+    expect(hasRef(repoPath, 'refs/heads/feature')).toBe(false);
+    expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
   });
 
   it('reads the registry on the centered card when the live query flag is set', async () => {
@@ -7069,7 +7154,7 @@ describe('desktop workspace', () => {
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
-    fixture.detectChanges();
+    await confirmKeepBranch(fixture);
 
     expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="content-sheet"]').textContent).toContain(
@@ -7733,7 +7818,7 @@ describe('desktop workspace', () => {
     row.querySelector('[data-testid="branch-menu"]').click();
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
-    fixture.detectChanges();
+    await confirmKeepBranch(fixture);
 
     expect(fixture.nativeElement.querySelector('[data-branch="feature"]')).toBeNull();
     expect(hasRef(repoPath, 'refs/remotes/origin/stale')).toBe(true);
@@ -8064,6 +8149,16 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(repoPath);
   });
 });
+
+async function confirmKeepBranch(fixture: {
+  detectChanges(): void;
+  nativeElement: HTMLElement;
+}): Promise<void> {
+  fixture.detectChanges();
+  const dialog = fixture.nativeElement.querySelector('[data-testid="remove-worktree-dialog"]');
+  (dialog.querySelector('[data-testid="confirm-remove-worktree"]') as HTMLButtonElement).click();
+  await untilVisible(fixture, (root) => root.querySelector('[data-testid="remove-worktree-dialog"]') === null);
+}
 
 async function untilVisible(
   fixture: { detectChanges(): void; nativeElement: HTMLElement },

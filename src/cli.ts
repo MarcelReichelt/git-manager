@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { confirm } from '@inquirer/prompts';
 import { Command } from 'commander';
 import { addRepository, listRepositories, unregisterRepository } from './registry.js';
 import { mergeIntoMaster, updateFromMaster } from './merge.js';
-import { createWorktree, removeWorktree } from './worktrees.js';
+import { assertWorktreeRemovable, createWorktree, removeWorktree } from './worktrees.js';
 
 const program = new Command();
 program.name('git-worktree-manager');
@@ -43,8 +44,19 @@ worktree
   .command('remove')
   .argument('<branch>')
   .requiredOption('--repo <path-or-name>')
-  .action((branch: string, options: { repo: string }) => {
-    removeWorktree(options.repo, branch);
+  .option('--delete-branch', 'Delete the local branch after removing the worktree')
+  .option('--keep-branch', 'Keep the local branch after removing the worktree')
+  .option('--force', 'Remove the worktree even when it has changes')
+  .action(async (
+    branch: string,
+    options: { repo: string; deleteBranch?: boolean; keepBranch?: boolean; force?: boolean },
+  ) => {
+    if (options.deleteBranch && options.keepBranch) {
+      throw new Error('Pass only one of --delete-branch or --keep-branch');
+    }
+    assertWorktreeRemovable(options.repo, branch);
+    const deleteBranch = await chooseDeleteBranch(branch, options.deleteBranch, options.keepBranch);
+    await removeWorktree(options.repo, branch, { deleteBranch, force: options.force === true });
   });
 
 program
@@ -75,6 +87,26 @@ program
       throw new Error('Pass --update-from-master or --into-master');
     },
   );
+
+async function chooseDeleteBranch(
+  branch: string,
+  deleteBranch: boolean | undefined,
+  keepBranch: boolean | undefined,
+): Promise<boolean> {
+  if (deleteBranch) {
+    return true;
+  }
+  if (keepBranch) {
+    return false;
+  }
+  if (process.stdin.isTTY !== true) {
+    throw new Error('Pass --delete-branch or --keep-branch');
+  }
+  return confirm({
+    message: `Delete the local branch ${branch}? The remote branch stays.`,
+    default: false,
+  });
+}
 
 try {
   await program.parseAsync(process.argv);

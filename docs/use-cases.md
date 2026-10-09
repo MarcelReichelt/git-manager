@@ -35,7 +35,7 @@ The desktop Merge into master dialog has the same Squash checkbox. Omit `--squas
 git-worktree-manager worktree remove feature/login --repo Harbor
 ```
 
-The branch remains. The primary checkout is left in place. Remove worktree in the branch menu does the same thing.
+In a terminal, remove asks whether to delete the local branch. `--keep-branch` leaves it. `--delete-branch` deletes it, and leaves a remote branch in place. The primary checkout stays. Remove worktree in the branch menu asks the same question.
 
 ## Copy a file into each new worktree
 

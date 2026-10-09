@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { createBranchSession, killTmuxSession, listTmuxSessions, sessionDirectory, sessionsForBranch } from '../src/desktop/tmux-sessions';
 import { setAfterPaintScheduler } from '../src/desktop/after-paint';
+import { resetIdeLaunch, setIdeLaunch } from '../src/desktop/ide-launch';
 import { whenRemoteRefreshIdle } from '../src/branches';
 import { killShell } from '../src/desktop/shell-host';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
@@ -33,6 +34,7 @@ describe('Terminals on the grouped worktrees', () => {
     setAfterPaintScheduler((task) => {
       task();
     });
+    resetIdeLaunch();
     restoreSearch?.();
     restoreSearch = undefined;
     if (previousRegistryPath === undefined) {
@@ -920,7 +922,10 @@ describe('Terminals on the grouped worktrees', () => {
 
     expect(terminalsWorktree(fixture, 'Pier', 'feature').getAttribute('aria-selected')).toBe('true');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id')).toBe(featureTerminal);
-    expect(fixture.nativeElement.querySelector('[data-testid="branch-heading"]')).toBeNull();
+    const heading = fixture.nativeElement.querySelector('[data-testid="branch-heading"]') as HTMLElement;
+    expect(heading.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+    expect(heading.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+    expect(heading.querySelector('[data-testid="heading-summary"]')).toBeNull();
 
     fixture.destroy();
     fixtures.splice(fixtures.indexOf(fixture), 1);
@@ -930,7 +935,7 @@ describe('Terminals on the grouped worktrees', () => {
     expect(again.nativeElement.querySelector('[data-testid="terminals-worktree"].is-selected')).toBeNull();
   });
 
-  it('shows only the chosen worktree terminal section, maximized, with the branch heading, changes, and commits hidden', async () => {
+  it('shows the chosen worktree terminal below its branch heading, without the summary, changes, or commits', async () => {
     registerPair(roots);
     const fixture = await renderLive();
     await openLiveRepository(fixture, 'Pier');
@@ -956,11 +961,20 @@ describe('Terminals on the grouped worktrees', () => {
     fixture.detectChanges();
 
     const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
-    expect(sheet.querySelector('.branch-heading')).toBeNull();
+    const heading = sheet.querySelector('[data-testid="branch-heading"]') as HTMLElement;
+    const body = sheet.querySelector('.sheet-body') as HTMLElement;
+    expect(heading.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+    expect(heading.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+    expect(heading.querySelector('[data-testid="heading-summary"]')).toBeNull();
+    expect(heading.textContent).not.toContain('commits');
+    expect(heading.textContent).not.toContain('changed files');
+    expect(heading.nextElementSibling).toBe(body);
+    expect(body.contains(heading)).toBe(false);
+    expect(body.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
     expect(sheet.querySelector('[data-testid="changes"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="commits"]')).toBeNull();
     expect(sheet.querySelector('[data-testid="terminal-split"]')).toBeNull();
-    expect((sheet.querySelector('.sheet-body') as HTMLElement).style.gridTemplateRows).toBe('minmax(0, 1fr)');
+    expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr)');
     expect(sheet.querySelector('[data-testid="terminal-pane"]')?.getAttribute('data-terminal-id')).toBe(featureTerminal);
     expect(sheet.querySelector(`[data-testid="terminal-pane"][data-terminal-id="${quayTerminal}"]`)).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
@@ -996,6 +1010,44 @@ describe('Terminals on the grouped worktrees', () => {
     const menu = fixture.nativeElement.querySelector('[data-testid="terminal-menu"]');
     expect(menu).not.toBeNull();
     expect(menu.querySelector('[data-testid="terminal-rename"]')?.textContent?.trim()).toBe('Rename');
+  });
+
+  it('opens the chosen worktree from the terminals branch header', async () => {
+    const launched: Array<{ command: string; cwd: string }> = [];
+    setIdeLaunch((command, cwd) => {
+      launched.push({ command, cwd });
+    });
+    const { pier } = registerPair(roots);
+    const checkout = join(pier, '.workspaces', 'feature');
+    writeFileSync(
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH ?? '',
+      `${JSON.stringify({ ideCommand: 'code -n {folder}' })}\n`,
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    openRepositoryCard(fixture);
+    await openLiveRepository(fixture, 'Quay');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'master') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector('[data-testid="content-sheet"] [data-testid="branch-heading"]') as HTMLElement;
+    expect(heading.querySelector('[data-testid="heading-summary"]')).toBeNull();
+    heading.querySelector('[data-testid="open-ide"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(launched).toEqual([{ command: `code -n '${checkout}'`, cwd: checkout }]);
   });
 
   it('uses the app settings terminal background, terminal foreground, and terminal font', async () => {

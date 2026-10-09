@@ -6868,7 +6868,7 @@ describe('desktop workspace', () => {
     expect(dialog.querySelector('[data-testid="workspace-error"]').textContent).toContain('Enter a branch name');
   });
 
-  it('shows Loading in the content until the worktree is open', async () => {
+  it('keeps the branch name and IDE button while the worktree content loads', async () => {
     const repoPath = createEmptyRepository(roots);
     process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
     addRepository(repoPath, 'Harbor');
@@ -6878,10 +6878,17 @@ describe('desktop workspace', () => {
       fixture.nativeElement.querySelector('[data-branch="master"]').click();
       fixture.detectChanges();
 
-      expect(fixture.nativeElement.querySelector('[data-testid="content-loading"]').textContent.trim()).toBe(
-        'Loading master',
-      );
-      expect(fixture.nativeElement.querySelector('[data-testid="changed-files"]')).toBeNull();
+      const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+      const heading = sheet.querySelector('[data-testid="branch-heading"]') as HTMLElement;
+      const loading = sheet.querySelector('[data-testid="content-loading"]') as HTMLElement;
+      expect(heading.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('master');
+      expect(heading.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+      expect(heading.querySelector('[data-testid="heading-skeleton"]')).not.toBeNull();
+      expect(heading.querySelector('[data-testid="heading-summary"]')?.textContent).not.toContain('commits');
+      expect(loading.getAttribute('aria-label')).toBe('Loading master');
+      expect(loading.querySelectorAll('.skeleton-bar').length).toBeGreaterThan(0);
+      expect(loading.querySelector('[data-testid="changed-files"]')).toBeNull();
+      expect(loading.querySelector('[data-testid="commit"]')).toBeNull();
       expect(fixture.nativeElement.querySelector('.branch-row.is-selected').getAttribute('data-branch')).toBe(
         'master',
       );
@@ -6890,7 +6897,90 @@ describe('desktop workspace', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelector('[data-testid="content-loading"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="heading-skeleton"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="heading-summary"]')?.textContent).toContain(
+        'changed files',
+      );
       expect(fixture.nativeElement.querySelector('[data-testid="changes"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="changed-files"]')).not.toBeNull();
+    } finally {
+      held.release();
+    }
+  });
+
+  it('keeps the terminal row height while the branch content loads', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    dockTerminalSection(fixture.nativeElement);
+    fixture.detectChanges();
+    const split = fixture.nativeElement.querySelector('[data-testid="terminal-split"]') as HTMLElement;
+    dragDivider(split, { x: 400, y: 200 }, { x: 400, y: 120 });
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('.sheet-body') as HTMLElement;
+    const docked = terminalSectionHeight(body);
+    const stackRows = (fixture.nativeElement.querySelector('.sheet-stack') as HTMLElement).style.gridTemplateRows;
+    const held = holdPaint();
+    try {
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      fixture.detectChanges();
+
+      const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+      const heading = sheet.querySelector('[data-testid="branch-heading"]') as HTMLElement;
+      const loading = sheet.querySelector('[data-testid="content-loading"]') as HTMLElement;
+      expect(heading.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+      expect(heading.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+      expect(heading.querySelector('[data-testid="heading-skeleton"]')).not.toBeNull();
+      expect(loading.querySelectorAll('.skeleton-row').length).toBeGreaterThan(0);
+      expect(loading.querySelector('[data-testid="terminal-row"]')).toBeNull();
+      expect(sheet.querySelector('[data-testid="terminal-split"]')).not.toBeNull();
+      expect(terminalSectionHeight(body)).toBe(docked);
+      expect((loading.querySelector('.sheet-stack') as HTMLElement).style.gridTemplateRows).toBe(stackRows);
+
+      held.release();
+      fixture.detectChanges();
+
+      expect(sheet.querySelector('[data-testid="content-loading"]')).toBeNull();
+      expect(terminalSectionHeight(body)).toBe(docked);
+      expect((sheet.querySelector('.sheet-stack') as HTMLElement).style.gridTemplateRows).toBe(stackRows);
+    } finally {
+      held.release();
+    }
+  });
+
+  it('opens the selected checkout from the header while content is still loading', async () => {
+    const launched: Array<{ command: string; cwd: string }> = [];
+    setIdeLaunch((command, cwd) => {
+      launched.push({ command, cwd });
+    });
+
+    const repoPath = createEmptyRepository(roots);
+    const checkout = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', checkout, 'feature']);
+    const root = join(repoPath, '..');
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(root, 'registry.db');
+    const settingsPath = join(root, 'app-settings.json');
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = settingsPath;
+    writeFileSync(settingsPath, '{"ideCommand":"code -n {folder}"}\n');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    const held = holdPaint();
+    try {
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      fixture.detectChanges();
+      fixture.nativeElement.querySelector('[data-testid="open-ide"]').click();
+      fixture.detectChanges();
+
+      expect(launched).toEqual([{ command: `code -n '${checkout}'`, cwd: checkout }]);
     } finally {
       held.release();
     }
@@ -6913,8 +7003,18 @@ describe('desktop workspace', () => {
       fixture.detectChanges();
 
       const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
+      const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+      const heading = sheet.querySelector('[data-testid="branch-heading"]') as HTMLElement;
+      const body = sheet.querySelector('.sheet-body') as HTMLElement;
       expect(row.querySelector('[data-testid="branch-activity"]').textContent.trim()).toBe('Loading feature');
       expect(fixture.nativeElement.querySelector('[data-testid="content-loading"]')).toBeNull();
+      expect(heading.querySelector('[data-testid="copy-branch-name"]')?.textContent).toContain('feature');
+      expect(heading.querySelector('[data-testid="open-ide"]')).not.toBeNull();
+      expect(heading.querySelector('[data-testid="heading-skeleton"]')).not.toBeNull();
+      expect(heading.nextElementSibling).toBe(body);
+      expect(body.querySelector('[data-testid="changes"]')).toBeNull();
+      expect(body.querySelector('[data-testid="terminal-row"]')).not.toBeNull();
+      expect(body.style.gridTemplateRows).toBe('minmax(0, 1fr)');
 
       held.release();
       fixture.detectChanges();

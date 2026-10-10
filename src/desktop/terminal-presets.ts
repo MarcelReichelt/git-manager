@@ -25,23 +25,25 @@ export interface CheckoutPresets {
 interface OverlayPreset {
   name: string;
   preset: CommittedPreset | null;
+  error?: string;
 }
 
 export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
-  return readPresetFile(checkout, 'terminals.toml');
+  return readPresetFile(checkout, 'terminals.toml').presets;
 }
 
 export function readCheckoutPresets(checkout: string): CheckoutPresets {
-  const committed = readCommittedPreset(checkout);
-  const overlay = readOverlayPresets(checkout);
-  if (!overlay) {
-    return { presets: committed, error: null };
+  const committed = loadCommittedPresets(checkout);
+  const overlay = loadOverlayPresets(checkout);
+  let error = committed.error ?? overlay.error;
+  if (!overlay.value) {
+    return { presets: committed.value, error };
   }
-  const base = committed ?? [];
+  const base = committed.value ?? [];
   const names = new Set(base.map((preset) => presetKey(preset.name)));
   const replacements = new Map<string, OverlayPreset>();
   const extras: OverlayPreset[] = [];
-  for (const entry of overlay) {
+  for (const entry of overlay.value) {
     if (names.has(entry.name)) {
       replacements.set(entry.name, entry);
     } else {
@@ -49,7 +51,6 @@ export function readCheckoutPresets(checkout: string): CheckoutPresets {
     }
   }
   const merged: CommittedPreset[] = [];
-  let error: string | null = null;
   for (const preset of base) {
     const replacement = replacements.get(presetKey(preset.name));
     if (!replacement) {
@@ -57,33 +58,78 @@ export function readCheckoutPresets(checkout: string): CheckoutPresets {
       continue;
     }
     if (replacement.preset === null) {
-      error ??= `Preset "${replacement.name}" has no tabs`;
+      error ??= replacement.error ?? `Preset "${replacement.name}" has no tabs`;
       continue;
     }
+    error ??= replacement.error ?? null;
     merged.push(replacement.preset);
   }
   for (const extra of extras) {
     if (extra.preset === null) {
-      error ??= `Preset "${extra.name}" has no tabs`;
+      error ??= extra.error ?? `Preset "${extra.name}" has no tabs`;
       continue;
     }
+    error ??= extra.error ?? null;
     merged.push(extra.preset);
   }
   return { presets: merged.length > 0 ? merged : null, error };
+}
+
+function loadCommittedPresets(checkout: string): { value: CommittedPreset[] | null; error: string | null } {
+  try {
+    const read = readPresetFile(checkout, 'terminals.toml');
+    return { value: read.presets, error: read.error };
+  } catch (error) {
+    return { value: null, error: errorText(error) };
+  }
+}
+
+function loadOverlayPresets(checkout: string): { value: OverlayPreset[] | null; error: string | null } {
+  try {
+    const parsed = readPresetDocument(checkout, 'terminals.override.toml');
+    if (parsed === null) {
+      return { value: null, error: null };
+    }
+    const read = overlayPresets(parsed, checkout);
+    return { value: read.presets, error: read.error };
+  } catch (error) {
+    return { value: null, error: errorText(error) };
+  }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function presetKey(name: string): string {
   return name.trim();
 }
 
-function readPresetFile(checkout: string, filename: string): CommittedPreset[] | null {
-  const parsed = readPresetDocument(checkout, filename);
-  return parsed === null ? null : committedPresets(parsed);
+function duplicatePresetName(presets: unknown[]): string | null {
+  const seen = new Set<string>();
+  for (const entry of presets) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const name = entry.name;
+    if (typeof name !== 'string') {
+      continue;
+    }
+    const key = presetKey(name);
+    if (key.length === 0) {
+      continue;
+    }
+    if (seen.has(key)) {
+      return key;
+    }
+    seen.add(key);
+  }
+  return null;
 }
 
-function readOverlayPresets(checkout: string): OverlayPreset[] | null {
-  const parsed = readPresetDocument(checkout, 'terminals.override.toml');
-  return parsed === null ? null : overlayPresets(parsed);
+function readPresetFile(checkout: string, filename: string): { presets: CommittedPreset[] | null; error: string | null } {
+  const parsed = readPresetDocument(checkout, filename);
+  return parsed === null ? { presets: null, error: null } : committedPresets(parsed, checkout);
 }
 
 function readPresetDocument(checkout: string, filename: string): unknown | null {
@@ -105,38 +151,52 @@ function readPresetDocument(checkout: string, filename: string): unknown | null 
   return parsed;
 }
 
-function overlayPresets(parsed: unknown): OverlayPreset[] | null {
+function overlayPresets(parsed: unknown, checkout: string): { presets: OverlayPreset[] | null; error: string | null } {
   if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'preset')) {
-    return null;
+    return { presets: null, error: null };
   }
   const presets = parsed.preset;
   if (!Array.isArray(presets) || presets.length === 0) {
-    return null;
+    return { presets: null, error: null };
+  }
+  const duplicate = duplicatePresetName(presets);
+  if (duplicate !== null) {
+    throw new Error(`Preset name "${duplicate}" is used more than once`);
   }
   const resolved: OverlayPreset[] = [];
+  let error: string | null = null;
   for (const entry of presets) {
-    const preset = overlayPreset(entry);
-    if (preset) {
-      resolved.push(preset);
+    const preset = overlayPreset(entry, checkout);
+    error ??= preset.error;
+    if (preset.preset) {
+      resolved.push(preset.preset);
     }
   }
-  return resolved.length > 0 ? resolved : null;
+  return { presets: resolved.length > 0 ? resolved : null, error };
 }
 
-function overlayPreset(entry: unknown): OverlayPreset | null {
+function overlayPreset(entry: unknown, checkout: string): { preset: OverlayPreset | null; error: string | null } {
   if (!isRecord(entry)) {
     throw new Error('Invalid terminals.toml: preset must be a table');
   }
   const name = entry.name;
   if (typeof name !== 'string' || name.trim().length === 0) {
-    return null;
+    return { preset: null, error: 'A preset has no name' };
   }
   const key = name.trim();
-  const tabs = presetTabs(entry);
-  if (tabs.length === 0) {
-    return { name: key, preset: null };
+  if (hasOverfullTab(entry)) {
+    const error = `Preset "${key}" has a tab with more than two terminals`;
+    return { preset: { name: key, preset: null, error }, error };
   }
-  return { name: key, preset: { name: key, tabs } };
+  const tabs = presetTabs(entry, checkout);
+  if (tabs.tabs.length === 0) {
+    const error = tabs.error ?? `Preset "${key}" has no tabs`;
+    return { preset: { name: key, preset: null, error }, error };
+  }
+  const preset: OverlayPreset = tabs.error
+    ? { name: key, preset: { name: key, tabs: tabs.tabs }, error: tabs.error }
+    : { name: key, preset: { name: key, tabs: tabs.tabs } };
+  return { preset, error: tabs.error };
 }
 
 export function terminalDirectory(checkout: string, directory: string | undefined): string {
@@ -155,98 +215,138 @@ export function terminalDirectory(checkout: string, directory: string | undefine
   throw new Error(`The terminal directory leaves the checkout: ${directory}`);
 }
 
-function committedPresets(parsed: unknown): CommittedPreset[] | null {
+function committedPresets(parsed: unknown, checkout: string): { presets: CommittedPreset[] | null; error: string | null } {
   if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'preset')) {
-    return null;
+    return { presets: null, error: null };
   }
   const presets = parsed.preset;
   if (!Array.isArray(presets) || presets.length === 0) {
-    return null;
+    return { presets: null, error: null };
+  }
+  const duplicate = duplicatePresetName(presets);
+  if (duplicate !== null) {
+    throw new Error(`Preset name "${duplicate}" is used more than once`);
   }
   const resolved: CommittedPreset[] = [];
+  let error: string | null = null;
   for (const entry of presets) {
-    const preset = onePreset(entry);
-    if (preset) {
-      resolved.push(preset);
+    const preset = onePreset(entry, checkout);
+    error ??= preset.error;
+    if (preset.preset) {
+      resolved.push(preset.preset);
     }
   }
-  return resolved.length > 0 ? resolved : null;
+  return { presets: resolved.length > 0 ? resolved : null, error };
 }
 
-function onePreset(entry: unknown): CommittedPreset | null {
+function onePreset(entry: unknown, checkout: string): { preset: CommittedPreset | null; error: string | null } {
   if (!isRecord(entry)) {
     throw new Error('Invalid terminals.toml: preset must be a table');
   }
   const name = entry.name;
-  if (typeof name !== 'string' || name.length === 0) {
-    return null;
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return { preset: null, error: 'A preset has no name' };
   }
-  const tabs = presetTabs(entry);
-  if (tabs.length === 0) {
-    return null;
+  if (hasOverfullTab(entry)) {
+    return { preset: null, error: `Preset "${name.trim()}" has a tab with more than two terminals` };
   }
-  return { name, tabs };
+  const tabs = presetTabs(entry, checkout);
+  if (tabs.tabs.length === 0) {
+    return { preset: null, error: tabs.error ?? `Preset "${name.trim()}" has no tabs` };
+  }
+  return { preset: { name, tabs: tabs.tabs }, error: tabs.error };
 }
 
-function presetTabs(preset: Record<string, unknown>): PresetTab[] {
+function hasOverfullTab(preset: Record<string, unknown>): boolean {
   if (!Object.prototype.hasOwnProperty.call(preset, 'tab')) {
-    return [];
+    return false;
+  }
+  const tabs = preset.tab;
+  if (!Array.isArray(tabs)) {
+    return false;
+  }
+  return tabs.some((tab) => isRecord(tab) && Array.isArray(tab.terminals) && tab.terminals.length > 2);
+}
+
+function presetTabs(preset: Record<string, unknown>, checkout: string): { tabs: PresetTab[]; error: string | null } {
+  if (!Object.prototype.hasOwnProperty.call(preset, 'tab')) {
+    return { tabs: [], error: null };
   }
   const tabs = preset.tab;
   if (!Array.isArray(tabs)) {
     throw new Error('Invalid terminals.toml: tab must be a table');
   }
   const resolved: PresetTab[] = [];
+  let error: string | null = null;
   for (const entry of tabs) {
-    const tab = oneTab(entry);
-    if (tab) {
-      resolved.push(tab);
+    const tab = oneTab(entry, checkout);
+    error ??= tab.error;
+    if (tab.tab) {
+      resolved.push(tab.tab);
     }
   }
-  return resolved;
+  return { tabs: resolved, error };
 }
 
-function oneTab(entry: unknown): PresetTab | null {
+function oneTab(entry: unknown, checkout: string): { tab: PresetTab | null; error: string | null } {
   if (!isRecord(entry)) {
     throw new Error('Invalid terminals.toml: tab must be a table');
   }
   if (!Object.prototype.hasOwnProperty.call(entry, 'terminals')) {
-    return null;
+    return { tab: null, error: null };
   }
   const terminals = entry.terminals;
   if (!Array.isArray(terminals)) {
     throw new Error('Invalid terminals.toml: terminal must be a table');
   }
   const resolved: PresetTerminal[] = [];
+  let error: string | null = null;
   for (const terminal of terminals) {
-    if (resolved.length === 2) {
-      break;
+    const outcome = oneTerminal(terminal, checkout);
+    error ??= outcome.error;
+    if (outcome.terminal) {
+      resolved.push(outcome.terminal);
     }
-    resolved.push(oneTerminal(terminal));
   }
-  return resolved.length > 0 ? { terminals: resolved } : null;
+  return { tab: resolved.length > 0 ? { terminals: resolved } : null, error };
 }
 
-function oneTerminal(entry: unknown): PresetTerminal {
+function oneTerminal(entry: unknown, checkout: string): { terminal: PresetTerminal | null; error: string | null } {
   if (!isRecord(entry)) {
     throw new Error('Invalid terminals.toml: terminal must be a table');
   }
   const name = entry.name;
-  if (typeof name !== 'string') {
-    throw new Error('Invalid terminals.toml: terminal name must be a string');
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return { terminal: null, error: 'A terminal has no name' };
   }
   const command = entry.command;
   if (command !== undefined && typeof command !== 'string') {
     throw new Error('Invalid terminals.toml: startup command must be a string');
   }
+  if (typeof command === 'string' && command.includes('\n')) {
+    return { terminal: null, error: `The startup command for "${name.trim()}" contains a newline` };
+  }
   const directory = entry.cwd;
   if (directory !== undefined && typeof directory !== 'string') {
     throw new Error('Invalid terminals.toml: directory must be a string');
   }
+  const written = typeof directory === 'string' && directory.length > 0 ? directory : undefined;
+  let resolved: string;
+  try {
+    resolved = terminalDirectory(checkout, written);
+  } catch (error) {
+    return { terminal: null, error: errorText(error) };
+  }
+  if (!existsSync(resolved)) {
+    return { terminal: null, error: `The terminal directory does not exist: ${written}` };
+  }
   return {
-    name,
-    command: typeof command === 'string' ? command : '',
-    directory: typeof directory === 'string' && directory.length > 0 ? directory : undefined,
+    terminal: {
+      name,
+      command: typeof command === 'string' ? command : '',
+      directory: written,
+    },
+    error: null,
   };
 }
 

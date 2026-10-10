@@ -6048,8 +6048,13 @@ function errorText(error: unknown): string {
 function isPresetWorkspaceError(message: string): boolean {
   return (
     message.startsWith('Invalid terminals.toml') ||
-    message.startsWith('The terminal directory leaves the checkout') ||
-    /^Preset ".*" has no tabs$/.test(message)
+    message.startsWith('The terminal directory ') ||
+    /^Preset ".*" has no tabs$/.test(message) ||
+    /^Preset name ".*" is used more than once$/.test(message) ||
+    message === 'A preset has no name' ||
+    message === 'A terminal has no name' ||
+    /^The startup command for ".*" contains a newline$/.test(message) ||
+    /^Preset ".*" has a tab with more than two terminals$/.test(message)
   );
 }
 

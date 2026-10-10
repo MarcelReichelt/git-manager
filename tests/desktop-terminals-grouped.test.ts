@@ -982,8 +982,10 @@ describe('Terminals on the grouped worktrees', () => {
 
   it('shows Run preset immediately left of Split in Terminals', async () => {
     const { pier } = registerPair(roots);
-    const directory = join(pier, '.workspaces', 'feature', '.git-worktree-manager');
+    const checkout = join(pier, '.workspaces', 'feature');
+    const directory = join(checkout, '.git-worktree-manager');
     mkdirSync(directory, { recursive: true });
+    mkdirSync(join(checkout, 'packages', 'api'), { recursive: true });
     writeFileSync(
       join(directory, 'terminals.toml'),
       `[[preset]]

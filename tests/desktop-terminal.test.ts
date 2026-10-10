@@ -2348,6 +2348,95 @@ terminals = [
     expect(paneText(fixture!)).not.toContain('primary-committed');
     expect(paneText(fixture!)).not.toContain('ship-overlay');
   });
+
+  it('reads both preset files from a linked worktree checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-overlay" },
+]
+
+[[preset]]
+name = "primary-extra"
+
+[[preset.tab]]
+terminals = [
+  { name = "extra-shell", command = "echo primary-extra" },
+]
+`,
+    );
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "linked"
+
+[[preset.tab]]
+terminals = [
+  { name = "linked-shell", command = "echo linked-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "linked"
+
+[[preset.tab]]
+terminals = [
+  { name = "linked-shell", command = "echo linked-overlay" },
+]
+
+[[preset]]
+name = "linked-extra"
+
+[[preset.tab]]
+terminals = [
+  { name = "extra-shell", command = "echo linked-extra" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['linked', 'linked-extra']);
+    const linked = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    linked[0]?.click();
+    fixture.detectChanges();
+    await waitFor(() => paneText(fixture!).includes('linked-overlay'));
+    expect(paneText(fixture!)).not.toContain('linked-committed');
+    expect(paneText(fixture!)).not.toContain('primary-overlay');
+    expect(paneText(fixture!)).not.toContain('primary-extra');
+
+    clickBranch(fixture, 'master');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['primary', 'primary-extra']);
+    const primary = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    primary[0]?.click();
+    fixture.detectChanges();
+    await waitFor(() => paneText(fixture!).includes('primary-overlay'));
+    expect(paneText(fixture!)).not.toContain('primary-committed');
+    expect(paneText(fixture!)).not.toContain('linked-overlay');
+    expect(paneText(fixture!)).not.toContain('linked-extra');
+  });
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

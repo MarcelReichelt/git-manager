@@ -3054,6 +3054,266 @@ terminals = [
     expect(presetMenuLabels(fixture)).toEqual(['dev', 'Dev']);
   });
 
+  it('skips a preset whose tab is not a table and runs the rest of that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+tab = "nope"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['gamma', 'notes']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    again[1]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell', '2 notes-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+  });
+
+  it('skips a terminal that is not a table and runs the other terminals in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [ "nope" ]
+
+[[preset.tab]]
+terminals = [
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: terminal must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['dev', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a preset tab whose terminals are not a table and runs the other presets', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = "nope"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: terminal must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a terminal whose startup command is not a string and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = 4 },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: startup command must be a string',
+    );
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a terminal whose directory is not a string and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = 4 },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: directory must be a string',
+    );
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a tab that is not a table and runs the other presets in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+tab = ["nope"]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a preset that is not a table and runs the other preset file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(checkout, 'preset = ["alpha", "beta"]\n');
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: preset must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
   it('skips a preset with no name and runs the other presets in that file', async () => {
     const repo = createRepo();
     root = repo.root;

@@ -215,7 +215,7 @@ function overlayPresets(parsed: unknown, checkout: string): { presets: OverlayPr
 
 function overlayPreset(entry: unknown, checkout: string): { preset: OverlayPreset | null; error: string | null } {
   if (!isRecord(entry)) {
-    throw new Error('Invalid terminals.toml: preset must be a table');
+    return { preset: null, error: 'Invalid terminals.toml: preset must be a table' };
   }
   const name = entry.name;
   if (typeof name !== 'string' || name.trim().length === 0) {
@@ -287,7 +287,7 @@ function presetName(entry: unknown): string | null {
 
 function onePreset(entry: unknown, checkout: string): { preset: CommittedPreset | null; error: string | null } {
   if (!isRecord(entry)) {
-    throw new Error('Invalid terminals.toml: preset must be a table');
+    return { preset: null, error: 'Invalid terminals.toml: preset must be a table' };
   }
   const name = entry.name;
   if (typeof name !== 'string' || name.trim().length === 0) {
@@ -320,7 +320,7 @@ function presetTabs(preset: Record<string, unknown>, checkout: string): { tabs: 
   }
   const tabs = preset.tab;
   if (!Array.isArray(tabs)) {
-    throw new Error('Invalid terminals.toml: tab must be a table');
+    return { tabs: [], error: 'Invalid terminals.toml: tab must be a table' };
   }
   const resolved: PresetTab[] = [];
   let error: string | null = null;
@@ -336,14 +336,14 @@ function presetTabs(preset: Record<string, unknown>, checkout: string): { tabs: 
 
 function oneTab(entry: unknown, checkout: string): { tab: PresetTab | null; error: string | null } {
   if (!isRecord(entry)) {
-    throw new Error('Invalid terminals.toml: tab must be a table');
+    return { tab: null, error: 'Invalid terminals.toml: tab must be a table' };
   }
   if (!Object.prototype.hasOwnProperty.call(entry, 'terminals')) {
     return { tab: null, error: null };
   }
   const terminals = entry.terminals;
   if (!Array.isArray(terminals)) {
-    throw new Error('Invalid terminals.toml: terminal must be a table');
+    return { tab: null, error: 'Invalid terminals.toml: terminal must be a table' };
   }
   const resolved: PresetTerminal[] = [];
   let error: string | null = null;
@@ -359,7 +359,7 @@ function oneTab(entry: unknown, checkout: string): { tab: PresetTab | null; erro
 
 function oneTerminal(entry: unknown, checkout: string): { terminal: PresetTerminal | null; error: string | null } {
   if (!isRecord(entry)) {
-    throw new Error('Invalid terminals.toml: terminal must be a table');
+    return { terminal: null, error: 'Invalid terminals.toml: terminal must be a table' };
   }
   const name = entry.name;
   if (typeof name !== 'string' || name.trim().length === 0) {
@@ -367,14 +367,14 @@ function oneTerminal(entry: unknown, checkout: string): { terminal: PresetTermin
   }
   const command = entry.command;
   if (command !== undefined && typeof command !== 'string') {
-    throw new Error('Invalid terminals.toml: startup command must be a string');
+    return { terminal: null, error: 'Invalid terminals.toml: startup command must be a string' };
   }
   if (typeof command === 'string' && command.includes('\n')) {
     return { terminal: null, error: `The startup command for "${name.trim()}" contains a newline` };
   }
   const directory = entry.cwd;
   if (directory !== undefined && typeof directory !== 'string') {
-    throw new Error('Invalid terminals.toml: directory must be a string');
+    return { terminal: null, error: 'Invalid terminals.toml: directory must be a string' };
   }
   const written = typeof directory === 'string' && directory.length > 0 ? directory : undefined;
   let resolved: string;

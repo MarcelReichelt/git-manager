@@ -3240,7 +3240,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return false;
     }
     try {
-      return readCheckoutPresets(checkout) !== null;
+      return readCheckoutPresets(checkout).presets !== null;
     } catch {
       return false;
     }
@@ -4670,7 +4670,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private syncCommittedPreset(checkout: string): void {
     try {
-      readCheckoutPresets(checkout);
+      const read = readCheckoutPresets(checkout);
+      if (read.error !== null) {
+        this.workspaceError.set(read.error);
+        return;
+      }
       this.clearPresetWorkspaceError();
     } catch (error) {
       this.workspaceError.set(errorText(error));
@@ -4704,7 +4708,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     try {
-      return readCheckoutPresets(checkout);
+      const read = readCheckoutPresets(checkout);
+      if (read.error !== null) {
+        this.workspaceError.set(read.error);
+      }
+      return read.presets;
     } catch (error) {
       this.workspaceError.set(errorText(error));
       return null;
@@ -6025,7 +6033,8 @@ function errorText(error: unknown): string {
 function isPresetWorkspaceError(message: string): boolean {
   return (
     message.startsWith('Invalid terminals.toml') ||
-    message.startsWith('The terminal directory leaves the checkout')
+    message.startsWith('The terminal directory leaves the checkout') ||
+    /^Preset ".*" has no tabs$/.test(message)
   );
 }
 

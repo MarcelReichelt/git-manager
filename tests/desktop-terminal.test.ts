@@ -2437,6 +2437,103 @@ terminals = [
     expect(paneText(fixture!)).not.toContain('linked-overlay');
     expect(paneText(fixture!)).not.toContain('linked-extra');
   });
+
+  it('hides a committed preset when the overlay preset of that name has no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "  beta  "
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+  });
+
+  it('hides Run preset when every preset was skipped for having no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

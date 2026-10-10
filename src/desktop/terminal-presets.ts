@@ -17,25 +17,59 @@ export interface CommittedPreset {
   tabs: PresetTab[];
 }
 
+export interface CheckoutPresets {
+  presets: CommittedPreset[] | null;
+  error: string | null;
+}
+
+interface OverlayPreset {
+  name: string;
+  preset: CommittedPreset | null;
+}
+
 export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
   return readPresetFile(checkout, 'terminals.toml');
 }
 
-export function readCheckoutPresets(checkout: string): CommittedPreset[] | null {
+export function readCheckoutPresets(checkout: string): CheckoutPresets {
   const committed = readCommittedPreset(checkout);
-  const overlay = readPresetFile(checkout, 'terminals.override.toml');
+  const overlay = readOverlayPresets(checkout);
   if (!overlay) {
-    return committed;
+    return { presets: committed, error: null };
   }
-  if (!committed) {
-    return overlay;
+  const base = committed ?? [];
+  const names = new Set(base.map((preset) => presetKey(preset.name)));
+  const replacements = new Map<string, OverlayPreset>();
+  const extras: OverlayPreset[] = [];
+  for (const entry of overlay) {
+    if (names.has(entry.name)) {
+      replacements.set(entry.name, entry);
+    } else {
+      extras.push(entry);
+    }
   }
-  const replacements = new Map(overlay.map((preset) => [presetKey(preset.name), preset]));
-  const names = new Set(committed.map((preset) => presetKey(preset.name)));
-  return [
-    ...committed.map((preset) => replacements.get(presetKey(preset.name)) ?? preset),
-    ...overlay.filter((preset) => !names.has(presetKey(preset.name))),
-  ];
+  const merged: CommittedPreset[] = [];
+  let error: string | null = null;
+  for (const preset of base) {
+    const replacement = replacements.get(presetKey(preset.name));
+    if (!replacement) {
+      merged.push(preset);
+      continue;
+    }
+    if (replacement.preset === null) {
+      error ??= `Preset "${replacement.name}" has no tabs`;
+      continue;
+    }
+    merged.push(replacement.preset);
+  }
+  for (const extra of extras) {
+    if (extra.preset === null) {
+      error ??= `Preset "${extra.name}" has no tabs`;
+      continue;
+    }
+    merged.push(extra.preset);
+  }
+  return { presets: merged.length > 0 ? merged : null, error };
 }
 
 function presetKey(name: string): string {
@@ -43,6 +77,16 @@ function presetKey(name: string): string {
 }
 
 function readPresetFile(checkout: string, filename: string): CommittedPreset[] | null {
+  const parsed = readPresetDocument(checkout, filename);
+  return parsed === null ? null : committedPresets(parsed);
+}
+
+function readOverlayPresets(checkout: string): OverlayPreset[] | null {
+  const parsed = readPresetDocument(checkout, 'terminals.override.toml');
+  return parsed === null ? null : overlayPresets(parsed);
+}
+
+function readPresetDocument(checkout: string, filename: string): unknown | null {
   const file = join(checkout, '.git-worktree-manager', filename);
   if (!existsSync(file)) {
     return null;
@@ -58,7 +102,41 @@ function readPresetFile(checkout: string, filename: string): CommittedPreset[] |
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Invalid terminals.toml: ${detail}`);
   }
-  return committedPresets(parsed);
+  return parsed;
+}
+
+function overlayPresets(parsed: unknown): OverlayPreset[] | null {
+  if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'preset')) {
+    return null;
+  }
+  const presets = parsed.preset;
+  if (!Array.isArray(presets) || presets.length === 0) {
+    return null;
+  }
+  const resolved: OverlayPreset[] = [];
+  for (const entry of presets) {
+    const preset = overlayPreset(entry);
+    if (preset) {
+      resolved.push(preset);
+    }
+  }
+  return resolved.length > 0 ? resolved : null;
+}
+
+function overlayPreset(entry: unknown): OverlayPreset | null {
+  if (!isRecord(entry)) {
+    throw new Error('Invalid terminals.toml: preset must be a table');
+  }
+  const name = entry.name;
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return null;
+  }
+  const key = name.trim();
+  const tabs = presetTabs(entry);
+  if (tabs.length === 0) {
+    return { name: key, preset: null };
+  }
+  return { name: key, preset: { name: key, tabs } };
 }
 
 export function terminalDirectory(checkout: string, directory: string | undefined): string {

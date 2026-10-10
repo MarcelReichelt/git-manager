@@ -2887,7 +2887,7 @@ terminals = [
     clickBranch(fixture, 'feature');
 
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
-      'Invalid terminals.toml',
+      'Invalid terminals.override.toml',
     );
     clickControl(fixture, 'Run preset');
 

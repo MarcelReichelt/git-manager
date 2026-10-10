@@ -6076,6 +6076,7 @@ function errorText(error: unknown): string {
 function isPresetWorkspaceError(message: string): boolean {
   return (
     message.startsWith('Invalid terminals.toml') ||
+    message.startsWith('Invalid terminals.override.toml') ||
     message.startsWith('The terminal directory ') ||
     /^Preset ".*" has no tabs$/.test(message) ||
     /^Preset name ".*" is used more than once$/.test(message) ||

@@ -184,7 +184,7 @@ function readPresetDocument(checkout: string, filename: string): unknown | null 
     parsed = TOML.parse(text);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid terminals.toml: ${detail}`);
+    throw new Error(`Invalid ${filename}: ${detail}`);
   }
   return parsed;
 }

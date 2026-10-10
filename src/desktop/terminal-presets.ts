@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, normalize, relative, sep } from 'node:path';
 import TOML from '@iarna/toml';
 
 export interface PresetTerminal {
@@ -30,6 +30,22 @@ export function readCommittedPreset(checkout: string): CommittedPreset | null {
     throw new Error(`Invalid terminals.toml: ${detail}`);
   }
   return committedPreset(parsed);
+}
+
+export function terminalDirectory(checkout: string, directory: string | undefined): string {
+  if (directory === undefined || directory === '') {
+    return checkout;
+  }
+  if (isAbsolute(directory)) {
+    return directory;
+  }
+  const resolved = normalize(join(checkout, directory));
+  const base = normalize(checkout);
+  const fromBase = relative(base, resolved);
+  if (fromBase === '' || (fromBase !== '..' && !fromBase.startsWith(`..${sep}`) && !isAbsolute(fromBase))) {
+    return resolved;
+  }
+  throw new Error(`The terminal directory leaves the checkout: ${directory}`);
 }
 
 function committedPreset(parsed: unknown): CommittedPreset | null {

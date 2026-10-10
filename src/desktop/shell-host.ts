@@ -125,6 +125,37 @@ export function subscribeShell(id: string, listener: ShellListener): () => void 
   };
 }
 
+export function typeStartupCommand(id: string, command: string): void {
+  if (command.length === 0) {
+    return;
+  }
+  let pending = '';
+  let sent = false;
+  const stop = subscribeShell(id, {
+    onData(data) {
+      if (sent) {
+        return;
+      }
+      pending += data;
+      if (!shellCanTakeInput(pending)) {
+        return;
+      }
+      sent = true;
+      writeShell(id, `${command}\r`);
+      queueMicrotask(() => stop());
+    },
+    onExit() {
+      sent = true;
+      queueMicrotask(() => stop());
+    },
+  });
+}
+
+function shellCanTakeInput(buffer: string): boolean {
+  const visible = buffer.replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '');
+  return /[$#%]\s*$/.test(visible);
+}
+
 export function writeShell(id: string, data: string): void {
   const bridge = shellMainBridge();
   if (bridge) {

@@ -112,7 +112,8 @@ import {
   type TmuxSessionRecord,
   type TmuxSessionSnapshot,
 } from './tmux-sessions';
-import { readCommittedPreset } from './terminal-presets';
+import { readCommittedPreset, terminalDirectory } from './terminal-presets';
+import { typeStartupCommand } from './shell-host';
 import {
   ensureGitRepository,
   listRemoteBranchesWithoutWorktree,
@@ -3233,9 +3234,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!preset) {
       return;
     }
-    const terminal = this.spawnPresetTerminal(checkout, preset.terminal.name);
+    let directory = checkout;
+    try {
+      directory = terminalDirectory(checkout, preset.terminal.directory);
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return;
+    }
+    const terminal = this.spawnPresetTerminal(directory, preset.terminal.name);
     if (!terminal) {
       return;
+    }
+    if (preset.terminal.command.length > 0) {
+      typeStartupCommand(terminal.id, preset.terminal.command);
     }
     const tab = this.makeTab([terminal]);
     this.updateSelected((state) => withNewTab(state, tab));

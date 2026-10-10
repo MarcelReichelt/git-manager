@@ -1193,10 +1193,46 @@ describe('branch terminal', () => {
     expect(runPresetButton(fixture)).toBeNull();
   });
 
+  it('starts the shell in the terminal directory and runs the startup command there', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, 'packages', 'api');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo preset-ran; pwd", cwd = "packages/api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => {
+      const text = paneText(fixture!);
+      return text.includes('preset-ran') && text.includes(directory);
+    });
+    const text = paneText(fixture!);
+    expect(text.split('echo preset-ran; pwd').length - 1).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'in-app terminal',
+    );
+    expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
+  });
+
   it('appends a focused terminal tab named for the terminal when Run preset is chosen', async () => {
     const repo = createRepo();
     root = repo.root;
-    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    mkdirSync(join(checkout, 'packages', 'api'), { recursive: true });
+    writeCommittedPreset(checkout);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
 

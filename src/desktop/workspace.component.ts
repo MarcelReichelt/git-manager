@@ -4750,7 +4750,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       if (started.length === 0) {
         continue;
       }
-      opened.push(this.makeTab(started));
+      const tab = this.makeTab(started);
+      const left = started[0];
+      if (started.length > 1 && left) {
+        tab.focusedTerminalId = left.id;
+      }
+      opened.push(tab);
     }
     if (opened.length === 0) {
       return;
@@ -4760,7 +4765,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       for (const tab of opened) {
         next = withNewTab(next, tab);
       }
-      return next;
+      const first = opened[0];
+      if (!first) {
+        return next;
+      }
+      return { ...next, focusedTabId: first.id };
     });
     if (!chosen && this.sectionFor(branch) !== 'maximized') {
       this.setSection(branch, 'docked');

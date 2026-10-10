@@ -1957,6 +1957,53 @@ terminals = [
     await waitFor(() => paneText(fixture!).includes('api-up'));
   });
 
+  it('focuses the first new preset tab and the left terminal of a split', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web" },
+  { name = "logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    clickControl(fixture, 'Run preset');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(3);
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab-name"]')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    const leftId = names[0]?.getAttribute('data-terminal-id') ?? '';
+    const rightId = names[1]?.getAttribute('data-terminal-id') ?? '';
+    const leftPane = fixture.nativeElement.querySelector(
+      `[data-testid="terminal-pane"][data-terminal-id="${leftId}"]`,
+    );
+    const leftCaret = leftPane?.querySelector('textarea');
+    expect(leftCaret).toBeInstanceOf(HTMLTextAreaElement);
+    expect(document.activeElement).toBe(leftCaret);
+    expect(document.activeElement).not.toBe(
+      fixture.nativeElement.querySelector(`[data-testid="terminal-pane"][data-terminal-id="${rightId}"] textarea`),
+    );
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;

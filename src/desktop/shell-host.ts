@@ -3,6 +3,7 @@ import { userInfo } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { runtimeEnv } from '../runtime-env.js';
+import { shellCanTakeInput } from './shell-prompt';
 import { terminalEnvironment } from './tmux-sessions';
 import { windowsForegroundCommand } from './windows-foreground';
 
@@ -21,6 +22,7 @@ interface ShellMainBridge {
   shellSize(id: string): { cols: number; rows: number } | null;
   shellResize(id: string, cols: number, rows: number): void;
   shellSubscribe(id: string, onData: (data: string) => void, onExit: () => void): () => void;
+  shellTypeStartup?(id: string, command: string): void;
 }
 
 interface ShellGrid {
@@ -129,6 +131,11 @@ export function typeStartupCommand(id: string, command: string): void {
   if (command.length === 0) {
     return;
   }
+  const bridge = shellMainBridge();
+  if (bridge?.shellTypeStartup) {
+    bridge.shellTypeStartup(id, command);
+    return;
+  }
   let pending = '';
   let sent = false;
   const stop = subscribeShell(id, {
@@ -149,11 +156,6 @@ export function typeStartupCommand(id: string, command: string): void {
       queueMicrotask(() => stop());
     },
   });
-}
-
-function shellCanTakeInput(buffer: string): boolean {
-  const visible = buffer.replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '');
-  return /[$#%]\s*$/.test(visible);
 }
 
 export function writeShell(id: string, data: string): void {

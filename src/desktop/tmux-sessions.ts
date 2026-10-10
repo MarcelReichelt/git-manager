@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
 import { runtimeEnv } from '../runtime-env.js';
+import { shellCanTakeInput } from './shell-prompt';
 
 export function tmuxOnPath(pathValue = runtimeEnv().PATH): string | null {
   const directories = (pathValue ?? '').split(delimiter);
@@ -268,7 +269,7 @@ export function typeTmuxStartupCommand(session: string, command: string): void {
       setTimeout(attempt, 40);
       return;
     }
-    if (!paneCanTakeInput(text)) {
+    if (!shellCanTakeInput(text)) {
       setTimeout(attempt, 40);
       return;
     }
@@ -286,11 +287,6 @@ export function typeTmuxStartupCommand(session: string, command: string): void {
     }
   };
   attempt();
-}
-
-function paneCanTakeInput(text: string): boolean {
-  const visible = text.replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '');
-  return /[$#%]\s*$/.test(visible);
 }
 
 export function paneCommand(name: string): string {

@@ -1549,11 +1549,15 @@ button, input { font: inherit; color: inherit; }
                   @if (showRunPreset()) {
                     <button
                       type="button"
-                      class="terminal-run-preset"
+                      class="terminal-icon terminal-run-preset"
+                      data-testid="terminal-run-preset"
+                      title="Run preset"
                       aria-label="Run preset"
                       (click)="runPreset($event)"
                     >
-                      Run preset
+                      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                        <path fill="currentColor" d="M4.5 2.2v11.6L13.2 8Z" />
+                      </svg>
                     </button>
                   }
                   <button
@@ -3252,22 +3256,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!presets) {
       return;
     }
-    if (presets.length > 1) {
-      const current = event.currentTarget;
-      const rect = current instanceof HTMLElement ? current.getBoundingClientRect() : { left: 0, bottom: 0 };
-      this.closeTerminalMenu();
-      this.presetMenu.set({
-        x: rect.left,
-        y: rect.bottom,
-        names: presets.map((preset) => preset.name),
-      });
-      return;
-    }
-    this.presetMenu.set(null);
-    const preset = presets[0];
-    if (preset) {
-      this.appendPreset(preset);
-    }
+    const current = event.currentTarget;
+    const rect = current instanceof HTMLElement ? current.getBoundingClientRect() : { left: 0, bottom: 0 };
+    this.closeTerminalMenu();
+    this.presetMenu.set({
+      x: rect.left,
+      y: rect.bottom,
+      names: presets.map((preset) => preset.name),
+    });
   }
 
   choosePreset(index: number): void {

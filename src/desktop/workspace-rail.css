@@ -807,15 +807,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   text-overflow: ellipsis;
 }
 
-.terminal-chrome button.terminal-run-preset {
-  flex: none;
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .terminal-chrome button.terminal-icon {
   display: inline-flex;
   flex: none;

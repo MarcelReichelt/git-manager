@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,8 +9,10 @@ import {
   shellCommand,
   shellPty,
   subscribeShell,
+  typeStartupCommand,
   writeShell,
 } from '../src/desktop/shell-host';
+import { shellCanTakeInput } from '../src/desktop/shell-prompt';
 
 describe('in-app shell host', () => {
   const ids: string[] = [];
@@ -20,6 +22,40 @@ describe('in-app shell host', () => {
       killShell(id);
     }
     ids.length = 0;
+  });
+
+  it('treats a prompt marker at the end of the shell output as ready', () => {
+    expect(shellCanTakeInput('user@host:~/repo$ ')).toBe(true);
+    expect(shellCanTakeInput('PS C:\\repo> \n')).toBe(true);
+    expect(shellCanTakeInput('~/repo\n❯ ')).toBe(true);
+    expect(shellCanTakeInput('')).toBe(false);
+    expect(shellCanTakeInput('still starting')).toBe(false);
+  });
+
+  it('types the startup command once a prompt ending in > can take input', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-shell-prompt-'));
+    const shell = join(root, 'prompt-shell');
+    writeFileSync(shell, '#!/bin/sh\nprintf \'> \'\nIFS= read -r line\nprintf \'%s\\n\' "$line"\n');
+    chmodSync(shell, 0o755);
+    const id = `shell-prompt-${Date.now()}`;
+    ids.push(id);
+    ensureShell(id, root, shell);
+    let seen = '';
+    subscribeShell(id, {
+      onData(data) {
+        seen += data;
+      },
+      onExit() {
+        return undefined;
+      },
+    });
+    typeStartupCommand(id, 'echo typed-line');
+    const started = Date.now();
+    while (!seen.includes('typed-line') && Date.now() - started < 4000) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    expect(seen).toContain('typed-line');
+    rmSync(root, { recursive: true, force: true });
   });
 
   it('keeps powershell.exe as the Windows fallback only', () => {

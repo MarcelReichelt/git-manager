@@ -2,9 +2,9 @@
 
 A preset is a named set of terminal tabs for one checkout. Run preset opens those tabs in the selected worktree. Selecting a worktree, or launching the app, does not run a preset. There is no shortcut.
 
-The button is labeled **Run preset**. It sits immediately to the left of Split, in the workspace and in Terminals. It is absent when the checkout resolves no preset. Terminal mode None removes the terminal section, so the button is absent there too.
+The button is a play symbol, immediately to the left of Split, in the workspace and in Terminals. It is absent when the checkout resolves no preset. Terminal mode None removes the terminal section, so the button is absent there too.
 
-One resolved preset runs as soon as Run preset is chosen. Several presets open a menu in file order. The menu label is the preset name. The chosen entry appends that preset's tabs. Choosing the same preset again appends another set of tabs, even when the terminal names match.
+The play button opens the presets in file order, including when there is only one. The list label is the preset name. The chosen entry appends that preset's tabs. Choosing the same preset again appends another set of tabs, even when the terminal names match.
 
 A collapsed terminal section expands when a preset runs, and that does not also open an empty terminal. Expanding an empty section with the chevron still starts one terminal.
 

@@ -171,6 +171,18 @@ function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: stri
   fixture.detectChanges();
 }
 
+function runPreset(fixture: ComponentFixture<WorkspaceComponent>, name?: string): void {
+  clickControl(fixture, 'Run preset');
+  const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+  const item =
+    name === undefined ? items[0] : items.find((candidate) => candidate.textContent?.trim() === name);
+  if (!(item instanceof HTMLButtonElement)) {
+    throw new Error('preset menu item is not shown');
+  }
+  item.click();
+  fixture.detectChanges();
+}
+
 function capturePane(session: string): string {
   return execFileSync(tmuxBinary(), ['capture-pane', '-t', session, '-p'], {
     encoding: 'utf8',
@@ -1227,7 +1239,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => {
       const text = paneText(fixture!);
@@ -1280,7 +1292,7 @@ terminals = [
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const sessions = sessionsForBranch(repo.repo, 'feature');
     expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
@@ -1313,7 +1325,7 @@ terminals = [
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const sessions = sessionsForBranch(repo.repo, 'feature');
     expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
@@ -1355,7 +1367,7 @@ terminals = [
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(1);
@@ -1405,8 +1417,8 @@ terminals = [
     useTmuxMode(root);
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(2);
@@ -1524,7 +1536,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => /[$#%]/.test(paneText(fixture!)));
     const text = paneText(fixture!);
@@ -1555,7 +1567,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => paneText(fixture!).includes(checkout));
     const text = paneText(fixture!);
@@ -1583,7 +1595,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => paneText(fixture!).includes(directory));
     expect(paneText(fixture!)).not.toContain(join(checkout, 'packages'));
@@ -1608,7 +1620,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => paneText(fixture!).includes(directory));
   });
@@ -1632,7 +1644,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     await waitFor(() => paneText(fixture!).includes(outside));
     expect(paneText(fixture!)).not.toContain(checkout);
@@ -1684,8 +1696,8 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(2);
@@ -1714,7 +1726,7 @@ terminals = [
 
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(collapseLabel(fixture)).toBe('Collapse terminal');
     expect(visiblePaneCount(fixture)).toBe(1);
@@ -1751,7 +1763,7 @@ terminals = [
     clickBranch(fixture, 'feature');
 
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-tab"]')).toBeNull();
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(1);
@@ -1772,7 +1784,36 @@ terminals = [
     const run = split?.previousElementSibling;
     expect(run).toBeInstanceOf(HTMLButtonElement);
     expect((run as HTMLButtonElement).getAttribute('aria-label')).toBe('Run preset');
+    expect((run as HTMLButtonElement).textContent?.trim()).toBe('');
+    expect((run as HTMLButtonElement).querySelector('svg')).not.toBeNull();
     expect(header?.querySelector('.terminal-tabs')?.nextElementSibling).toBe(run);
+  });
+
+  it('opens the preset list for the only preset and runs the chosen entry', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "cmatrix"
+
+[[preset.tab]]
+terminals = [
+  { command = "echo cmatrix-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(presetMenuLabels(fixture)).toEqual(['cmatrix']);
+
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 echo cmatrix-ran']);
+    await waitFor(() => paneText(fixture!).includes('cmatrix-ran'));
   });
 
   it('starts one terminal when an empty terminal section expands', async () => {
@@ -1993,7 +2034,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(2);
@@ -2026,7 +2067,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabs).toHaveLength(1);
@@ -2060,7 +2101,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 web · logs']);
     const names = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab-name"]')] as HTMLElement[];
@@ -2146,7 +2187,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs', '2 api']);
     expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
@@ -2183,7 +2224,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 api']);
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
@@ -2220,7 +2261,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The terminal directory leaves the checkout: ../outside',
@@ -2259,7 +2300,7 @@ terminals = [
     clickBranch(fixture, 'feature');
     clickControl(fixture, 'New');
     await waitFor(() => visiblePaneCount(fixture!) === 1);
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -2342,7 +2383,7 @@ terminals = [
     );
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
     expect(tabNames(fixture)).toEqual(['1 api', '2 unit']);
@@ -2876,7 +2917,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
       'Invalid terminals.toml',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 notes-shell']);
     await waitFor(() => paneText(fixture!).includes('notes-from-overlay'));
@@ -2910,7 +2951,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
       'Invalid terminals.override.toml',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
     await waitFor(() => paneText(fixture!).includes('alpha-from-committed'));
@@ -3036,7 +3077,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Preset name "notes" is used more than once',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
     await waitFor(() => paneText(fixture!).includes('alpha-committed'));
@@ -3204,7 +3245,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Invalid terminals.toml: terminal must be a table',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3234,7 +3275,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Invalid terminals.toml: startup command must be a string',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));
@@ -3264,7 +3305,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Invalid terminals.toml: directory must be a string',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));
@@ -3297,7 +3338,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Invalid terminals.toml: tab must be a table',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3327,7 +3368,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Invalid terminals.toml: preset must be a table',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 notes-shell']);
     await waitFor(() => paneText(fixture!).includes('notes-overlay'));
@@ -3363,7 +3404,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'A preset has no name',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3399,7 +3440,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Preset "beta" has no tabs',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3438,7 +3479,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Preset "dev" has a tab with more than two terminals',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3472,7 +3513,7 @@ terminals = [
 
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
     expect(runPresetButton(fixture)).not.toBeNull();
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 echo cmatrix-ran']);
     await waitFor(() => paneText(fixture!).includes('cmatrix-ran'));
@@ -3498,7 +3539,7 @@ terminals = [
     clickBranch(fixture, 'feature');
 
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 echo nameless-ran · logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('nameless-ran'));
@@ -3527,7 +3568,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The startup command for "web" contains a newline',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));
@@ -3561,7 +3602,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The terminal directory leaves the checkout: ../outside',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));
@@ -3591,7 +3632,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The terminal directory does not exist: missing-web',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));
@@ -3632,7 +3673,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'A preset has no name',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
     await waitFor(() => paneText(fixture!).includes('gamma-committed'));
@@ -3659,7 +3700,7 @@ terminals = [
     clickBranch(fixture, 'feature');
 
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 echo blank-ran · logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('blank-ran'));
@@ -3707,7 +3748,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'Preset "beta" has a tab with more than two terminals',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
     await waitFor(() => paneText(fixture!).includes('alpha-committed'));
@@ -3757,7 +3798,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The startup command for "beta-shell" contains a newline',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
     await waitFor(() => paneText(fixture!).includes('alpha-committed'));
@@ -3883,7 +3924,7 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
       'The startup command for "web" contains a newline',
     );
-    clickControl(fixture, 'Run preset');
+    runPreset(fixture);
 
     expect(tabNames(fixture)).toEqual(['1 logs']);
     await waitFor(() => paneText(fixture!).includes('logs-up'));

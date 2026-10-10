@@ -7,6 +7,7 @@ const shellChannels = {
   command: 'git-worktree-manager-shell-command',
   size: 'git-worktree-manager-shell-size',
   resize: 'git-worktree-manager-shell-resize',
+  typeStartup: 'git-worktree-manager-shell-type-startup',
   subscribe: 'git-worktree-manager-shell-subscribe',
   unsubscribe: 'git-worktree-manager-shell-unsubscribe',
   data: 'git-worktree-manager-shell-data',

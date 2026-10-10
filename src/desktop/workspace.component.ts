@@ -3234,32 +3234,52 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (checkout === '' || !branch) {
       return;
     }
-    let preset: ReturnType<typeof readCommittedPreset>;
+    let presets: ReturnType<typeof readCommittedPreset>;
     try {
-      preset = readCommittedPreset(checkout);
+      presets = readCommittedPreset(checkout);
     } catch (error) {
       this.workspaceError.set(errorText(error));
       return;
     }
+    const preset = presets?.length === 1 ? presets[0] : undefined;
     if (!preset) {
       return;
     }
-    let directory = checkout;
-    try {
-      directory = terminalDirectory(checkout, preset.terminal.directory);
-    } catch (error) {
-      this.workspaceError.set(errorText(error));
+    const opened: TerminalTabView[] = [];
+    for (const spec of preset.tabs) {
+      const started: TerminalView[] = [];
+      for (const terminalSpec of spec.terminals) {
+        let directory = checkout;
+        try {
+          directory = terminalDirectory(checkout, terminalSpec.directory);
+        } catch (error) {
+          this.workspaceError.set(errorText(error));
+          return;
+        }
+        const terminal = this.spawnPresetTerminal(directory, terminalSpec.name);
+        if (!terminal) {
+          return;
+        }
+        if (terminalSpec.command.length > 0) {
+          typeStartupCommand(terminal.id, terminalSpec.command);
+        }
+        started.push(terminal);
+      }
+      if (started.length === 0) {
+        continue;
+      }
+      opened.push(this.makeTab(started));
+    }
+    if (opened.length === 0) {
       return;
     }
-    const terminal = this.spawnPresetTerminal(directory, preset.terminal.name);
-    if (!terminal) {
-      return;
-    }
-    if (preset.terminal.command.length > 0) {
-      typeStartupCommand(terminal.id, preset.terminal.command);
-    }
-    const tab = this.makeTab([terminal]);
-    this.updateSelected((state) => withNewTab(state, tab));
+    this.updateSelected((state) => {
+      let next = state;
+      for (const tab of opened) {
+        next = withNewTab(next, tab);
+      }
+      return next;
+    });
     if (!chosen && this.sectionFor(branch) !== 'maximized') {
       this.setSection(branch, 'docked');
     }

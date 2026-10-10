@@ -8,12 +8,16 @@ export interface PresetTerminal {
   directory: string | undefined;
 }
 
-export interface CommittedPreset {
-  name: string;
-  terminal: PresetTerminal;
+export interface PresetTab {
+  terminals: PresetTerminal[];
 }
 
-export function readCommittedPreset(checkout: string): CommittedPreset | null {
+export interface CommittedPreset {
+  name: string;
+  tabs: PresetTab[];
+}
+
+export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
   const file = join(checkout, '.git-worktree-manager', 'terminals.toml');
   if (!existsSync(file)) {
     return null;
@@ -29,7 +33,7 @@ export function readCommittedPreset(checkout: string): CommittedPreset | null {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Invalid terminals.toml: ${detail}`);
   }
-  return committedPreset(parsed);
+  return committedPresets(parsed);
 }
 
 export function terminalDirectory(checkout: string, directory: string | undefined): string {
@@ -48,7 +52,7 @@ export function terminalDirectory(checkout: string, directory: string | undefine
   throw new Error(`The terminal directory leaves the checkout: ${directory}`);
 }
 
-function committedPreset(parsed: unknown): CommittedPreset | null {
+function committedPresets(parsed: unknown): CommittedPreset[] | null {
   if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'preset')) {
     return null;
   }
@@ -56,47 +60,83 @@ function committedPreset(parsed: unknown): CommittedPreset | null {
   if (!Array.isArray(presets) || presets.length === 0) {
     return null;
   }
-  const preset = presets[0];
-  if (!isRecord(preset)) {
+  const resolved: CommittedPreset[] = [];
+  for (const entry of presets) {
+    const preset = onePreset(entry);
+    if (preset) {
+      resolved.push(preset);
+    }
+  }
+  return resolved.length > 0 ? resolved : null;
+}
+
+function onePreset(entry: unknown): CommittedPreset | null {
+  if (!isRecord(entry)) {
     throw new Error('Invalid terminals.toml: preset must be a table');
   }
-  const name = preset.name;
+  const name = entry.name;
   if (typeof name !== 'string' || name.length === 0) {
     return null;
   }
-  const terminal = firstTerminal(preset);
-  if (!terminal) {
+  const tabs = presetTabs(entry);
+  if (tabs.length === 0) {
     return null;
   }
-  return { name, terminal };
+  return { name, tabs };
 }
 
-function firstTerminal(preset: Record<string, unknown>): PresetTerminal | null {
-  const tabs = preset.tab;
-  if (!Array.isArray(tabs) || tabs.length === 0) {
-    return null;
+function presetTabs(preset: Record<string, unknown>): PresetTab[] {
+  if (!Object.prototype.hasOwnProperty.call(preset, 'tab')) {
+    return [];
   }
-  const tab = tabs[0];
-  if (!isRecord(tab)) {
+  const tabs = preset.tab;
+  if (!Array.isArray(tabs)) {
     throw new Error('Invalid terminals.toml: tab must be a table');
   }
-  const terminals = tab.terminals;
-  if (!Array.isArray(terminals) || terminals.length === 0) {
+  const resolved: PresetTab[] = [];
+  for (const entry of tabs) {
+    const tab = oneTab(entry);
+    if (tab) {
+      resolved.push(tab);
+    }
+  }
+  return resolved;
+}
+
+function oneTab(entry: unknown): PresetTab | null {
+  if (!isRecord(entry)) {
+    throw new Error('Invalid terminals.toml: tab must be a table');
+  }
+  if (!Object.prototype.hasOwnProperty.call(entry, 'terminals')) {
     return null;
   }
-  const terminal = terminals[0];
-  if (!isRecord(terminal)) {
+  const terminals = entry.terminals;
+  if (!Array.isArray(terminals)) {
     throw new Error('Invalid terminals.toml: terminal must be a table');
   }
-  const name = terminal.name;
+  const resolved: PresetTerminal[] = [];
+  for (const terminal of terminals) {
+    if (resolved.length === 2) {
+      break;
+    }
+    resolved.push(oneTerminal(terminal));
+  }
+  return resolved.length > 0 ? { terminals: resolved } : null;
+}
+
+function oneTerminal(entry: unknown): PresetTerminal {
+  if (!isRecord(entry)) {
+    throw new Error('Invalid terminals.toml: terminal must be a table');
+  }
+  const name = entry.name;
   if (typeof name !== 'string') {
     throw new Error('Invalid terminals.toml: terminal name must be a string');
   }
-  const command = terminal.command;
+  const command = entry.command;
   if (command !== undefined && typeof command !== 'string') {
     throw new Error('Invalid terminals.toml: startup command must be a string');
   }
-  const directory = terminal.cwd;
+  const directory = entry.cwd;
   if (directory !== undefined && typeof directory !== 'string') {
     throw new Error('Invalid terminals.toml: directory must be a string');
   }

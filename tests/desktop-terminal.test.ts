@@ -1692,6 +1692,43 @@ terminals = [
     await waitFor(() => gridRows(fixture!.nativeElement) < tall);
   });
 
+  it('appends a preset with several tabs in file order', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 web']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('api-ready'));
+    expect(paneText(fixture!)).not.toContain('web-ready');
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('web-ready'));
+    expect(paneText(fixture!)).not.toContain('api-ready');
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;

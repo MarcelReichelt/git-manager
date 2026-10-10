@@ -1171,6 +1171,28 @@ describe('branch terminal', () => {
     expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
   });
 
+  it('shows the workspace error and hides Run preset when terminals.toml is invalid', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'), '[[preset]\n');
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
+      'Invalid terminals.toml',
+    );
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+  });
+
   it('shows Run preset immediately left of Split when the selected checkout has one preset', async () => {
     const repo = createRepo();
     root = repo.root;

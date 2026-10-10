@@ -4553,6 +4553,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.worktreePath.set(cwd);
+    this.syncCommittedPreset(cwd);
     const existing = this.terminalsByBranch()[branch];
     if (existing && existing.tabs.length > 0) {
       return;
@@ -4592,6 +4593,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       if (this.terminalCount(branch) === 0) {
         this.setSection(branch, 'collapsed');
       }
+    }
+  }
+
+  private syncCommittedPreset(checkout: string): void {
+    try {
+      readCommittedPreset(checkout);
+      this.clearInvalidPresetError();
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+    }
+  }
+
+  private clearInvalidPresetError(): void {
+    const message = this.workspaceError();
+    if (message !== null && message.startsWith('Invalid terminals.toml')) {
+      this.workspaceError.set(null);
     }
   }
 

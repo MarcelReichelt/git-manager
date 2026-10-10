@@ -21,6 +21,7 @@ files:
   - src/desktop/shell-main.mjs
   - src/desktop/shell-channels.cjs
   - src/desktop/shell-host.ts
+  - src/desktop/shell-prompt.ts
   - src/desktop/tmux-sessions.ts
   - src/desktop/windows-foreground.ts
   - src/runtime-env.ts

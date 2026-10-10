@@ -16,7 +16,8 @@ describe('desktop package', () => {
     expect(config).toContain('target:\n    - dmg\n    - zip');
     expect(config).toContain('npmRebuild: false');
     expect(config).toContain('native/electron/**/*');
-    expect(config).toContain('main: src/desktop/electron-main.mjs');
+    expect(config).toContain('src/desktop/shell-host.ts');
+    expect(config).toContain('src/desktop/shell-prompt.ts');
   });
 
   it('loads jiti from the package when the desktop page has finished', () => {

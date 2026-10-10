@@ -2167,6 +2167,64 @@ terminals = [
     expect(existsSync(join(repo.repo, '.gitignore'))).toBe(false);
     expect(existsSync(join(checkout, '.gitignore'))).toBe(false);
   });
+
+  it('appends an overlay preset with a new name and keeps a committed preset the overlay omits', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "delta"
+
+[[preset.tab]]
+terminals = [
+  { name = "delta-shell", command = "echo delta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'delta']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[2]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 delta-shell']);
+    await waitFor(() => paneText(fixture!).includes('delta-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha-committed');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['alpha', 'beta', 'delta']);
+    again[0]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 delta-shell', '2 alpha-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('delta-overlay');
+  });
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

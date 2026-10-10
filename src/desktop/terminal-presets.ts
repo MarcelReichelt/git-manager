@@ -28,7 +28,11 @@ export function readCheckoutPresets(checkout: string): CommittedPreset[] | null 
     return committed;
   }
   const replacements = new Map(overlay.map((preset) => [preset.name, preset]));
-  return committed.map((preset) => replacements.get(preset.name) ?? preset);
+  const names = new Set(committed.map((preset) => preset.name));
+  return [
+    ...committed.map((preset) => replacements.get(preset.name) ?? preset),
+    ...overlay.filter((preset) => !names.has(preset.name)),
+  ];
 }
 
 function readPresetFile(checkout: string, filename: string): CommittedPreset[] | null {

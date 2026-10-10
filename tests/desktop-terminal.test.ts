@@ -2299,6 +2299,55 @@ terminals = [
     await waitFor(() => paneText(fixture!).includes('overlay-lower'));
     expect(paneText(fixture!)).not.toContain('overlay-exact');
   });
+
+  it('shows the overlay presets when the checkout has no committed file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+
+[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['notes', 'ship']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(paneText(fixture!)).not.toContain('primary-committed');
+    expect(paneText(fixture!)).not.toContain('ship-overlay');
+  });
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

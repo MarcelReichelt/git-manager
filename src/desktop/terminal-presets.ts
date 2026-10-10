@@ -24,8 +24,11 @@ export function readCommittedPreset(checkout: string): CommittedPreset[] | null 
 export function readCheckoutPresets(checkout: string): CommittedPreset[] | null {
   const committed = readCommittedPreset(checkout);
   const overlay = readPresetFile(checkout, 'terminals.override.toml');
-  if (!committed || !overlay) {
+  if (!overlay) {
     return committed;
+  }
+  if (!committed) {
+    return overlay;
   }
   const replacements = new Map(overlay.map((preset) => [presetKey(preset.name), preset]));
   const names = new Set(committed.map((preset) => presetKey(preset.name)));

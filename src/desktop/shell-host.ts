@@ -3,6 +3,7 @@ import { userInfo } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { runtimeEnv } from '../runtime-env.js';
+import { watchStartupPrompt } from './shell-prompt';
 import { terminalEnvironment } from './tmux-sessions';
 import { windowsForegroundCommand } from './windows-foreground';
 
@@ -21,6 +22,7 @@ interface ShellMainBridge {
   shellSize(id: string): { cols: number; rows: number } | null;
   shellResize(id: string, cols: number, rows: number): void;
   shellSubscribe(id: string, onData: (data: string) => void, onExit: () => void): () => void;
+  shellTypeStartup?(id: string, command: string): void;
 }
 
 interface ShellGrid {
@@ -123,6 +125,37 @@ export function subscribeShell(id: string, listener: ShellListener): () => void 
   return () => {
     hosted.listeners.delete(listener);
   };
+}
+
+export function typeStartupCommand(id: string, command: string): void {
+  if (command.length === 0) {
+    return;
+  }
+  const bridge = shellMainBridge();
+  if (bridge?.shellTypeStartup) {
+    bridge.shellTypeStartup(id, command);
+    return;
+  }
+  const mark = shells.get(id);
+  let pending = '';
+  let stop = (): void => undefined;
+  const gate = watchStartupPrompt(() => {
+    if (shells.get(id) !== mark) {
+      return;
+    }
+    writeShell(id, `${command}\r`);
+    queueMicrotask(() => stop());
+  });
+  stop = subscribeShell(id, {
+    onData(data) {
+      pending += data;
+      gate.push(pending);
+    },
+    onExit() {
+      gate.cancel();
+      queueMicrotask(() => stop());
+    },
+  });
 }
 
 export function writeShell(id: string, data: string): void {

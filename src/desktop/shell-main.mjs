@@ -86,6 +86,12 @@ export function registerShellIpc() {
     }
   });
 
+  ipcMain.on(shellChannels.typeStartup, (_event, id, command) => {
+    if (typeof id === 'string' && typeof command === 'string') {
+      shellHost.typeStartupCommand(id, command);
+    }
+  });
+
   ipcMain.on(shellChannels.subscribe, (event, id) => {
     if (typeof id !== 'string') {
       return;

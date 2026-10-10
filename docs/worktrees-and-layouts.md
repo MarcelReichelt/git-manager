@@ -9,9 +9,14 @@ my-repo/
 ├── .git/
 ├── .workspaces/
 │   └── feature-x/
+│       └── .git-worktree-manager/
+│           └── terminals.toml
 └── .git-worktree-manager/
-    └── config.toml
+    ├── config.toml
+    └── terminals.toml
 ```
+
+`terminals.toml` is that checkout's presets. A linked worktree keeps its own copy. Gitignore `terminals.override.toml` beside it. See [Presets](presets.md).
 
 ## Sibling
 

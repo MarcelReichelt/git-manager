@@ -55,6 +55,9 @@ window.gitWorktreeManager = {
   shellResize(id, cols, rows) {
     ipcRenderer.sendSync(shellChannels.resize, id, cols, rows);
   },
+  shellTypeStartup(id, command) {
+    ipcRenderer.send(shellChannels.typeStartup, id, command);
+  },
   shellSubscribe(id, onData, onExit) {
     const onDataMessage = (_event, shellId, data) => {
       if (shellId === id && typeof data === 'string') {

@@ -11,6 +11,7 @@ import {
   sessionsForBranch,
   tmuxBinary,
   tmuxOnPath,
+  typeTmuxStartupCommand,
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
@@ -35,6 +36,37 @@ function createRepo(): { root: string; repo: string } {
   mkdirSync(join(repo, '.workspaces'));
   execFileSync('git', ['worktree', 'add', worktree, 'feature'], { cwd: repo, stdio: 'ignore' });
   return { root, repo };
+}
+
+function writeCommittedPreset(checkout: string, toml?: string): void {
+  const directory = join(checkout, '.git-worktree-manager');
+  mkdirSync(directory, { recursive: true });
+  if (toml === undefined) {
+    mkdirSync(join(checkout, 'packages', 'api'), { recursive: true });
+  }
+  writeFileSync(
+    join(directory, 'terminals.toml'),
+    toml ??
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "npm run dev", cwd = "packages/api" },
+]
+`,
+  );
+}
+
+function writePresetOverlay(checkout: string, toml: string): void {
+  const directory = join(checkout, '.git-worktree-manager');
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, 'terminals.override.toml'), toml);
+}
+
+function presetMenuLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+  return items.map((item) => item.textContent?.trim() ?? '');
 }
 
 async function renderWorkspace(
@@ -102,6 +134,11 @@ function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number
   return fixture.nativeElement.querySelectorAll('.terminal-pane').length;
 }
 
+function runPresetButton(fixture: ComponentFixture<WorkspaceComponent>): HTMLButtonElement | null {
+  const button = controlButton(fixture, 'Run preset');
+  return button;
+}
+
 function controlButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): HTMLButtonElement | null {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
   return (
@@ -131,6 +168,18 @@ function clickControl(fixture: ComponentFixture<WorkspaceComponent>, label: stri
     throw new Error(`${label} is not shown`);
   }
   button.click();
+  fixture.detectChanges();
+}
+
+function runPreset(fixture: ComponentFixture<WorkspaceComponent>, name?: string): void {
+  clickControl(fixture, 'Run preset');
+  const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+  const item =
+    name === undefined ? items[0] : items.find((candidate) => candidate.textContent?.trim() === name);
+  if (!(item instanceof HTMLButtonElement)) {
+    throw new Error('preset menu item is not shown');
+  }
+  item.click();
   fixture.detectChanges();
 }
 
@@ -1109,6 +1158,664 @@ describe('branch terminal', () => {
     expect(terminalCount(fixture, 'feature')).toBeNull();
   });
 
+  it('hides Run preset when the selected checkout has no preset file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const feature = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+
+    writeCommittedPreset(feature, '');
+    fixture.detectChanges();
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+
+    writeCommittedPreset(feature, 'title = "notes"\n');
+    fixture.detectChanges();
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('shows Run preset for a preset file in the primary checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'master');
+
+    const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]');
+    const split = header?.querySelector('[data-testid="terminal-split-button"]');
+    expect(split?.previousElementSibling).toBe(runPresetButton(fixture));
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+  });
+
+  it('shows the workspace error and hides Run preset when terminals.toml is invalid', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'), '[[preset]\n');
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
+      'Invalid terminals.toml',
+    );
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+  });
+
+  it('starts the shell in the terminal directory and runs the startup command there', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, 'packages', 'api');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo preset-ran; pwd", cwd = "packages/api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => {
+      const text = paneText(fixture!);
+      return text.includes('preset-ran') && text.includes(directory);
+    });
+    const text = paneText(fixture!);
+    expect(text.split('echo preset-ran; pwd').length - 1).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'in-app terminal',
+    );
+    expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
+  });
+
+  it('stops waiting to type a startup command once the tmux session is gone', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const session = createBranchSession(repo.repo, 'feature', checkout, 1);
+    killTmuxSession(session);
+    execFileSync(tmuxBinary(), ['new-session', '-d', '-s', session, 'sleep', '30'], {
+      stdio: 'ignore',
+      env: tmuxEnv(),
+    });
+    typeTmuxStartupCommand(session, 'echo should-not-run');
+    killTmuxSession(session);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    createBranchSession(repo.repo, 'feature', checkout, 1);
+
+    await waitFor(() => /[$#%]/.test(capturePane(session)));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(capturePane(session)).not.toContain('should-not-run');
+  });
+
+  it('runs a preset startup command in a tmux session and labels the tab with the terminal name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo tmux-preset-ran" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(tabNames(fixture).join(' ')).not.toContain(sessions[0]);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'tmux session',
+    );
+
+    const session = sessions[0] ?? '';
+    await waitFor(() => capturePane(session).includes('tmux-preset-ran'));
+    expect(capturePane(session).split('echo tmux-preset-ran').length - 1).toBe(1);
+  });
+
+  it('opens a named tmux session and types nothing when the startup command is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "ledger" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    const session = sessions[0] ?? '';
+    expect(tabNames(fixture)).toEqual(['1 ledger']);
+    expect(tabNames(fixture).join(' ')).not.toContain(session);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'tmux session',
+    );
+
+    await waitFor(() => /[$#%]/.test(capturePane(session)));
+    const text = capturePane(session);
+    expect(text).not.toContain('ledger');
+    expect(text).not.toContain('echo');
+    expect(text).not.toContain('npm');
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    submitCommand(fixture.nativeElement, 'echo still-idle');
+    await waitFor(() => capturePane(session).includes('still-idle'));
+    expect(capturePane(session).split('still-idle').length - 1).toBe(2);
+  });
+
+  it('opens two tmux sessions side by side for a split preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo left-tmux-ready" },
+  { name = "logs", command = "echo right-tmux-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    expect(tabNames(fixture)).toEqual(['1 web · logs']);
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    const names = [...fixture.nativeElement.querySelectorAll('.terminal-pane-name')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[0]);
+    expect(label).not.toContain(sessions[1]);
+    const panes = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')] as HTMLElement[];
+    expect(panes.map((pane) => pane.getAttribute('title'))).toEqual(['tmux session', 'tmux session']);
+
+    const left = sessions[0] ?? '';
+    const right = sessions[1] ?? '';
+    await waitFor(
+      () => capturePane(left).includes('left-tmux-ready') && capturePane(right).includes('right-tmux-ready'),
+    );
+    expect(capturePane(left)).not.toContain('right-tmux-ready');
+    expect(capturePane(right)).not.toContain('left-tmux-ready');
+    expect(capturePane(left).split('echo left-tmux-ready').length - 1).toBe(1);
+    expect(capturePane(right).split('echo right-tmux-ready').length - 1).toBe(1);
+  });
+
+  it('appends another tmux session when Run preset is chosen again', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo again-tmux-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 api']);
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[0]);
+    expect(label).not.toContain(sessions[1]);
+
+    const first = sessions[0] ?? '';
+    const second = sessions[1] ?? '';
+    await waitFor(
+      () => capturePane(first).includes('again-tmux-ready') && capturePane(second).includes('again-tmux-ready'),
+    );
+    expect(capturePane(first).split('echo again-tmux-ready').length - 1).toBe(1);
+    expect(capturePane(second).split('echo again-tmux-ready').length - 1).toBe(1);
+  });
+
+  it('opens a menu of presets and runs the chosen preset in tmux', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+
+[[preset]]
+name = "test"
+
+[[preset.tab]]
+terminals = [
+  { name = "unit", command = "echo unit-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 unit']);
+    const firstSessions = sessionsForBranch(repo.repo, 'feature');
+    expect(firstSessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    expect(tabNames(fixture).join(' ')).not.toContain(firstSessions[0]);
+    const unit = firstSessions[0] ?? '';
+    await waitFor(() => capturePane(unit).includes('unit-ready'));
+    expect(capturePane(unit).split('echo unit-ready').length - 1).toBe(1);
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+    again[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 unit', '2 api', '3 web']);
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_3$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[1]);
+    expect(label).not.toContain(sessions[2]);
+    const api = sessions[1] ?? '';
+    const web = sessions[2] ?? '';
+    await waitFor(() => capturePane(api).includes('api-ready') && capturePane(web).includes('web-ready'));
+    expect(capturePane(api)).not.toContain('web-ready');
+    expect(capturePane(web)).not.toContain('api-ready');
+    expect(capturePane(unit)).not.toContain('api-ready');
+    expect(capturePane(unit)).not.toContain('web-ready');
+  });
+
+  it('opens a named shell and types nothing when the startup command is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "ledger" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    const text = paneText(fixture!);
+    expect(text).not.toContain('ledger');
+    expect(text).not.toContain('echo');
+    expect(text).not.toContain('npm');
+    expect(tabNames(fixture)).toEqual(['1 ledger']);
+
+    submitCommand(fixture.nativeElement, 'echo still-idle');
+    await waitFor(() => paneText(fixture!).includes('still-idle'));
+    expect(paneText(fixture!).split('still-idle').length - 1).toBe(2);
+  });
+
+  it('uses the worktree checkout when the terminal directory is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => paneText(fixture!).includes(checkout));
+    const text = paneText(fixture!);
+    expect(text).not.toContain(join(checkout, 'packages'));
+    expect(text.split('pwd').length - 1).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+  });
+
+  it('resolves a relative terminal directory inside the worktree checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, 'api');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "packages/../api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => paneText(fixture!).includes(directory));
+    expect(paneText(fixture!)).not.toContain(join(checkout, 'packages'));
+  });
+
+  it('does not expand ~ in a relative terminal directory', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, '~', 'packages');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "~/packages" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => paneText(fixture!).includes(directory));
+  });
+
+  it('uses an absolute terminal directory as written', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const outside = join(repo.root, 'outside-terminal');
+    mkdirSync(outside);
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "${outside}" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    await waitFor(() => paneText(fixture!).includes(outside));
+    expect(paneText(fixture!)).not.toContain(checkout);
+  });
+
+  it('shows the workspace error and starts no terminal when a relative directory leaves the checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "../outside" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory leaves the checkout: ../outside',
+    );
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('appends another terminal tab when Run preset is chosen again', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 api']);
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    expect(visiblePaneCount(fixture)).toBe(1);
+  });
+
+  it('expands a collapsed terminal section without also opening an empty terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    runPreset(fixture);
+
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+  });
+
+  it('does not run a preset when the app launches or a worktree is selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(terminalCount(fixture, 'master')).toBeNull();
+
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+  });
+
+  it('appends a focused terminal tab named for the terminal when Run preset is chosen', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    mkdirSync(join(checkout, 'packages', 'api'), { recursive: true });
+    writeCommittedPreset(checkout);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-tab"]')).toBeNull();
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(tabNames(fixture)).toEqual(['1 api']);
+  });
+
+  it('shows Run preset immediately left of Split when the selected checkout has one preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]');
+    const split = header?.querySelector('[data-testid="terminal-split-button"]');
+    const run = split?.previousElementSibling;
+    expect(run).toBeInstanceOf(HTMLButtonElement);
+    expect((run as HTMLButtonElement).getAttribute('aria-label')).toBe('Run preset');
+    expect((run as HTMLButtonElement).textContent?.trim()).toBe('');
+    expect((run as HTMLButtonElement).querySelector('svg')).not.toBeNull();
+    expect(header?.querySelector('.terminal-tabs')?.nextElementSibling).toBe(run);
+  });
+
+  it('opens the preset list for the only preset and runs the chosen entry', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "cmatrix"
+
+[[preset.tab]]
+terminals = [
+  { command = "echo cmatrix-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(presetMenuLabels(fixture)).toEqual(['cmatrix']);
+
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 echo cmatrix-ran']);
+    await waitFor(() => paneText(fixture!).includes('cmatrix-ran'));
+  });
+
   it('starts one terminal when an empty terminal section expands', async () => {
     const repo = createRepo();
     root = repo.root;
@@ -1305,6 +2012,384 @@ describe('branch terminal', () => {
     await waitFor(() => gridRows(fixture!.nativeElement) < tall);
   });
 
+  it('appends a preset with several tabs in file order', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 web']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('api-ready'));
+    expect(paneText(fixture!)).not.toContain('web-ready');
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('web-ready'));
+    expect(paneText(fixture!)).not.toContain('api-ready');
+  });
+
+  it('shows the two terminals of a preset tab side by side at equal width', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo left-ready" },
+  { name = "logs", command = "echo right-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    const names = [...fixture.nativeElement.querySelectorAll('.terminal-pane-name')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    const panes = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column [data-testid="terminal-pane"]')] as HTMLElement[];
+    expect(panes).toHaveLength(2);
+    await waitFor(() => (panes[0]?.textContent ?? '').includes('left-ready') && (panes[1]?.textContent ?? '').includes('right-ready'));
+    expect(panes[0]?.textContent).not.toContain('right-ready');
+    expect(panes[1]?.textContent).not.toContain('left-ready');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+  });
+
+  it('labels a preset tab with each terminal name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web" },
+  { name = "logs" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 web · logs']);
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab-name"]')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+  });
+
+  it('opens a menu of presets in file order and appends the chosen preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+
+[[preset]]
+name = "test"
+
+[[preset.tab]]
+terminals = [
+  { name = "unit", command = "echo unit-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 unit']);
+    await waitFor(() => paneText(fixture!).includes('unit-ready'));
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+    again[0]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 unit', '2 api', '3 web']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-ready'));
+    clickTab(fixture, 2);
+    await waitFor(() => paneText(fixture!).includes('web-ready'));
+  });
+
+  it('opens a single terminal tab when one terminal of a pair does not start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs', '2 api']);
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory does not exist: missing-web',
+    );
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+  });
+
+  it('adds no tab when neither terminal in a pair starts', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", cwd = "missing-logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory does not exist: missing-web',
+    );
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(paneText(fixture!)).not.toContain('logs');
+  });
+
+  it('omits a terminal whose directory leaves the checkout and opens the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up", cwd = "../outside" },
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory leaves the checkout: ../outside',
+    );
+    expect(tabNames(fixture)).toEqual(['1 logs', '2 api']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+  });
+
+  it('focuses the first new preset tab and the left terminal of a split', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web" },
+  { name = "logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'New');
+    await waitFor(() => visiblePaneCount(fixture!) === 1);
+    runPreset(fixture);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(3);
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab-name"]')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    const leftId = names[0]?.getAttribute('data-terminal-id') ?? '';
+    const rightId = names[1]?.getAttribute('data-terminal-id') ?? '';
+    const leftPane = fixture.nativeElement.querySelector(
+      `[data-testid="terminal-pane"][data-terminal-id="${leftId}"]`,
+    );
+    const leftCaret = leftPane?.querySelector('textarea');
+    expect(leftCaret).toBeInstanceOf(HTMLTextAreaElement);
+    expect(document.activeElement).toBe(leftCaret);
+    expect(document.activeElement).not.toBe(
+      fixture.nativeElement.querySelector(`[data-testid="terminal-pane"][data-terminal-id="${rightId}"] textarea`),
+    );
+  });
+
+  it('does not run a preset from a keydown', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    const keys = [
+      { key: 'r', ctrlKey: true },
+      { key: 'p', ctrlKey: true, shiftKey: true },
+      { key: 'Enter' },
+      { key: ' ' },
+      { key: 'F5' },
+      { key: 'Escape' },
+    ];
+    for (const init of keys) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+      fixture.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+    }
+    runPresetButton(fixture)?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    runPresetButton(fixture)?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+  });
+
+  it('focuses the first preset tab that opened when an earlier tab does not start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", cwd = "missing-logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "unit" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    runPreset(fixture);
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabNames(fixture)).toEqual(['1 api', '2 unit']);
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;
@@ -1331,6 +2416,1810 @@ describe('branch terminal', () => {
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
   });
+
+  it('replaces a committed preset of the same name and keeps its place', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 beta-shell']);
+    await waitFor(() => paneText(fixture!).includes('beta-overlay'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(existsSync(join(repo.repo, '.gitignore'))).toBe(false);
+    expect(existsSync(join(checkout, '.gitignore'))).toBe(false);
+  });
+
+  it('keeps an overlay preset in the place of a committed preset that has no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 beta-shell']);
+    await waitFor(() => paneText(fixture!).includes('beta-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha-committed');
+    expect(paneText(fixture!)).not.toContain('gamma-committed');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('appends an overlay preset with a new name and keeps a committed preset the overlay omits', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "delta"
+
+[[preset.tab]]
+terminals = [
+  { name = "delta-shell", command = "echo delta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'delta']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[2]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 delta-shell']);
+    await waitFor(() => paneText(fixture!).includes('delta-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha-committed');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['alpha', 'beta', 'delta']);
+    again[0]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 delta-shell', '2 alpha-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('delta-overlay');
+  });
+
+  it('matches preset names exactly after surrounding whitespace is removed', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "  Dev  "
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-shell", command = "echo committed-padded" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "Dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-shell", command = "echo overlay-exact" },
+]
+
+[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "lower-shell", command = "echo overlay-lower" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'Dev', 'gamma', 'dev']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 dev-shell']);
+    await waitFor(() => paneText(fixture!).includes('overlay-exact'));
+    expect(paneText(fixture!)).not.toContain('committed-padded');
+    expect(paneText(fixture!)).not.toContain('overlay-lower');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    again[3]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 dev-shell', '2 lower-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('overlay-lower'));
+    expect(paneText(fixture!)).not.toContain('overlay-exact');
+  });
+
+  it('shows the overlay presets when the checkout has no committed file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+
+[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['notes', 'ship']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(paneText(fixture!)).not.toContain('primary-committed');
+    expect(paneText(fixture!)).not.toContain('ship-overlay');
+  });
+
+  it('reads both preset files from a linked worktree checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      repo.repo,
+      `[[preset]]
+name = "primary"
+
+[[preset.tab]]
+terminals = [
+  { name = "primary-shell", command = "echo primary-overlay" },
+]
+
+[[preset]]
+name = "primary-extra"
+
+[[preset.tab]]
+terminals = [
+  { name = "extra-shell", command = "echo primary-extra" },
+]
+`,
+    );
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "linked"
+
+[[preset.tab]]
+terminals = [
+  { name = "linked-shell", command = "echo linked-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "linked"
+
+[[preset.tab]]
+terminals = [
+  { name = "linked-shell", command = "echo linked-overlay" },
+]
+
+[[preset]]
+name = "linked-extra"
+
+[[preset.tab]]
+terminals = [
+  { name = "extra-shell", command = "echo linked-extra" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['linked', 'linked-extra']);
+    const linked = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    linked[0]?.click();
+    fixture.detectChanges();
+    await waitFor(() => paneText(fixture!).includes('linked-overlay'));
+    expect(paneText(fixture!)).not.toContain('linked-committed');
+    expect(paneText(fixture!)).not.toContain('primary-overlay');
+    expect(paneText(fixture!)).not.toContain('primary-extra');
+
+    clickBranch(fixture, 'master');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['primary', 'primary-extra']);
+    const primary = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    primary[0]?.click();
+    fixture.detectChanges();
+    await waitFor(() => paneText(fixture!).includes('primary-overlay'));
+    expect(paneText(fixture!)).not.toContain('primary-committed');
+    expect(paneText(fixture!)).not.toContain('linked-overlay');
+    expect(paneText(fixture!)).not.toContain('linked-extra');
+  });
+
+  it('hides a committed preset when the overlay preset of that name has no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "  beta  "
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+  });
+
+  it('hides Run preset when every preset was skipped for having no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
+
+  it('runs the overlay presets when the committed preset file is invalid', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(checkout, '[[preset]\n');
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-from-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
+      'Invalid terminals.toml',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-from-overlay'));
+    expect(paneText(fixture!)).not.toContain('npm run dev');
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+  });
+
+  it('runs the committed presets when the overlay preset file is invalid', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-from-committed" },
+]
+`,
+    );
+    writePresetOverlay(checkout, '[[preset]\n');
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent).toContain(
+      'Invalid terminals.override.toml',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-from-committed'));
+    expect(paneText(fixture!)).not.toContain('notes-from-overlay');
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('drops a preset file that repeats a name and still runs the other file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+
+[[preset]]
+name = "  beta  "
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-again", command = "echo beta-again" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "Beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "upper-shell", command = "echo beta-upper" },
+]
+
+[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset name "beta" is used more than once',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['Beta', 'notes']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(paneText(fixture!)).not.toContain('gamma-committed');
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset name "beta" is used more than once',
+    );
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('drops an overlay that repeats a name and still runs the committed presets', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+
+[[preset]]
+name = "notes "
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-again", command = "echo notes-again" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset name "notes" is used more than once',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('notes-overlay');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('keeps presets whose names differ only by case', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-shell", command = "echo dev-lower" },
+]
+
+[[preset]]
+name = "Dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-upper", command = "echo dev-upper" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['dev', 'Dev']);
+  });
+
+  it('skips a preset whose tab is not a table and runs the rest of that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+tab = "nope"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['gamma', 'notes']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    again[1]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell', '2 notes-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+  });
+
+  it('skips a terminal that is not a table and runs the other terminals in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [ "nope" ]
+
+[[preset.tab]]
+terminals = [
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: terminal must be a table',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['dev', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a preset tab whose terminals are not a table and runs the other presets', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = "nope"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: terminal must be a table',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a terminal whose startup command is not a string and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = 4 },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: startup command must be a string',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a terminal whose directory is not a string and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = 4 },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: directory must be a string',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a tab that is not a table and runs the other presets in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+tab = ["nope"]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: tab must be a table',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nope');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a preset that is not a table and runs the other preset file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(checkout, 'preset = ["alpha", "beta"]\n');
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Invalid terminals.toml: preset must be a table',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 notes-shell']);
+    await waitFor(() => paneText(fixture!).includes('notes-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a preset with no name and runs the other presets in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+
+[[preset.tab]]
+terminals = [
+  { name = "nameless-shell", command = "echo nameless-ran" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'A preset has no name',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('nameless-ran');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('skips a preset with no tabs and runs the other presets in that file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has no tabs',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('beta');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('skips a preset when a tab has more than two terminals', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up" },
+  { name = "logs", command = "echo logs-up" },
+  { name = "extra", command = "echo extra-up" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "dev" has a tab with more than two terminals',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    expect(paneText(fixture!)).not.toContain('logs-up');
+    expect(paneText(fixture!)).not.toContain('extra-up');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('runs a preset terminal that omits its name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "cmatrix"
+
+[[preset.tab]]
+terminals = [
+  { command = "echo cmatrix-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).not.toBeNull();
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 echo cmatrix-ran']);
+    await waitFor(() => paneText(fixture!).includes('cmatrix-ran'));
+  });
+
+  it('runs an unnamed terminal beside a named one', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { command = "echo nameless-ran" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 echo nameless-ran · logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('nameless-ran'));
+    expect(visiblePaneCount(fixture!)).toBe(2);
+  });
+
+  it('skips a terminal whose startup command contains a newline', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up\\nexit" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The startup command for "web" contains a newline',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('skips a terminal whose directory leaves the checkout and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up", cwd = "../outside" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory leaves the checkout: ../outside',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+  });
+
+  it('skips a terminal whose directory does not exist and starts the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up", cwd = "missing-web" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory does not exist: missing-web',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('treats a preset name that is only whitespace as a missing name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "   "
+
+[[preset.tab]]
+terminals = [
+  { name = "blank-shell", command = "echo blank-ran" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'A preset has no name',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 gamma-shell']);
+    await waitFor(() => paneText(fixture!).includes('gamma-committed'));
+    expect(paneText(fixture!)).not.toContain('blank-ran');
+  });
+
+  it('treats a terminal name that is only whitespace as an omitted name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "   ", command = "echo blank-ran" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 echo blank-ran · logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('blank-ran'));
+  });
+
+  it('hides a committed preset when the overlay preset of that name has too many terminals', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "  beta  "
+
+[[preset.tab]]
+terminals = [
+  { name = "one", command = "echo overlay-one" },
+  { name = "two", command = "echo overlay-two" },
+  { name = "three", command = "echo overlay-three" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'Preset "beta" has a tab with more than two terminals',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(paneText(fixture!)).not.toContain('overlay-one');
+    expect(paneText(fixture!)).not.toContain('overlay-two');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('hides a committed preset when the overlay preset of that name cannot start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo overlay-beta\\nexit" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The startup command for "beta-shell" contains a newline',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(paneText(fixture!)).not.toContain('overlay-beta');
+  });
+
+  it('does not hide a committed preset when the overlay preset has no name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "   "
+
+[[preset.tab]]
+terminals = [
+  { name = "blank-shell", command = "echo blank-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'A preset has no name',
+    );
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 alpha-shell']);
+    await waitFor(() => paneText(fixture!).includes('alpha-committed'));
+    expect(paneText(fixture!)).not.toContain('blank-overlay');
+  });
+
+  it('shows the workspace error and hides Run preset when every terminal was skipped', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up\\nexit" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The startup command for "web" contains a newline',
+    );
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+  });
+
+  it('starts the other terminals when an overlay preset skips one', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up\\nexit" },
+  { name = "logs", command = "echo logs-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The startup command for "web" contains a newline',
+    );
+    runPreset(fixture);
+
+    expect(tabNames(fixture)).toEqual(['1 logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(paneText(fixture!)).not.toContain('web-up');
+  });
+
+  it('updates Run preset when the committed file is saved while the worktree stays selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-ran" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta']);
+
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-ran" },
+]
+
+[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-ran" },
+]
+`,
+    );
+
+    await waitFor(
+      () =>
+        runPresetButton(fixture!) !== null &&
+        presetMenuLabels(fixture!).length === 2 &&
+        presetMenuLabels(fixture!)[0] === 'ship' &&
+        presetMenuLabels(fixture!)[1] === 'notes',
+    );
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['ship', 'notes']);
+  });
+
+  it('updates Run preset when the overlay file is saved while the worktree stays selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-ran" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta']);
+
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+
+[[preset]]
+name = "delta"
+
+[[preset.tab]]
+terminals = [
+  { name = "delta-shell", command = "echo delta-overlay" },
+]
+`,
+    );
+
+    await waitFor(
+      () =>
+        runPresetButton(fixture!) !== null &&
+        presetMenuLabels(fixture!).length === 3 &&
+        presetMenuLabels(fixture!)[0] === 'alpha' &&
+        presetMenuLabels(fixture!)[1] === 'beta' &&
+        presetMenuLabels(fixture!)[2] === 'delta',
+    );
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'delta']);
+  });
+
+  it('shows Run preset when a missing preset file is created while the worktree stays selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    expect(runPresetButton(fixture)).toBeNull();
+
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-ran" },
+]
+
+[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-ran" },
+]
+`,
+    );
+
+    await waitFor(() => runPresetButton(fixture!) !== null);
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['ship', 'notes']);
+  });
+
+  it('hides Run preset when a save leaves no preset while the worktree stays selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-ran" },
+]
+
+[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['ship', 'notes']);
+
+    writeCommittedPreset(checkout, '');
+
+    await waitFor(() => runPresetButton(fixture!) === null && presetMenuLabels(fixture!).length === 0);
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
+  it('shows Run preset when a missing overlay file is created while the worktree stays selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeFileSync(join(checkout, '.gitignore'), 'terminals.override.toml\n');
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    expect(runPresetButton(fixture)).toBeNull();
+
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-overlay" },
+]
+
+[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-overlay" },
+]
+`,
+    );
+
+    await waitFor(() => runPresetButton(fixture!) !== null);
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['notes', 'ship']);
+  });
+
+  it('opens the tabs from the saved preset file on the next choice', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-ran" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta']);
+
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "ship"
+
+[[preset.tab]]
+terminals = [
+  { name = "ship-shell", command = "echo ship-ran" },
+]
+
+[[preset]]
+name = "notes"
+
+[[preset.tab]]
+terminals = [
+  { name = "notes-shell", command = "echo notes-ran" },
+]
+`,
+    );
+
+    await waitFor(
+      () =>
+        presetMenuLabels(fixture!).length === 2 &&
+        presetMenuLabels(fixture!)[0] === 'ship' &&
+        presetMenuLabels(fixture!)[1] === 'notes',
+    );
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 ship-shell']);
+    await waitFor(() => paneText(fixture!).includes('ship-ran'));
+    expect(paneText(fixture!)).not.toContain('alpha-ran');
+    expect(paneText(fixture!)).not.toContain('notes-ran');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

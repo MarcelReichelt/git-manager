@@ -8,6 +8,7 @@ Requires **Node.js 20** or later.
 
 - Desktop window: centered repository card, checked-out worktrees, diffs, commits, and a terminal section
 - A new terminal is in-app. App settings can choose a tmux session, or no terminal section
+- A checkout can define presets that open named terminal tabs
 - Registry of path and display name in `~/.config/git-worktree-manager/registry.db`
 - Worktree create in the workspaces or sibling layout, from that repository's config, or the app default when the config sets no layout
 - A new name creates a local branch at the primary checkout's current commit. An existing local or remote branch is checked out
@@ -71,6 +72,7 @@ For a reproducible Linux dev environment (including from Windows via Docker), se
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, register, open the workspace |
 | [Desktop](docs/desktop.md) | Card, worktrees, diffs, commits, terminal, push, remotes, settings |
+| [Presets](docs/presets.md) | Run preset, the terminals file, and the gitignored overlay |
 | [CLI reference](docs/cli-reference.md) | add, list, unregister, worktree, merge |
 | [Configuration](docs/configuration.md) | Registry file, per-repo TOML, and app settings |
 | [Worktrees & layouts](docs/worktrees-and-layouts.md) | Sibling vs workspaces |

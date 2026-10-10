@@ -31,6 +31,8 @@ commands = ["yarn"]
 
 Hook commands run in the primary checkout. Pre-create commands run before the worktree is added. Post-create commands run after the copied files. Pre-remove commands run before the worktree is deleted. Post-remove commands run after that, and after a requested local branch delete. The environment includes the branch, the worktree path, and the primary checkout path. See [Plugins](plugins.md).
 
+A checkout may also contain `.git-worktree-manager/terminals.toml`. Ignore `.git-worktree-manager/terminals.override.toml`.
+
 ## App settings
 
 App settings live in `~/.config/git-worktree-manager/app-settings.json`. `GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH` overrides that path. The desktop window writes this file. It holds the default layout, the terminal mode, the shell command, the colors, the terminal font, the IDE command, and the arrangement.

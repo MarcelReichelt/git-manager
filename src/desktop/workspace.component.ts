@@ -112,7 +112,7 @@ import {
   type TmuxSessionRecord,
   type TmuxSessionSnapshot,
 } from './tmux-sessions';
-import { readCommittedPreset, terminalDirectory, type CommittedPreset } from './terminal-presets';
+import { readCheckoutPresets, terminalDirectory, type CommittedPreset } from './terminal-presets';
 import { typeStartupCommand } from './shell-host';
 import {
   ensureGitRepository,
@@ -3240,7 +3240,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return false;
     }
     try {
-      return readCommittedPreset(checkout) !== null;
+      return readCheckoutPresets(checkout) !== null;
     } catch {
       return false;
     }
@@ -4670,7 +4670,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private syncCommittedPreset(checkout: string): void {
     try {
-      readCommittedPreset(checkout);
+      readCheckoutPresets(checkout);
       this.clearPresetWorkspaceError();
     } catch (error) {
       this.workspaceError.set(errorText(error));
@@ -4704,7 +4704,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     try {
-      return readCommittedPreset(checkout);
+      return readCheckoutPresets(checkout);
     } catch (error) {
       this.workspaceError.set(errorText(error));
       return null;

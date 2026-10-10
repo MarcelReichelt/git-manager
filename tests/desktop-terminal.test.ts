@@ -54,6 +54,17 @@ terminals = [
   );
 }
 
+function writePresetOverlay(checkout: string, toml: string): void {
+  const directory = join(checkout, '.git-worktree-manager');
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, 'terminals.override.toml'), toml);
+}
+
+function presetMenuLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+  return items.map((item) => item.textContent?.trim() ?? '');
+}
+
 async function renderWorkspace(
   repo: string,
   platform?: string,
@@ -2097,6 +2108,64 @@ terminals = [
     await waitFor(() => paneText(fixture!).includes(worktree));
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
     expect(sessionsForBranch(repo.repo, 'master')).toEqual([]);
+  });
+
+  it('replaces a committed preset of the same name and keeps its place', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-committed" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 beta-shell']);
+    await waitFor(() => paneText(fixture!).includes('beta-overlay'));
+    expect(paneText(fixture!)).not.toContain('beta-committed');
+    expect(existsSync(join(repo.repo, '.gitignore'))).toBe(false);
+    expect(existsSync(join(checkout, '.gitignore'))).toBe(false);
   });
 });
 

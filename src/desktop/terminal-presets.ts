@@ -18,7 +18,21 @@ export interface CommittedPreset {
 }
 
 export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
-  const file = join(checkout, '.git-worktree-manager', 'terminals.toml');
+  return readPresetFile(checkout, 'terminals.toml');
+}
+
+export function readCheckoutPresets(checkout: string): CommittedPreset[] | null {
+  const committed = readCommittedPreset(checkout);
+  const overlay = readPresetFile(checkout, 'terminals.override.toml');
+  if (!committed || !overlay) {
+    return committed;
+  }
+  const replacements = new Map(overlay.map((preset) => [preset.name, preset]));
+  return committed.map((preset) => replacements.get(preset.name) ?? preset);
+}
+
+function readPresetFile(checkout: string, filename: string): CommittedPreset[] | null {
+  const file = join(checkout, '.git-worktree-manager', filename);
   if (!existsSync(file)) {
     return null;
   }

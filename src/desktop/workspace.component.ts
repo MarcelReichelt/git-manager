@@ -2319,6 +2319,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
   readonly presetMenu = signal<{ x: number; y: number; names: string[] } | null>(null);
+  private readonly shownPresets = signal<CommittedPreset[] | null>(null);
   readonly moveSubmenuOpen = signal(false);
   private moveSubmenuTimer: ReturnType<typeof setTimeout> | null = null;
   readonly repositoryTabMenu = signal<{ path: string; x: number; y: number } | null>(null);
@@ -3237,14 +3238,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   showRunPreset(): boolean {
     const checkout = this.presetCheckout();
+    const presets = this.shownPresets();
     if (checkout === '') {
       return false;
     }
-    try {
-      return readCheckoutPresets(checkout).presets !== null;
-    } catch {
-      return false;
-    }
+    return presets !== null;
   }
 
   runPreset(event: Event): void {
@@ -4672,14 +4670,35 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private syncCommittedPreset(checkout: string): void {
     try {
       const read = readCheckoutPresets(checkout);
+      this.publishPresets(read.presets);
       if (read.error !== null) {
         this.workspaceError.set(read.error);
         return;
       }
       this.clearPresetWorkspaceError();
     } catch (error) {
+      this.publishPresets(null);
       this.workspaceError.set(errorText(error));
     }
+  }
+
+  private publishPresets(presets: CommittedPreset[] | null): void {
+    if (!samePresetNames(this.shownPresets(), presets)) {
+      this.shownPresets.set(presets);
+    }
+    const menu = this.presetMenu();
+    if (menu === null) {
+      return;
+    }
+    const names = presets?.map((preset) => preset.name) ?? [];
+    if (names.length === 0) {
+      this.presetMenu.set(null);
+      return;
+    }
+    if (names.length === menu.names.length && names.every((name, index) => name === menu.names[index])) {
+      return;
+    }
+    this.presetMenu.set({ x: menu.x, y: menu.y, names });
   }
 
   private clearPresetWorkspaceError(): void {
@@ -5437,7 +5456,16 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       } catch {
         // The next local change retries the selected worktree.
       }
+      this.refreshSelectedPresets();
     });
+  }
+
+  private refreshSelectedPresets(): void {
+    const checkout = this.presetCheckout();
+    if (checkout === '') {
+      return;
+    }
+    this.syncCommittedPreset(checkout);
   }
 
   private refreshSelectedWorktreeContent(): void {
@@ -6051,6 +6079,13 @@ function isPresetWorkspaceError(message: string): boolean {
     message.startsWith('The terminal directory leaves the checkout') ||
     /^Preset ".*" has no tabs$/.test(message)
   );
+}
+
+function samePresetNames(left: CommittedPreset[] | null, right: CommittedPreset[] | null): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return left.length === right.length && left.every((preset, index) => preset.name === right[index]?.name);
 }
 
 function sameWorktreeRows(

@@ -108,6 +108,7 @@ import {
   rememberSessionBranch,
   sessionsForBranch,
   tmuxOnPath,
+  typeTmuxStartupCommand,
   type OldSessionChoice,
   type TmuxSessionRecord,
   type TmuxSessionSnapshot,
@@ -4719,6 +4720,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     const opened: TerminalTabView[] = [];
+    const startedSessions: string[] = [];
     let failure: string | null = null;
     for (const spec of preset.tabs) {
       const started: TerminalView[] = [];
@@ -4731,7 +4733,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
           this.workspaceError.set(failure);
           continue;
         }
-        const terminal = this.spawnPresetTerminal(directory, terminalSpec.name);
+        const terminal = this.spawnPresetTerminal(directory, terminalSpec.name, startedSessions);
         if (!terminal) {
           const message = this.workspaceError();
           if (message !== null) {
@@ -4739,8 +4741,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
           }
           continue;
         }
+        if (terminal.session.length > 0) {
+          startedSessions.push(terminal.session);
+        }
         if (terminalSpec.command.length > 0) {
-          typeStartupCommand(terminal.id, terminalSpec.command);
+          if (terminal.host === 'tmux') {
+            typeTmuxStartupCommand(terminal.session, terminalSpec.command);
+          } else {
+            typeStartupCommand(terminal.id, terminalSpec.command);
+          }
         }
         started.push(terminal);
         if (failure !== null) {
@@ -4789,7 +4798,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.presetMenu.set(null);
   }
 
-  private spawnPresetTerminal(cwd: string, name: string): TerminalView | null {
+  private spawnPresetTerminal(cwd: string, name: string, earlierSessions: readonly string[]): TerminalView | null {
     const chosen = this.chosenTerminalWorktree();
     const repo = chosen?.path ?? this.effectivePath();
     const branch = chosen?.branch ?? this.selectedBranchName();
@@ -4797,15 +4806,21 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     const id = this.nextTerminalKey('terminal');
+    const knownSessions = [
+      ...this.readBranchTerminals(repo, branch).tabs.flatMap((tab) =>
+        tab.terminals.flatMap((terminal) => (terminal.session.length > 0 ? [terminal.session] : [])),
+      ),
+      ...earlierSessions,
+    ];
     try {
       const terminal = startTerminal({
         id,
-        mode: 'terminal',
+        mode: this.activeTerminalMode(),
         repo,
         branch,
         cwd,
         shellCommand: this.shellCommand(),
-        knownSessions: [],
+        knownSessions,
       });
       if (!terminal) {
         return null;

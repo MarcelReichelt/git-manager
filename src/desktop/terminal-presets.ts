@@ -358,15 +358,17 @@ function oneTerminal(entry: unknown, checkout: string): { terminal: PresetTermin
     return { terminal: null, error: 'Invalid terminals.toml: terminal must be a table' };
   }
   const name = entry.name;
-  if (typeof name !== 'string' || name.trim().length === 0) {
-    return { terminal: null, error: 'A terminal has no name' };
+  if (name !== undefined && typeof name !== 'string') {
+    return { terminal: null, error: 'Invalid terminals.toml: terminal name must be a string' };
   }
+  const label = typeof name === 'string' ? name.trim() : '';
   const command = entry.command;
   if (command !== undefined && typeof command !== 'string') {
     return { terminal: null, error: 'Invalid terminals.toml: startup command must be a string' };
   }
   if (typeof command === 'string' && command.includes('\n')) {
-    return { terminal: null, error: `The startup command for "${name.trim()}" contains a newline` };
+    const quoted = label.length > 0 ? ` for "${label}"` : '';
+    return { terminal: null, error: `The startup command${quoted} contains a newline` };
   }
   const directory = entry.cwd;
   if (directory !== undefined && typeof directory !== 'string') {
@@ -382,10 +384,11 @@ function oneTerminal(entry: unknown, checkout: string): { terminal: PresetTermin
   if (!existsSync(resolved)) {
     return { terminal: null, error: `The terminal directory does not exist: ${written}` };
   }
+  const startup = typeof command === 'string' ? command : '';
   return {
     terminal: {
-      name,
-      command: typeof command === 'string' ? command : '',
+      name: label.length > 0 ? label : startup,
+      command: startup,
       directory: written,
     },
     error: null,

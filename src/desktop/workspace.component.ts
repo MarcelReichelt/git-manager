@@ -6087,8 +6087,7 @@ function isPresetWorkspaceError(message: string): boolean {
     /^Preset ".*" has no tabs$/.test(message) ||
     /^Preset name ".*" is used more than once$/.test(message) ||
     message === 'A preset has no name' ||
-    message === 'A terminal has no name' ||
-    /^The startup command for ".*" contains a newline$/.test(message) ||
+    /^The startup command( for ".*")? contains a newline$/.test(message) ||
     /^Preset ".*" has a tab with more than two terminals$/.test(message)
   );
 }

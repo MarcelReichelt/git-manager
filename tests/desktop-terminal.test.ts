@@ -3452,7 +3452,33 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
   });
 
-  it('skips a terminal with no name and starts the other terminals in that preset', async () => {
+  it('runs a preset terminal that omits its name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "cmatrix"
+
+[[preset.tab]]
+terminals = [
+  { command = "echo cmatrix-ran" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(runPresetButton(fixture)).not.toBeNull();
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 echo cmatrix-ran']);
+    await waitFor(() => paneText(fixture!).includes('cmatrix-ran'));
+  });
+
+  it('runs an unnamed terminal beside a named one', async () => {
     const repo = createRepo();
     root = repo.root;
     const checkout = join(repo.repo, '.workspaces', 'feature');
@@ -3471,19 +3497,12 @@ terminals = [
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
 
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
-      'A terminal has no name',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
     clickControl(fixture, 'Run preset');
 
-    expect(tabNames(fixture)).toEqual(['1 logs']);
-    await waitFor(() => paneText(fixture!).includes('logs-up'));
-    expect(paneText(fixture!)).not.toContain('nameless-ran');
-    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
-
-    clickBranch(fixture, 'master');
-
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 echo nameless-ran · logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('nameless-ran'));
+    expect(visiblePaneCount(fixture!)).toBe(2);
   });
 
   it('skips a terminal whose startup command contains a newline', async () => {
@@ -3620,7 +3639,7 @@ terminals = [
     expect(paneText(fixture!)).not.toContain('blank-ran');
   });
 
-  it('treats a terminal name that is only whitespace as a missing name', async () => {
+  it('treats a terminal name that is only whitespace as an omitted name', async () => {
     const repo = createRepo();
     root = repo.root;
     const checkout = join(repo.repo, '.workspaces', 'feature');
@@ -3639,14 +3658,11 @@ terminals = [
     fixture = await renderWorkspace(repo.repo);
     clickBranch(fixture, 'feature');
 
-    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
-      'A terminal has no name',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
     clickControl(fixture, 'Run preset');
 
-    expect(tabNames(fixture)).toEqual(['1 logs']);
-    await waitFor(() => paneText(fixture!).includes('logs-up'));
-    expect(paneText(fixture!)).not.toContain('blank-ran');
+    expect(tabNames(fixture)).toEqual(['1 echo blank-ran · logs']);
+    await waitFor(() => paneText(fixture!).includes('logs-up') && paneText(fixture!).includes('blank-ran'));
   });
 
   it('hides a committed preset when the overlay preset of that name has too many terminals', async () => {

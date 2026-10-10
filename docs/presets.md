@@ -42,7 +42,7 @@ terminals = [
 
 A tab holds one terminal, or two side by side. The first terminal in the tab is on the left. The panes share the tab equally. The tab label shows each terminal's name. A preset does not set a separate tab title.
 
-`name` on a terminal is that label. `command` is the startup command. `cwd` is the terminal's directory. Both may be omitted. An omitted command types nothing. An omitted directory is the worktree checkout.
+`name` on a terminal is that label. It may be omitted. An omitted name, or a name that is only whitespace, uses the startup command as the label. With neither, the tab shows the foreground process name. `command` is the startup command. `cwd` is the terminal's directory. Both may be omitted. An omitted command types nothing. An omitted directory is the worktree checkout.
 
 A relative directory is resolved from that checkout and must stay inside it after `.` and `..` are normalized. An absolute directory is used as written, including outside the checkout. `~` is not expanded.
 
@@ -64,6 +64,6 @@ A file is dropped when its TOML is invalid or it contains two presets of the sam
 
 One bad preset or terminal is skipped, and the rest of that file still runs.
 
-A preset is skipped when it has no name, no tabs, or a tab with more than two terminals. A name that is only whitespace counts as a missing name.
+A preset is skipped when it has no name, no tabs, or a tab with more than two terminals. A preset name that is only whitespace counts as a missing name.
 
-A terminal is skipped when it has no name, its startup command contains a newline, its relative directory leaves the checkout, or its directory does not exist. The other terminals in that preset still start. A pair with one terminal that does not start becomes a single terminal tab. A pair where neither starts adds no tab. The other tabs in that preset still open.
+A terminal is skipped when its startup command contains a newline, its relative directory leaves the checkout, or its directory does not exist. The other terminals in that preset still start. A pair with one terminal that does not start becomes a single terminal tab. A pair where neither starts adds no tab. The other tabs in that preset still open.

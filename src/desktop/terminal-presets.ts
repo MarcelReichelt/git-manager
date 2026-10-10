@@ -2,13 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, relative, sep } from 'node:path';
 import TOML from '@iarna/toml';
 
-export interface PresetTerminal {
+interface PresetTerminal {
   name: string;
   command: string;
   directory: string | undefined;
 }
 
-export interface PresetTab {
+interface PresetTab {
   terminals: PresetTerminal[];
 }
 
@@ -17,7 +17,7 @@ export interface CommittedPreset {
   tabs: PresetTab[];
 }
 
-export interface CheckoutPresets {
+interface CheckoutPresets {
   presets: CommittedPreset[] | null;
   error: string | null;
 }
@@ -32,10 +32,6 @@ interface PresetSlot {
   name: string | null;
   preset: CommittedPreset | null;
   error: string | null;
-}
-
-export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
-  return presetsFromSlots(readPresetFile(checkout, 'terminals.toml').slots);
 }
 
 export function readCheckoutPresets(checkout: string): CheckoutPresets {

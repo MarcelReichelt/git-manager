@@ -1017,6 +1017,62 @@ terminals = [
     expect(sheet.querySelector('[data-testid="terminal-collapse"]')).toBeNull();
   });
 
+  it('opens the preset menu from Run preset in Terminals', async () => {
+    const { pier } = registerPair(roots);
+    const directory = join(pier, '.workspaces', 'feature', '.git-worktree-manager');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'terminals.toml'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+
+[[preset]]
+name = "test"
+
+[[preset.tab]]
+terminals = [
+  { name = "unit" },
+]
+`,
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const run = sheet.querySelector('button.terminal-run-preset');
+    expect(run).toBeInstanceOf(HTMLButtonElement);
+    expect((run as HTMLButtonElement).getAttribute('aria-label')).toBe('Run preset');
+    (run as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+    expect(sheet.querySelectorAll('[data-testid="terminal-tab"]')).toHaveLength(1);
+
+    items[1]?.click();
+    fixture.detectChanges();
+
+    const tabs = [...sheet.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect((tabs[1]?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe('2 unit');
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+  });
+
   it('offers terminal tabs, New, Split, Kill, Rename, and the terminal menu, without Collapse or Restore', async () => {
     registerPair(roots);
     const fixture = await renderLive();

@@ -112,6 +112,7 @@ import {
   type TmuxSessionRecord,
   type TmuxSessionSnapshot,
 } from './tmux-sessions';
+import { readCommittedPreset } from './terminal-presets';
 import {
   ensureGitRepository,
   listRemoteBranchesWithoutWorktree,
@@ -1543,6 +1544,16 @@ button, input { font: inherit; color: inherit; }
                       </div>
                     }
                   </div>
+                  @if (showRunPreset()) {
+                    <button
+                      type="button"
+                      class="terminal-run-preset"
+                      aria-label="Run preset"
+                      (click)="runPreset()"
+                    >
+                      Run preset
+                    </button>
+                  }
                   <button
                     type="button"
                     class="terminal-icon"
@@ -3193,6 +3204,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }));
   }
 
+  showRunPreset(): boolean {
+    const checkout = this.presetCheckout();
+    if (checkout === '') {
+      return false;
+    }
+    try {
+      return readCommittedPreset(checkout) !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  runPreset(): void {
+    return;
+  }
+
   newTerminal(): void {
     const chosen = this.chosenTerminalWorktree();
     const branch = chosen?.branch ?? this.selectedBranchName();
@@ -4566,6 +4593,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         this.setSection(branch, 'collapsed');
       }
     }
+  }
+
+  private presetCheckout(): string {
+    const chosen = this.chosenTerminalWorktree();
+    if (chosen) {
+      return findCheckout(chosen.path, chosen.branch) ?? '';
+    }
+    return this.worktreePath();
   }
 
   private chosenTerminalWorktree(): { path: string; branch: string } | null {

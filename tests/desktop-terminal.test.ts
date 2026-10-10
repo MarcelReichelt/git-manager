@@ -37,6 +37,23 @@ function createRepo(): { root: string; repo: string } {
   return { root, repo };
 }
 
+function writeCommittedPreset(checkout: string, toml?: string): void {
+  const directory = join(checkout, '.git-worktree-manager');
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, 'terminals.toml'),
+    toml ??
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "npm run dev", cwd = "packages/api" },
+]
+`,
+  );
+}
+
 async function renderWorkspace(
   repo: string,
   platform?: string,
@@ -1107,6 +1124,22 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
     expect(terminalCount(fixture, 'feature')).toBeNull();
+  });
+
+  it('shows Run preset immediately left of Split when the selected checkout has one preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]');
+    const split = header?.querySelector('[data-testid="terminal-split-button"]');
+    const run = split?.previousElementSibling;
+    expect(run).toBeInstanceOf(HTMLButtonElement);
+    expect((run as HTMLButtonElement).getAttribute('aria-label')).toBe('Run preset');
+    expect(header?.querySelector('.terminal-tabs')?.nextElementSibling).toBe(run);
   });
 
   it('starts one terminal when an empty terminal section expands', async () => {

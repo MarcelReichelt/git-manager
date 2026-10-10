@@ -1193,6 +1193,22 @@ describe('branch terminal', () => {
     expect(runPresetButton(fixture)).toBeNull();
   });
 
+  it('appends a focused terminal tab named for the terminal when Run preset is chosen', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-tab"]')).toBeNull();
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(tabNames(fixture)).toEqual(['1 api']);
+  });
+
   it('shows Run preset immediately left of Split when the selected checkout has one preset', async () => {
     const repo = createRepo();
     root = repo.root;

@@ -3217,7 +3217,32 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   runPreset(): void {
-    return;
+    const checkout = this.presetCheckout();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    if (checkout === '' || !branch) {
+      return;
+    }
+    let preset: ReturnType<typeof readCommittedPreset>;
+    try {
+      preset = readCommittedPreset(checkout);
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return;
+    }
+    if (!preset) {
+      return;
+    }
+    const terminal = this.spawnPresetTerminal(checkout, preset.terminal.name);
+    if (!terminal) {
+      return;
+    }
+    const tab = this.makeTab([terminal]);
+    this.updateSelected((state) => withNewTab(state, tab));
+    if (!chosen && this.sectionFor(branch) !== 'maximized') {
+      this.setSection(branch, 'docked');
+    }
+    this.closeTerminalMenu();
   }
 
   newTerminal(): void {
@@ -4625,6 +4650,35 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     return this.terminalsWorktree();
+  }
+
+  private spawnPresetTerminal(cwd: string, name: string): TerminalView | null {
+    const chosen = this.chosenTerminalWorktree();
+    const repo = chosen?.path ?? this.effectivePath();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    if (!repo || !branch || cwd === '' || this.activeTerminalMode() === 'none') {
+      return null;
+    }
+    const id = this.nextTerminalKey('terminal');
+    try {
+      const terminal = startTerminal({
+        id,
+        mode: 'terminal',
+        repo,
+        branch,
+        cwd,
+        shellCommand: this.shellCommand(),
+        knownSessions: [],
+      });
+      if (!terminal) {
+        return null;
+      }
+      this.clearShellStartError();
+      return { ...terminal, customName: name };
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return null;
+    }
   }
 
   private spawnTerminal(): TerminalView | null {

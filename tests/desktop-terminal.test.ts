@@ -2004,6 +2004,74 @@ terminals = [
     );
   });
 
+  it('does not run a preset from a keydown', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    const keys = [
+      { key: 'r', ctrlKey: true },
+      { key: 'p', ctrlKey: true, shiftKey: true },
+      { key: 'Enter' },
+      { key: ' ' },
+      { key: 'F5' },
+      { key: 'Escape' },
+    ];
+    for (const init of keys) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+      fixture.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+    }
+    runPresetButton(fixture)?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    runPresetButton(fixture)?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+  });
+
+  it('focuses the first preset tab that opened when an earlier tab does not start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", cwd = "missing-logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "unit" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabNames(fixture)).toEqual(['1 api', '2 unit']);
+    expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;

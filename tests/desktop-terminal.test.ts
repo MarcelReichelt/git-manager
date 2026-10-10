@@ -2413,6 +2413,59 @@ terminals = [
     expect(existsSync(join(checkout, '.gitignore'))).toBe(false);
   });
 
+  it('keeps an overlay preset in the place of a committed preset that has no tabs', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'gamma']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 beta-shell']);
+    await waitFor(() => paneText(fixture!).includes('beta-overlay'));
+    expect(paneText(fixture!)).not.toContain('alpha-committed');
+    expect(paneText(fixture!)).not.toContain('gamma-committed');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
   it('appends an overlay preset with a new name and keeps a committed preset the overlay omits', async () => {
     const repo = createRepo();
     root = repo.root;

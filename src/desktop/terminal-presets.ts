@@ -28,19 +28,25 @@ interface OverlayPreset {
   error?: string;
 }
 
+interface PresetSlot {
+  name: string | null;
+  preset: CommittedPreset | null;
+  error: string | null;
+}
+
 export function readCommittedPreset(checkout: string): CommittedPreset[] | null {
-  return readPresetFile(checkout, 'terminals.toml').presets;
+  return presetsFromSlots(readPresetFile(checkout, 'terminals.toml').slots);
 }
 
 export function readCheckoutPresets(checkout: string): CheckoutPresets {
   const committed = loadCommittedPresets(checkout);
   const overlay = loadOverlayPresets(checkout);
-  let error = committed.error ?? overlay.error;
+  const committedError = committed.error ?? firstSlotError(committed.slots);
   if (!overlay.value) {
-    return { presets: committed.value, error };
+    return { presets: presetsFromSlots(committed.slots), error: committedError ?? overlay.error };
   }
-  const base = committed.value ?? [];
-  const names = new Set(base.map((preset) => presetKey(preset.name)));
+  const base = committed.slots ?? [];
+  const names = new Set(base.flatMap((slot) => (slot.name ? [slot.name] : [])));
   const replacements = new Map<string, OverlayPreset>();
   const extras: OverlayPreset[] = [];
   for (const entry of overlay.value) {
@@ -50,37 +56,37 @@ export function readCheckoutPresets(checkout: string): CheckoutPresets {
       extras.push(entry);
     }
   }
+  let error = committed.error ?? remainingCommittedError(base, replacements) ?? overlay.error;
   const merged: CommittedPreset[] = [];
-  for (const preset of base) {
-    const replacement = replacements.get(presetKey(preset.name));
+  for (const slot of base) {
+    if (!slot.name) {
+      continue;
+    }
+    const replacement = replacements.get(slot.name);
     if (!replacement) {
-      merged.push(preset);
+      if (slot.preset) {
+        merged.push(slot.preset);
+      }
       continue;
     }
-    if (replacement.preset === null) {
-      error ??= replacement.error ?? `Preset "${replacement.name}" has no tabs`;
-      continue;
+    if (replacement.preset !== null) {
+      merged.push(replacement.preset);
     }
-    error ??= replacement.error ?? null;
-    merged.push(replacement.preset);
   }
   for (const extra of extras) {
-    if (extra.preset === null) {
-      error ??= extra.error ?? `Preset "${extra.name}" has no tabs`;
-      continue;
+    if (extra.preset !== null) {
+      merged.push(extra.preset);
     }
-    error ??= extra.error ?? null;
-    merged.push(extra.preset);
   }
   return { presets: merged.length > 0 ? merged : null, error };
 }
 
-function loadCommittedPresets(checkout: string): { value: CommittedPreset[] | null; error: string | null } {
+function loadCommittedPresets(checkout: string): { slots: PresetSlot[] | null; error: string | null } {
   try {
     const read = readPresetFile(checkout, 'terminals.toml');
-    return { value: read.presets, error: read.error };
+    return { slots: read.slots, error: read.error };
   } catch (error) {
-    return { value: null, error: errorText(error) };
+    return { slots: null, error: errorText(error) };
   }
 }
 
@@ -127,9 +133,41 @@ function duplicatePresetName(presets: unknown[]): string | null {
   return null;
 }
 
-function readPresetFile(checkout: string, filename: string): { presets: CommittedPreset[] | null; error: string | null } {
+function readPresetFile(checkout: string, filename: string): { slots: PresetSlot[] | null; error: string | null } {
   const parsed = readPresetDocument(checkout, filename);
-  return parsed === null ? { presets: null, error: null } : committedPresets(parsed, checkout);
+  return parsed === null ? { slots: null, error: null } : committedPresets(parsed, checkout);
+}
+
+function presetsFromSlots(slots: PresetSlot[] | null): CommittedPreset[] | null {
+  if (!slots) {
+    return null;
+  }
+  const presets = slots.flatMap((slot) => (slot.preset ? [slot.preset] : []));
+  return presets.length > 0 ? presets : null;
+}
+
+function firstSlotError(slots: PresetSlot[] | null): string | null {
+  if (!slots) {
+    return null;
+  }
+  for (const slot of slots) {
+    if (slot.error) {
+      return slot.error;
+    }
+  }
+  return null;
+}
+
+function remainingCommittedError(slots: PresetSlot[], replacements: ReadonlyMap<string, OverlayPreset>): string | null {
+  for (const slot of slots) {
+    if (slot.name && replacements.has(slot.name)) {
+      continue;
+    }
+    if (slot.error) {
+      return slot.error;
+    }
+  }
+  return null;
 }
 
 function readPresetDocument(checkout: string, filename: string): unknown | null {
@@ -215,28 +253,36 @@ export function terminalDirectory(checkout: string, directory: string | undefine
   throw new Error(`The terminal directory leaves the checkout: ${directory}`);
 }
 
-function committedPresets(parsed: unknown, checkout: string): { presets: CommittedPreset[] | null; error: string | null } {
+function committedPresets(parsed: unknown, checkout: string): { slots: PresetSlot[] | null; error: string | null } {
   if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'preset')) {
-    return { presets: null, error: null };
+    return { slots: null, error: null };
   }
   const presets = parsed.preset;
   if (!Array.isArray(presets) || presets.length === 0) {
-    return { presets: null, error: null };
+    return { slots: null, error: null };
   }
   const duplicate = duplicatePresetName(presets);
   if (duplicate !== null) {
     throw new Error(`Preset name "${duplicate}" is used more than once`);
   }
-  const resolved: CommittedPreset[] = [];
-  let error: string | null = null;
+  const slots: PresetSlot[] = [];
   for (const entry of presets) {
     const preset = onePreset(entry, checkout);
-    error ??= preset.error;
-    if (preset.preset) {
-      resolved.push(preset.preset);
-    }
+    slots.push({ name: presetName(entry), preset: preset.preset, error: preset.error });
   }
-  return { presets: resolved.length > 0 ? resolved : null, error };
+  return { slots: slots.length > 0 ? slots : null, error: null };
+}
+
+function presetName(entry: unknown): string | null {
+  if (!isRecord(entry)) {
+    return null;
+  }
+  const name = entry.name;
+  if (typeof name !== 'string') {
+    return null;
+  }
+  const key = presetKey(name);
+  return key.length > 0 ? key : null;
 }
 
 function onePreset(entry: unknown, checkout: string): { preset: CommittedPreset | null; error: string | null } {

@@ -1227,6 +1227,241 @@ terminals = [
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
   });
 
+  it('opens a named shell and types nothing when the startup command is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "ledger" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    const text = paneText(fixture!);
+    expect(text).not.toContain('ledger');
+    expect(text).not.toContain('echo');
+    expect(text).not.toContain('npm');
+    expect(tabNames(fixture)).toEqual(['1 ledger']);
+
+    submitCommand(fixture.nativeElement, 'echo still-idle');
+    await waitFor(() => paneText(fixture!).includes('still-idle'));
+    expect(paneText(fixture!).split('still-idle').length - 1).toBe(2);
+  });
+
+  it('uses the worktree checkout when the terminal directory is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => paneText(fixture!).includes(checkout));
+    const text = paneText(fixture!);
+    expect(text).not.toContain(join(checkout, 'packages'));
+    expect(text.split('pwd').length - 1).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+  });
+
+  it('resolves a relative terminal directory inside the worktree checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, 'api');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "packages/../api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => paneText(fixture!).includes(directory));
+    expect(paneText(fixture!)).not.toContain(join(checkout, 'packages'));
+  });
+
+  it('does not expand ~ in a relative terminal directory', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const directory = join(checkout, '~', 'packages');
+    mkdirSync(directory, { recursive: true });
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "~/packages" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => paneText(fixture!).includes(directory));
+  });
+
+  it('uses an absolute terminal directory as written', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const outside = join(repo.root, 'outside-terminal');
+    mkdirSync(outside);
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "${outside}" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    await waitFor(() => paneText(fixture!).includes(outside));
+    expect(paneText(fixture!)).not.toContain(checkout);
+  });
+
+  it('shows the workspace error and starts no terminal when a relative directory leaves the checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "pwd", cwd = "../outside" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory leaves the checkout: ../outside',
+    );
+    expect(runPresetButton(fixture)).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+
+    clickBranch(fixture, 'master');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('appends another terminal tab when Run preset is chosen again', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 api']);
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    expect(visiblePaneCount(fixture)).toBe(1);
+  });
+
+  it('expands a collapsed terminal section without also opening an empty terminal', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    clickControl(fixture, 'Run preset');
+
+    expect(collapseLabel(fixture)).toBe('Collapse terminal');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+  });
+
+  it('does not run a preset when the app launches or a worktree is selected', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(join(repo.repo, '.workspaces', 'feature'));
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(terminalCount(fixture, 'master')).toBeNull();
+
+    clickBranch(fixture, 'feature');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    expect(collapseLabel(fixture)).toBe('Expand terminal');
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
+  });
+
   it('appends a focused terminal tab named for the terminal when Run preset is chosen', async () => {
     const repo = createRepo();
     root = repo.root;

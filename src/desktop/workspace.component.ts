@@ -2336,6 +2336,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
+  private terminalsPresetCheckout = '';
   private commandPoll: ReturnType<typeof setInterval> | null = null;
   private remoteFollow = 0;
   private readonly gitWatchers = new Map<string, FSWatcher>();
@@ -2648,6 +2649,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private leaveTerminals(): void {
     this.terminalsOpen.set(false);
     this.terminalsWorktree.set(null);
+    this.terminalsPresetCheckout = '';
     const tabs = this.repositoryTabs();
     const remembered = this.terminalsReturnPath();
     const rememberedTab = remembered === null ? undefined : tabs.find((tab) => tab.path === remembered);
@@ -2672,6 +2674,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.applyOpenRepositoryAppearance();
+    const checkout = this.worktreePath();
+    if (checkout !== '') {
+      this.syncCommittedPreset(checkout);
+    }
   }
 
   selectRepositoryTab(path: string, event: Event): void {
@@ -3041,7 +3047,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   chooseTerminalsWorktree(path: string, branch: string): void {
     this.adoptCountedSessions(path, branch);
+    this.terminalsPresetCheckout = findCheckout(path, branch) ?? '';
     this.terminalsWorktree.set({ path, branch });
+    if (this.terminalsPresetCheckout !== '') {
+      this.syncCommittedPreset(this.terminalsPresetCheckout);
+    }
   }
 
   private adoptCountedSessions(path: string, branch: string): void {
@@ -4612,6 +4622,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private clearTerminals(): void {
     this.worktreePath.set('');
+    this.clearPresetWorkspaceError();
     this.terminalsByBranch.set({});
     this.terminalSectionByBranch.set({});
     this.maximizedBodyHeight.set(null);
@@ -4635,23 +4646,22 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private syncCommittedPreset(checkout: string): void {
     try {
       readCommittedPreset(checkout);
-      this.clearInvalidPresetError();
+      this.clearPresetWorkspaceError();
     } catch (error) {
       this.workspaceError.set(errorText(error));
     }
   }
 
-  private clearInvalidPresetError(): void {
+  private clearPresetWorkspaceError(): void {
     const message = this.workspaceError();
-    if (message !== null && message.startsWith('Invalid terminals.toml')) {
+    if (message !== null && isPresetWorkspaceError(message)) {
       this.workspaceError.set(null);
     }
   }
 
   private presetCheckout(): string {
-    const chosen = this.chosenTerminalWorktree();
-    if (chosen) {
-      return findCheckout(chosen.path, chosen.branch) ?? '';
+    if (this.chosenTerminalWorktree()) {
+      return this.terminalsPresetCheckout;
     }
     return this.worktreePath();
   }
@@ -5184,6 +5194,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      if (saved.worktreePath !== '') {
+        this.syncCommittedPreset(saved.worktreePath);
+      }
       this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
       if (!this.terminalMaximized()) {
         this.maximizedBodyHeight.set(null);
@@ -5616,6 +5629,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.contentLoading.set(false);
       this.terminalsByBranch.set(saved.terminalsByBranch);
       this.worktreePath.set(saved.worktreePath);
+      if (saved.worktreePath !== '') {
+        this.syncCommittedPreset(saved.worktreePath);
+      }
       this.terminalSectionByBranch.set(saved.terminalSectionByBranch);
       if (!this.terminalMaximized()) {
         this.maximizedBodyHeight.set(null);
@@ -5888,6 +5904,13 @@ function inputValue(event: Event): string {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isPresetWorkspaceError(message: string): boolean {
+  return (
+    message.startsWith('Invalid terminals.toml') ||
+    message.startsWith('The terminal directory leaves the checkout')
+  );
 }
 
 function sameWorktreeRows(

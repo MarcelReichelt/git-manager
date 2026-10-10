@@ -980,6 +980,43 @@ describe('Terminals on the grouped worktrees', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="terminals-list"]')).not.toBeNull();
   });
 
+  it('shows Run preset immediately left of Split in Terminals', async () => {
+    const { pier } = registerPair(roots);
+    const directory = join(pier, '.workspaces', 'feature', '.git-worktree-manager');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'terminals.toml'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "npm run dev", cwd = "packages/api" },
+]
+`,
+    );
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    const split = sheet.querySelector('[data-testid="terminal-split-button"]');
+    const run = split?.previousElementSibling;
+    expect(run).toBeInstanceOf(HTMLButtonElement);
+    expect((run as HTMLButtonElement).getAttribute('aria-label')).toBe('Run preset');
+    expect(sheet.querySelector('.terminal-tabs')?.nextElementSibling).toBe(run);
+    expect(sheet.querySelector('[data-testid="terminal-collapse"]')).toBeNull();
+  });
+
   it('offers terminal tabs, New, Split, Kill, Rename, and the terminal menu, without Collapse or Restore', async () => {
     registerPair(roots);
     const fixture = await renderLive();

@@ -119,6 +119,11 @@ function visiblePaneCount(fixture: ComponentFixture<WorkspaceComponent>): number
   return fixture.nativeElement.querySelectorAll('.terminal-pane').length;
 }
 
+function runPresetButton(fixture: ComponentFixture<WorkspaceComponent>): HTMLButtonElement | null {
+  const button = controlButton(fixture, 'Run preset');
+  return button;
+}
+
 function controlButton(fixture: ComponentFixture<WorkspaceComponent>, label: string): HTMLButtonElement | null {
   const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
   return (
@@ -1124,6 +1129,46 @@ describe('branch terminal', () => {
     expect(collapseLabel(fixture)).toBe('Expand terminal');
     expect(fixture.nativeElement.querySelector('[data-testid="terminal-split"]')).toBeNull();
     expect(terminalCount(fixture, 'feature')).toBeNull();
+  });
+
+  it('hides Run preset when the selected checkout has no preset file', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const feature = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'feature');
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-split-button"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+
+    writeCommittedPreset(feature, '');
+    fixture.detectChanges();
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+
+    writeCommittedPreset(feature, 'title = "notes"\n');
+    fixture.detectChanges();
+
+    expect(runPresetButton(fixture)).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')).toBeNull();
+  });
+
+  it('shows Run preset for a preset file in the primary checkout', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(repo.repo);
+    fixture = await renderWorkspace(repo.repo);
+
+    clickBranch(fixture, 'master');
+
+    const header = fixture.nativeElement.querySelector('[data-testid="terminal-header"]');
+    const split = header?.querySelector('[data-testid="terminal-split-button"]');
+    expect(split?.previousElementSibling).toBe(runPresetButton(fixture));
+    expect(runPresetButton(fixture)?.getAttribute('aria-label')).toBe('Run preset');
   });
 
   it('shows Run preset immediately left of Split when the selected checkout has one preset', async () => {

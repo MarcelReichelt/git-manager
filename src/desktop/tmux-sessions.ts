@@ -249,6 +249,53 @@ export function tmuxSessionAlive(name: string): boolean {
   }
 }
 
+const startupCommandWaitMs = 12_000;
+
+export function typeTmuxStartupCommand(session: string, command: string): void {
+  if (command.length === 0 || session.length === 0) {
+    return;
+  }
+  const started = Date.now();
+  const attempt = (): void => {
+    if (Date.now() - started > startupCommandWaitMs) {
+      return;
+    }
+    let text = '';
+    try {
+      text = execFileSync(tmuxBinary(), ['capture-pane', '-p', '-t', session], {
+        encoding: 'utf8',
+        env: terminalEnvironment(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch {
+      setTimeout(attempt, 40);
+      return;
+    }
+    if (!paneCanTakeInput(text)) {
+      setTimeout(attempt, 40);
+      return;
+    }
+    try {
+      execFileSync(tmuxBinary(), ['send-keys', '-l', '-t', session, command], {
+        env: terminalEnvironment(),
+        stdio: 'ignore',
+      });
+      execFileSync(tmuxBinary(), ['send-keys', '-t', session, 'Enter'], {
+        env: terminalEnvironment(),
+        stdio: 'ignore',
+      });
+    } catch {
+      // The session closed before the line was delivered.
+    }
+  };
+  attempt();
+}
+
+function paneCanTakeInput(text: string): boolean {
+  const visible = text.replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '');
+  return /[$#%]\s*$/.test(visible);
+}
+
 export function paneCommand(name: string): string {
   try {
     return execFileSync(tmuxBinary(), ['display-message', '-p', '-t', name, '#{pane_current_command}'], {

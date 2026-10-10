@@ -1238,6 +1238,251 @@ terminals = [
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
   });
 
+  it('runs a preset startup command in a tmux session and labels the tab with the terminal name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo tmux-preset-ran" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(tabNames(fixture).join(' ')).not.toContain(sessions[0]);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'tmux session',
+    );
+
+    const session = sessions[0] ?? '';
+    await waitFor(() => capturePane(session).includes('tmux-preset-ran'));
+    expect(capturePane(session).split('echo tmux-preset-ran').length - 1).toBe(1);
+  });
+
+  it('opens a named tmux session and types nothing when the startup command is omitted', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "ledger" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    const session = sessions[0] ?? '';
+    expect(tabNames(fixture)).toEqual(['1 ledger']);
+    expect(tabNames(fixture).join(' ')).not.toContain(session);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')?.getAttribute('title')).toBe(
+      'tmux session',
+    );
+
+    await waitFor(() => /[$#%]/.test(capturePane(session)));
+    const text = capturePane(session);
+    expect(text).not.toContain('ledger');
+    expect(text).not.toContain('echo');
+    expect(text).not.toContain('npm');
+
+    await waitFor(() => /[$#%]/.test(paneText(fixture!)));
+    submitCommand(fixture.nativeElement, 'echo still-idle');
+    await waitFor(() => capturePane(session).includes('still-idle'));
+    expect(capturePane(session).split('still-idle').length - 1).toBe(2);
+  });
+
+  it('opens two tmux sessions side by side for a split preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo left-tmux-ready" },
+  { name = "logs", command = "echo right-tmux-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    expect(tabNames(fixture)).toEqual(['1 web · logs']);
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    const names = [...fixture.nativeElement.querySelectorAll('.terminal-pane-name')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[0]);
+    expect(label).not.toContain(sessions[1]);
+    const panes = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-pane"]')] as HTMLElement[];
+    expect(panes.map((pane) => pane.getAttribute('title'))).toEqual(['tmux session', 'tmux session']);
+
+    const left = sessions[0] ?? '';
+    const right = sessions[1] ?? '';
+    await waitFor(
+      () => capturePane(left).includes('left-tmux-ready') && capturePane(right).includes('right-tmux-ready'),
+    );
+    expect(capturePane(left)).not.toContain('right-tmux-ready');
+    expect(capturePane(right)).not.toContain('left-tmux-ready');
+    expect(capturePane(left).split('echo left-tmux-ready').length - 1).toBe(1);
+    expect(capturePane(right).split('echo right-tmux-ready').length - 1).toBe(1);
+  });
+
+  it('appends another tmux session when Run preset is chosen again', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    writeCommittedPreset(
+      join(repo.repo, '.workspaces', 'feature'),
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo again-tmux-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    expect(tabNames(fixture)).toEqual(['1 api', '2 api']);
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    expect(visiblePaneCount(fixture)).toBe(1);
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[0]);
+    expect(label).not.toContain(sessions[1]);
+
+    const first = sessions[0] ?? '';
+    const second = sessions[1] ?? '';
+    await waitFor(
+      () => capturePane(first).includes('again-tmux-ready') && capturePane(second).includes('again-tmux-ready'),
+    );
+    expect(capturePane(first).split('echo again-tmux-ready').length - 1).toBe(1);
+    expect(capturePane(second).split('echo again-tmux-ready').length - 1).toBe(1);
+  });
+
+  it('opens a menu of presets and runs the chosen preset in tmux', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+
+[[preset]]
+name = "test"
+
+[[preset.tab]]
+terminals = [
+  { name = "unit", command = "echo unit-ready" },
+]
+`,
+    );
+    useTmuxMode(root);
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 unit']);
+    const firstSessions = sessionsForBranch(repo.repo, 'feature');
+    expect(firstSessions).toEqual([expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/)]);
+    expect(tabNames(fixture).join(' ')).not.toContain(firstSessions[0]);
+    const unit = firstSessions[0] ?? '';
+    await waitFor(() => capturePane(unit).includes('unit-ready'));
+    expect(capturePane(unit).split('echo unit-ready').length - 1).toBe(1);
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+    again[0]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 unit', '2 api', '3 web']);
+    const sessions = sessionsForBranch(repo.repo, 'feature');
+    expect(sessions).toEqual([
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_1$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_2$/),
+      expect.stringMatching(/^gm_[0-9a-f]{8}_feature_3$/),
+    ]);
+    const label = tabNames(fixture).join(' ');
+    expect(label).not.toContain(sessions[1]);
+    expect(label).not.toContain(sessions[2]);
+    const api = sessions[1] ?? '';
+    const web = sessions[2] ?? '';
+    await waitFor(() => capturePane(api).includes('api-ready') && capturePane(web).includes('web-ready'));
+    expect(capturePane(api)).not.toContain('web-ready');
+    expect(capturePane(web)).not.toContain('api-ready');
+    expect(capturePane(unit)).not.toContain('api-ready');
+    expect(capturePane(unit)).not.toContain('web-ready');
+  });
+
   it('opens a named shell and types nothing when the startup command is omitted', async () => {
     const repo = createRepo();
     root = repo.root;

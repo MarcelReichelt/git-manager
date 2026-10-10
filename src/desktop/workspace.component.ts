@@ -4669,18 +4669,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   private syncCommittedPreset(checkout: string): void {
-    try {
-      const read = readCheckoutPresets(checkout);
-      this.publishPresets(read.presets);
-      if (read.error !== null) {
-        this.workspaceError.set(read.error);
-        return;
-      }
-      this.clearPresetWorkspaceError();
-    } catch (error) {
-      this.publishPresets(null);
-      this.workspaceError.set(errorText(error));
+    const read = readCheckoutPresets(checkout);
+    this.publishPresets(read.presets);
+    if (read.error !== null) {
+      this.workspaceError.set(read.error);
+      return;
     }
+    this.clearPresetWorkspaceError();
   }
 
   private publishPresets(presets: CommittedPreset[] | null): void {
@@ -4728,16 +4723,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (checkout === '') {
       return null;
     }
-    try {
-      const read = readCheckoutPresets(checkout);
-      if (read.error !== null) {
-        this.workspaceError.set(read.error);
-      }
-      return read.presets;
-    } catch (error) {
-      this.workspaceError.set(errorText(error));
-      return null;
+    const read = readCheckoutPresets(checkout);
+    if (read.error !== null) {
+      this.workspaceError.set(read.error);
     }
+    return read.presets;
   }
 
   private appendPreset(preset: CommittedPreset): void {
@@ -4753,14 +4743,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     for (const spec of preset.tabs) {
       const started: TerminalView[] = [];
       for (const terminalSpec of spec.terminals) {
-        let directory = checkout;
-        try {
-          directory = terminalDirectory(checkout, terminalSpec.directory);
-        } catch (error) {
-          failure = errorText(error);
-          this.workspaceError.set(failure);
-          continue;
-        }
+        const directory = terminalDirectory(checkout, terminalSpec.directory);
         const terminal = this.spawnPresetTerminal(directory, terminalSpec.name, startedSessions);
         if (!terminal) {
           const message = this.workspaceError();

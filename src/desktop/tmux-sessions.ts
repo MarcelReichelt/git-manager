@@ -249,15 +249,12 @@ export function tmuxSessionAlive(name: string): boolean {
   }
 }
 
-const startupCommandWaitMs = 12_000;
-
 export function typeTmuxStartupCommand(session: string, command: string): void {
   if (command.length === 0 || session.length === 0) {
     return;
   }
-  const started = Date.now();
   const attempt = (): void => {
-    if (Date.now() - started > startupCommandWaitMs) {
+    if (!tmuxSessionAlive(session)) {
       return;
     }
     let text = '';

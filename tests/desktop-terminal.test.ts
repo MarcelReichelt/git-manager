@@ -11,6 +11,7 @@ import {
   sessionsForBranch,
   tmuxBinary,
   tmuxOnPath,
+  typeTmuxStartupCommand,
 } from '../src/desktop/tmux-sessions';
 import { WorkspaceComponent } from '../src/desktop/workspace.component';
 
@@ -1239,6 +1240,26 @@ terminals = [
       'in-app terminal',
     );
     expect(sessionsForBranch(repo.repo, 'feature')).toEqual([]);
+  });
+
+  it('stops waiting to type a startup command once the tmux session is gone', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const session = createBranchSession(repo.repo, 'feature', checkout, 1);
+    killTmuxSession(session);
+    execFileSync(tmuxBinary(), ['new-session', '-d', '-s', session, 'sleep', '30'], {
+      stdio: 'ignore',
+      env: tmuxEnv(),
+    });
+    typeTmuxStartupCommand(session, 'echo should-not-run');
+    killTmuxSession(session);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    createBranchSession(repo.repo, 'feature', checkout, 1);
+
+    await waitFor(() => /[$#%]/.test(capturePane(session)));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(capturePane(session)).not.toContain('should-not-run');
   });
 
   it('runs a preset startup command in a tmux session and labels the tab with the terminal name', async () => {

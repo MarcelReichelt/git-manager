@@ -1729,6 +1729,65 @@ terminals = [
     expect(paneText(fixture!)).not.toContain('api-ready');
   });
 
+  it('shows the two terminals of a preset tab side by side at equal width', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo left-ready" },
+  { name = "logs", command = "echo right-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    const tabs = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab"]')] as HTMLElement[];
+    expect(tabs).toHaveLength(1);
+    const columns = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column')] as HTMLElement[];
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['0.5', '0.5']);
+    const names = [...fixture.nativeElement.querySelectorAll('.terminal-pane-name')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+    const panes = [...fixture.nativeElement.querySelectorAll('.terminal-pane-column [data-testid="terminal-pane"]')] as HTMLElement[];
+    expect(panes).toHaveLength(2);
+    await waitFor(() => (panes[0]?.textContent ?? '').includes('left-ready') && (panes[1]?.textContent ?? '').includes('right-ready'));
+    expect(panes[0]?.textContent).not.toContain('right-ready');
+    expect(panes[1]?.textContent).not.toContain('left-ready');
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+  });
+
+  it('labels a preset tab with each terminal name', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web" },
+  { name = "logs" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 web · logs']);
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="terminal-tab-name"]')] as HTMLElement[];
+    expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;

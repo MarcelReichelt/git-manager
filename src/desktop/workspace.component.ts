@@ -1089,6 +1089,7 @@ button, input { font: inherit; color: inherit; }
                 [attr.data-branch]="branch.name"
                 [attr.data-status]="branch.status"
                 (click)="selectBranch(branch.name)"
+                (contextmenu)="openBranchMenu(branch.name, $event)"
               >
                 <span class="status-color" data-testid="status-color" [attr.title]="statusLabel(branch.status)"></span>
                 <button type="button" class="branch-name" (click)="selectBranch(branch.name, $event)">
@@ -1136,18 +1137,11 @@ button, input { font: inherit; color: inherit; }
                   </span>
                   }
                 </span>
-                <button
-                  type="button"
-                  data-testid="branch-menu"
-                  [attr.aria-label]="'Branch actions for ' + branch.name"
-                  (click)="openBranchMenu(branch.name, $event)"
-                >
-                  ···
-                </button>
                 <div
                   data-testid="hover-menu"
                   class="branch-actions"
                   [class.is-open]="openBranch() === branch.name"
+                  (contextmenu)="keepBranchMenu($event)"
                 >
                     @if (canPinWorktree(branch.name)) {
                       <button
@@ -2975,9 +2969,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return recent.find((item) => item.subject === subject) ?? only.find((item) => item.subject === subject);
   }
 
-  openBranchMenu(name: string, event: Event): void {
+  openBranchMenu(name: string, event: MouseEvent): void {
+    event.preventDefault();
     event.stopPropagation();
     this.openBranch.set(this.openBranch() === name ? null : name);
+  }
+
+  keepBranchMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   selectBranch(name: string, event?: Event): void {
@@ -4001,6 +4001,20 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (event.target === event.currentTarget) {
       this.closeSwitch();
     }
+  }
+
+  @HostListener('document:contextmenu', ['$event'])
+  closeBranchMenuOnContextMenu(event: MouseEvent): void {
+    if (this.openBranch() === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (element?.closest('[data-testid="branch-row"]')) {
+      return;
+    }
+    event.preventDefault();
+    this.openBranch.set(null);
   }
 
   @HostListener('document:click', ['$event'])

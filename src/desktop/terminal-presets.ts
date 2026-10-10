@@ -27,12 +27,16 @@ export function readCheckoutPresets(checkout: string): CommittedPreset[] | null 
   if (!committed || !overlay) {
     return committed;
   }
-  const replacements = new Map(overlay.map((preset) => [preset.name, preset]));
-  const names = new Set(committed.map((preset) => preset.name));
+  const replacements = new Map(overlay.map((preset) => [presetKey(preset.name), preset]));
+  const names = new Set(committed.map((preset) => presetKey(preset.name)));
   return [
-    ...committed.map((preset) => replacements.get(preset.name) ?? preset),
-    ...overlay.filter((preset) => !names.has(preset.name)),
+    ...committed.map((preset) => replacements.get(presetKey(preset.name)) ?? preset),
+    ...overlay.filter((preset) => !names.has(presetKey(preset.name))),
   ];
+}
+
+function presetKey(name: string): string {
+  return name.trim();
 }
 
 function readPresetFile(checkout: string, filename: string): CommittedPreset[] | null {

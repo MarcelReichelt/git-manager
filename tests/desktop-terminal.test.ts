@@ -2225,6 +2225,80 @@ terminals = [
     await waitFor(() => paneText(fixture!).includes('alpha-committed'));
     expect(paneText(fixture!)).not.toContain('delta-overlay');
   });
+
+  it('matches preset names exactly after surrounding whitespace is removed', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-committed" },
+]
+
+[[preset]]
+name = "  Dev  "
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-shell", command = "echo committed-padded" },
+]
+
+[[preset]]
+name = "gamma"
+
+[[preset.tab]]
+terminals = [
+  { name = "gamma-shell", command = "echo gamma-committed" },
+]
+`,
+    );
+    writePresetOverlay(
+      checkout,
+      `[[preset]]
+name = "Dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "dev-shell", command = "echo overlay-exact" },
+]
+
+[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "lower-shell", command = "echo overlay-lower" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'Dev', 'gamma', 'dev']);
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(tabNames(fixture)).toEqual(['1 dev-shell']);
+    await waitFor(() => paneText(fixture!).includes('overlay-exact'));
+    expect(paneText(fixture!)).not.toContain('committed-padded');
+    expect(paneText(fixture!)).not.toContain('overlay-lower');
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    again[3]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 dev-shell', '2 lower-shell']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('overlay-lower'));
+    expect(paneText(fixture!)).not.toContain('overlay-exact');
+  });
 });
 
 function expectTerminalStopsAtHeading(sheet: HTMLElement): void {

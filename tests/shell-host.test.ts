@@ -30,6 +30,59 @@ describe('in-app shell host', () => {
     expect(shellCanTakeInput('~/repo\n❯ ')).toBe(true);
     expect(shellCanTakeInput('')).toBe(false);
     expect(shellCanTakeInput('still starting')).toBe(false);
+    expect(shellCanTakeInput('\u001b]633;A\u0007~/repo> ')).toBe(false);
+    expect(shellCanTakeInput('\u001b]633;A\u0007~/repo>\u001b]633;B\u0007')).toBe(true);
+    expect(shellCanTakeInput('\u001b]133;B\u0007\u001b]133;C\u0007')).toBe(false);
+  });
+
+  it('waits until a redrawn prompt settles before typing the startup command', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-shell-redraw-'));
+    const shell = join(root, 'redraw-shell.mjs');
+    writeFileSync(
+      shell,
+      [
+        '#!/usr/bin/env node',
+        "process.stdout.write('> ');",
+        'let discard = true;',
+        "let line = '';",
+        'process.stdin.resume();',
+        'if (process.stdin.isTTY) process.stdin.setRawMode(true);',
+        "process.stdin.on('data', (chunk) => {",
+        '  const text = chunk.toString();',
+        '  if (discard) return;',
+        '  line += text;',
+        "  if (line.includes('\\r') || line.includes('\\n')) {",
+        "    process.stdout.write('got:' + line.trim() + '\\n');",
+        '  }',
+        '});',
+        'setTimeout(() => {',
+        '  discard = false;',
+        "  line = '';",
+        "  process.stdout.write('\\r\\u001b[2Kready> ');",
+        '}, 150);',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(shell, 0o755);
+    const id = `shell-redraw-${Date.now()}`;
+    ids.push(id);
+    ensureShell(id, root, shell);
+    let seen = '';
+    subscribeShell(id, {
+      onData(data) {
+        seen += data;
+      },
+      onExit() {
+        return undefined;
+      },
+    });
+    typeStartupCommand(id, 'echo typed-line');
+    const started = Date.now();
+    while (!seen.includes('got:echo typed-line') && Date.now() - started < 4000) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    expect(seen).toContain('got:echo typed-line');
+    rmSync(root, { recursive: true, force: true });
   });
 
   it('types the startup command once a prompt ending in > can take input', async () => {

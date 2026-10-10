@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
 import { runtimeEnv } from '../runtime-env.js';
-import { shellCanTakeInput } from './shell-prompt';
+import { watchStartupPrompt } from './shell-prompt';
 
 export function tmuxOnPath(pathValue = runtimeEnv().PATH): string | null {
   const directories = (pathValue ?? '').split(delimiter);
@@ -254,8 +254,28 @@ export function typeTmuxStartupCommand(session: string, command: string): void {
   if (command.length === 0 || session.length === 0) {
     return;
   }
+  let sent = false;
+  const gate = watchStartupPrompt(() => {
+    if (sent) {
+      return;
+    }
+    sent = true;
+    try {
+      execFileSync(tmuxBinary(), ['send-keys', '-l', '-t', session, command], {
+        env: terminalEnvironment(),
+        stdio: 'ignore',
+      });
+      execFileSync(tmuxBinary(), ['send-keys', '-t', session, 'Enter'], {
+        env: terminalEnvironment(),
+        stdio: 'ignore',
+      });
+    } catch {
+      // The session closed before the line was delivered.
+    }
+  });
   const attempt = (): void => {
-    if (!tmuxSessionAlive(session)) {
+    if (sent || !tmuxSessionAlive(session)) {
+      gate.cancel();
       return;
     }
     let text = '';
@@ -269,21 +289,9 @@ export function typeTmuxStartupCommand(session: string, command: string): void {
       setTimeout(attempt, 40);
       return;
     }
-    if (!shellCanTakeInput(text)) {
+    gate.push(text);
+    if (!sent) {
       setTimeout(attempt, 40);
-      return;
-    }
-    try {
-      execFileSync(tmuxBinary(), ['send-keys', '-l', '-t', session, command], {
-        env: terminalEnvironment(),
-        stdio: 'ignore',
-      });
-      execFileSync(tmuxBinary(), ['send-keys', '-t', session, 'Enter'], {
-        env: terminalEnvironment(),
-        stdio: 'ignore',
-      });
-    } catch {
-      // The session closed before the line was delivered.
     }
   };
   attempt();

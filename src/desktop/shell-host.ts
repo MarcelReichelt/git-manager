@@ -3,7 +3,7 @@ import { userInfo } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { spawn, type IPty } from 'node-pty';
 import { runtimeEnv } from '../runtime-env.js';
-import { shellCanTakeInput } from './shell-prompt';
+import { watchStartupPrompt } from './shell-prompt';
 import { terminalEnvironment } from './tmux-sessions';
 import { windowsForegroundCommand } from './windows-foreground';
 
@@ -136,23 +136,23 @@ export function typeStartupCommand(id: string, command: string): void {
     bridge.shellTypeStartup(id, command);
     return;
   }
+  const mark = shells.get(id);
   let pending = '';
-  let sent = false;
-  const stop = subscribeShell(id, {
+  let stop = (): void => undefined;
+  const gate = watchStartupPrompt(() => {
+    if (shells.get(id) !== mark) {
+      return;
+    }
+    writeShell(id, `${command}\r`);
+    queueMicrotask(() => stop());
+  });
+  stop = subscribeShell(id, {
     onData(data) {
-      if (sent) {
-        return;
-      }
       pending += data;
-      if (!shellCanTakeInput(pending)) {
-        return;
-      }
-      sent = true;
-      writeShell(id, `${command}\r`);
-      queueMicrotask(() => stop());
+      gate.push(pending);
     },
     onExit() {
-      sent = true;
+      gate.cancel();
       queueMicrotask(() => stop());
     },
   });

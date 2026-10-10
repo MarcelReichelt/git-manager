@@ -2362,7 +2362,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private gitRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private gitWatchGeneration = 0;
   private gitWatchActive = false;
-  private gitWatchCheckouts: { path: string; measured: boolean; primary: boolean }[] = [];
+  private gitWatchCheckouts: { path: string; measured: boolean; primary: boolean; presets: boolean }[] = [];
   private readonly worktreeChangedAt = new Map<string, Map<string, number>>();
   private paneSplitDrag: {
     pointerId: number;
@@ -3073,6 +3073,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (this.terminalsPresetCheckout !== '') {
       this.syncCommittedPreset(this.terminalsPresetCheckout);
     }
+    this.applyGitWatchTargets();
   }
 
   private adoptCountedSessions(path: string, branch: string): void {
@@ -5630,19 +5631,38 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       path: checkout,
       measured: measuredSet.has(branch),
       primary: primaryPath !== undefined && checkout === primaryPath,
+      presets: false,
     }));
     if (
       primaryPath !== undefined &&
       !this.gitWatchCheckouts.some((checkout) => checkout.path === primaryPath)
     ) {
-      this.gitWatchCheckouts.push({ path: primaryPath, measured: false, primary: true });
+      this.gitWatchCheckouts.push({ path: primaryPath, measured: false, primary: true, presets: false });
+    }
+    this.applyGitWatchTargets();
+  }
+
+  private applyGitWatchTargets(): void {
+    if (!this.gitWatchActive) {
+      return;
+    }
+    const rawPreset = this.presetCheckout();
+    const presetPath = rawPreset === '' ? '' : resolve(rawPreset);
+    for (const checkout of this.gitWatchCheckouts) {
+      checkout.presets = presetPath !== '' && resolve(checkout.path) === presetPath;
+    }
+    if (presetPath !== '' && !this.gitWatchCheckouts.some((checkout) => resolve(checkout.path) === presetPath)) {
+      this.gitWatchCheckouts.push({ path: rawPreset, measured: false, primary: false, presets: true });
     }
     const wanted = new Map<string, boolean>();
     for (const checkout of this.gitWatchCheckouts) {
-      if (!checkout.measured && !checkout.primary) {
-        continue;
-      }
-      for (const target of checkoutWatchTargets(checkout.path)) {
+      const targets =
+        checkout.measured || checkout.primary
+          ? checkoutWatchTargets(checkout.path)
+          : checkout.presets
+            ? presetWatchTargets(checkout.path)
+            : [];
+      for (const target of targets) {
         wanted.set(target.path, wanted.get(target.path) === true || target.recursive);
       }
     }
@@ -5702,7 +5722,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private gitEventIsIgnored(root: string, filename: string): boolean {
     const absolute = resolve(root, filename);
-    let match: { path: string; measured: boolean; primary: boolean } | undefined;
+    let match: { path: string; measured: boolean; primary: boolean; presets: boolean } | undefined;
     for (const checkout of this.gitWatchCheckouts) {
       if (absolute === checkout.path || absolute.startsWith(`${checkout.path}${sep}`)) {
         if (!match || checkout.path.length > match.path.length) {
@@ -5711,6 +5731,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       }
     }
     if (!match || match.measured) {
+      return false;
+    }
+    if (match.presets && pathIsPresetFile(match.path, absolute)) {
       return false;
     }
     if (match.primary && this.pathIsGitMetadata(match.path, absolute)) {
@@ -6172,6 +6195,24 @@ const skippedWatchDirectories = new Set([
   'release',
   'tmp',
 ]);
+
+function presetWatchTargets(checkout: string): { path: string; recursive: boolean }[] {
+  const root = resolve(checkout);
+  const targets: { path: string; recursive: boolean }[] = [{ path: root, recursive: false }];
+  const directory = resolve(root, '.git-worktree-manager');
+  try {
+    readdirSync(directory);
+    targets.push({ path: directory, recursive: false });
+  } catch {
+    // The checkout root watch sees the directory when it is created.
+  }
+  return targets;
+}
+
+function pathIsPresetFile(checkout: string, absolute: string): boolean {
+  const directory = `${resolve(checkout)}${sep}.git-worktree-manager`;
+  return absolute === directory || absolute.startsWith(`${directory}${sep}`);
+}
 
 export function checkoutWatchTargets(checkout: string): { path: string; recursive: boolean }[] {
   const root = resolve(checkout);

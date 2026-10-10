@@ -1075,6 +1075,90 @@ terminals = [
     expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
   });
 
+  it('updates Run preset from a linked worktree chosen only in Terminals', async () => {
+    const { pier } = registerPair(roots);
+    const checkout = join(pier, '.workspaces', 'feature');
+    const fixture = await renderLive();
+    await openLiveRepository(fixture, 'Pier');
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    clickIcon(fixture, 'terminal-new');
+    await waitFor(() => branchTerminalCount(fixture, 'feature') === '1');
+    fixture.nativeElement.querySelector('[data-branch="master"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(changedFileCount(fixture, 'feature')).toBe('0');
+
+    fixture.nativeElement.querySelector('[data-testid="terminals"]').click();
+    fixture.detectChanges();
+    terminalsWorktree(fixture, 'Pier', 'feature').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const sheet = fixture.nativeElement.querySelector('[data-testid="content-sheet"]') as HTMLElement;
+    expect(sheet.querySelector('button.terminal-run-preset')).toBeNull();
+    writeFileSync(join(checkout, 'notes.txt'), 'dirty\n');
+    const directory = join(checkout, '.git-worktree-manager');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'terminals.toml'),
+      `[[preset]]
+name = "alpha"
+
+[[preset.tab]]
+terminals = [
+  { name = "alpha-shell", command = "echo alpha-ran" },
+]
+
+[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-ran" },
+]
+`,
+    );
+
+    await waitFor(() => sheet.querySelector('button.terminal-run-preset') !== null);
+    sheet.querySelector('button.terminal-run-preset')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta']);
+
+    writeFileSync(
+      join(directory, 'terminals.override.toml'),
+      `[[preset]]
+name = "beta"
+
+[[preset.tab]]
+terminals = [
+  { name = "beta-shell", command = "echo beta-overlay" },
+]
+
+[[preset]]
+name = "delta"
+
+[[preset.tab]]
+terminals = [
+  { name = "delta-shell", command = "echo delta-overlay" },
+]
+`,
+    );
+
+    await waitFor(() => presetMenuLabels(fixture).join() === 'alpha,beta,delta');
+    expect(presetMenuLabels(fixture)).toEqual(['alpha', 'beta', 'delta']);
+
+    fixture.nativeElement.querySelector('[data-testid="repository-tab"][data-name="Pier"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.branch-row.is-selected')?.getAttribute('data-branch')).toBe('master');
+    expect(changedFileCount(fixture, 'feature')).toBe('0');
+  });
+
   it('offers terminal tabs, New, Split, Kill, Rename, and the terminal menu, without Collapse or Restore', async () => {
     registerPair(roots);
     const fixture = await renderLive();
@@ -1429,6 +1513,18 @@ function clickIcon(fixture: ComponentFixture<WorkspaceComponent>, testId: string
 
 function terminalsCount(fixture: ComponentFixture<WorkspaceComponent>): string {
   return fixture.nativeElement.querySelector('[data-testid="terminals-count"]')?.textContent?.trim() ?? '';
+}
+
+function changedFileCount(fixture: ComponentFixture<WorkspaceComponent>, name: string): string {
+  const count = fixture.nativeElement
+    .querySelector(`[data-testid="branch-row"][data-branch="${name}"]`)
+    ?.querySelector('[data-testid="changed-file-count"]');
+  return count?.textContent?.trim() ?? '';
+}
+
+function presetMenuLabels(fixture: ComponentFixture<WorkspaceComponent>): string[] {
+  const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+  return items.map((item) => item.textContent?.trim() ?? '');
 }
 
 function branchTerminalCount(fixture: ComponentFixture<WorkspaceComponent>, name: string): string | null {

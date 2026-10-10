@@ -31,7 +31,7 @@ commands = ["yarn"]
 
 Hook commands run in the primary checkout. Pre-create commands run before the worktree is added. Post-create commands run after the copied files. Pre-remove commands run before the worktree is deleted. Post-remove commands run after that, and after a requested local branch delete. The environment includes the branch, the worktree path, and the primary checkout path. See [Plugins](plugins.md).
 
-A checkout may also contain `.git-worktree-manager/terminals.toml`. Gitignore `.git-worktree-manager/terminals.override.toml`. The app does not write that entry.
+A checkout may also contain `.git-worktree-manager/terminals.toml`, the committed presets for that checkout. Gitignore `.git-worktree-manager/terminals.override.toml`. The app does not write that entry. A linked worktree reads both files from its own checkout. See [Presets](presets.md).
 
 ## App settings
 

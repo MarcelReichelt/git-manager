@@ -112,7 +112,7 @@ import {
   type TmuxSessionRecord,
   type TmuxSessionSnapshot,
 } from './tmux-sessions';
-import { readCommittedPreset, terminalDirectory } from './terminal-presets';
+import { readCommittedPreset, terminalDirectory, type CommittedPreset } from './terminal-presets';
 import { typeStartupCommand } from './shell-host';
 import {
   ensureGitRepository,
@@ -1550,7 +1550,7 @@ button, input { font: inherit; color: inherit; }
                       type="button"
                       class="terminal-run-preset"
                       aria-label="Run preset"
-                      (click)="runPreset()"
+                      (click)="runPreset($event)"
                     >
                       Run preset
                     </button>
@@ -2123,6 +2123,22 @@ button, input { font: inherit; color: inherit; }
         </button>
       </div>
     }
+    @if (presetMenu(); as menu) {
+      <div
+        class="terminal-menu"
+        data-testid="preset-menu"
+        role="menu"
+        aria-label="Run preset"
+        [style.left.px]="menu.x"
+        [style.top.px]="menu.y"
+      >
+        @for (name of menu.names; track $index) {
+          <button type="button" role="menuitem" data-testid="preset-menu-item" (click)="choosePreset($index)">
+            {{ name }}
+          </button>
+        }
+      </div>
+    }
     @if (terminalMenu(); as menu) {
       @if (menuActions(); as actions) {
         <div
@@ -2301,6 +2317,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly worktreePath = signal('');
   readonly terminalsByBranch = signal<Record<string, WorktreeTerminalView>>({});
   readonly terminalMenu = signal<TerminalMenuState | null>(null);
+  readonly presetMenu = signal<{ x: number; y: number; names: string[] } | null>(null);
   readonly moveSubmenuOpen = signal(false);
   private moveSubmenuTimer: ReturnType<typeof setTimeout> | null = null;
   readonly repositoryTabMenu = signal<{ path: string; x: number; y: number } | null>(null);
@@ -2542,6 +2559,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.captureMaximizedBody();
     this.revealPendingTab();
     this.fitAnchoredMenu('[data-testid="terminal-menu"]', this.terminalMenu());
+    this.fitAnchoredMenu('[data-testid="preset-menu"]', this.presetMenu());
     this.fitAnchoredMenu('[data-testid="repository-tab-menu"]', this.repositoryTabMenu());
     this.fitMoveSubmenu();
   }
@@ -3048,6 +3066,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   chooseTerminalsWorktree(path: string, branch: string): void {
     this.adoptCountedSessions(path, branch);
     this.terminalsPresetCheckout = findCheckout(path, branch) ?? '';
+    this.presetMenu.set(null);
     this.terminalsWorktree.set({ path, branch });
     if (this.terminalsPresetCheckout !== '') {
       this.syncCommittedPreset(this.terminalsPresetCheckout);
@@ -3227,63 +3246,42 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
-  runPreset(): void {
-    const checkout = this.presetCheckout();
-    const chosen = this.chosenTerminalWorktree();
-    const branch = chosen?.branch ?? this.selectedBranchName();
-    if (checkout === '' || !branch) {
+  runPreset(event: Event): void {
+    event.stopPropagation();
+    const presets = this.readPresetsForRun();
+    if (!presets) {
       return;
     }
-    let presets: ReturnType<typeof readCommittedPreset>;
-    try {
-      presets = readCommittedPreset(checkout);
-    } catch (error) {
-      this.workspaceError.set(errorText(error));
+    if (presets.length > 1) {
+      const current = event.currentTarget;
+      const rect = current instanceof HTMLElement ? current.getBoundingClientRect() : { left: 0, bottom: 0 };
+      this.closeTerminalMenu();
+      this.presetMenu.set({
+        x: rect.left,
+        y: rect.bottom,
+        names: presets.map((preset) => preset.name),
+      });
       return;
     }
-    const preset = presets?.length === 1 ? presets[0] : undefined;
+    this.presetMenu.set(null);
+    const preset = presets[0];
+    if (preset) {
+      this.appendPreset(preset);
+    }
+  }
+
+  choosePreset(index: number): void {
+    const menu = this.presetMenu();
+    this.presetMenu.set(null);
+    if (!menu) {
+      return;
+    }
+    const presets = this.readPresetsForRun();
+    const preset = presets?.[index];
     if (!preset) {
       return;
     }
-    const opened: TerminalTabView[] = [];
-    for (const spec of preset.tabs) {
-      const started: TerminalView[] = [];
-      for (const terminalSpec of spec.terminals) {
-        let directory = checkout;
-        try {
-          directory = terminalDirectory(checkout, terminalSpec.directory);
-        } catch (error) {
-          this.workspaceError.set(errorText(error));
-          return;
-        }
-        const terminal = this.spawnPresetTerminal(directory, terminalSpec.name);
-        if (!terminal) {
-          return;
-        }
-        if (terminalSpec.command.length > 0) {
-          typeStartupCommand(terminal.id, terminalSpec.command);
-        }
-        started.push(terminal);
-      }
-      if (started.length === 0) {
-        continue;
-      }
-      opened.push(this.makeTab(started));
-    }
-    if (opened.length === 0) {
-      return;
-    }
-    this.updateSelected((state) => {
-      let next = state;
-      for (const tab of opened) {
-        next = withNewTab(next, tab);
-      }
-      return next;
-    });
-    if (!chosen && this.sectionFor(branch) !== 'maximized') {
-      this.setSection(branch, 'docked');
-    }
-    this.closeTerminalMenu();
+    this.appendPreset(preset);
   }
 
   newTerminal(): void {
@@ -4012,6 +4010,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   @HostListener('document:click', ['$event'])
   closeBranchMenuOutside(event: Event): void {
     this.closeTerminalMenuOnClick(event);
+    this.closePresetMenuOnClick(event);
     this.closeRepositoryTabMenuOnClick(event);
     const name = this.openBranch();
     if (name === null) {
@@ -4077,6 +4076,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (this.terminalMenu() !== null) {
       this.closeTerminalMenu();
+      return;
+    }
+    if (this.presetMenu() !== null) {
+      this.presetMenu.set(null);
       return;
     }
     if (this.openBranch() !== null) {
@@ -4619,6 +4622,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return;
     }
     this.worktreePath.set(cwd);
+    this.presetMenu.set(null);
     this.syncCommittedPreset(cwd);
     const existing = this.terminalsByBranch()[branch];
     if (existing && existing.tabs.length > 0) {
@@ -4642,6 +4646,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private clearTerminals(): void {
     this.worktreePath.set('');
+    this.presetMenu.set(null);
     this.clearPresetWorkspaceError();
     this.terminalsByBranch.set({});
     this.terminalSectionByBranch.set({});
@@ -4691,6 +4696,88 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       return null;
     }
     return this.terminalsWorktree();
+  }
+
+  private readPresetsForRun(): CommittedPreset[] | null {
+    const checkout = this.presetCheckout();
+    if (checkout === '') {
+      return null;
+    }
+    try {
+      return readCommittedPreset(checkout);
+    } catch (error) {
+      this.workspaceError.set(errorText(error));
+      return null;
+    }
+  }
+
+  private appendPreset(preset: CommittedPreset): void {
+    const checkout = this.presetCheckout();
+    const chosen = this.chosenTerminalWorktree();
+    const branch = chosen?.branch ?? this.selectedBranchName();
+    if (checkout === '' || !branch) {
+      return;
+    }
+    const opened: TerminalTabView[] = [];
+    let failure: string | null = null;
+    for (const spec of preset.tabs) {
+      const started: TerminalView[] = [];
+      for (const terminalSpec of spec.terminals) {
+        let directory = checkout;
+        try {
+          directory = terminalDirectory(checkout, terminalSpec.directory);
+        } catch (error) {
+          failure = errorText(error);
+          this.workspaceError.set(failure);
+          continue;
+        }
+        const terminal = this.spawnPresetTerminal(directory, terminalSpec.name);
+        if (!terminal) {
+          const message = this.workspaceError();
+          if (message !== null) {
+            failure = message;
+          }
+          continue;
+        }
+        if (terminalSpec.command.length > 0) {
+          typeStartupCommand(terminal.id, terminalSpec.command);
+        }
+        started.push(terminal);
+        if (failure !== null) {
+          this.workspaceError.set(failure);
+        }
+      }
+      if (started.length === 0) {
+        continue;
+      }
+      opened.push(this.makeTab(started));
+    }
+    if (opened.length === 0) {
+      return;
+    }
+    this.updateSelected((state) => {
+      let next = state;
+      for (const tab of opened) {
+        next = withNewTab(next, tab);
+      }
+      return next;
+    });
+    if (!chosen && this.sectionFor(branch) !== 'maximized') {
+      this.setSection(branch, 'docked');
+    }
+    this.closeTerminalMenu();
+  }
+
+  private closePresetMenuOnClick(event: Event): void {
+    if (this.presetMenu() === null) {
+      return;
+    }
+    const target = event.target;
+    const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    if (element?.closest('[data-testid="preset-menu"]')) {
+      return;
+    }
+    this.presetMenu.set(null);
   }
 
   private spawnPresetTerminal(cwd: string, name: string): TerminalView | null {

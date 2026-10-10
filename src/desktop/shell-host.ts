@@ -62,6 +62,9 @@ export function ensureShell(id: string, cwd: string, command = ''): void {
     return;
   }
   const file = shellFile(command);
+  if (!existsSync(cwd)) {
+    throw new Error(`Could not start a terminal in ${cwd}: No such file or directory`);
+  }
   if (!canStart(file)) {
     throw new Error(`Could not start ${file}: file not found`);
   }

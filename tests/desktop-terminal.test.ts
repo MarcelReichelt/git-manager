@@ -1788,6 +1788,175 @@ terminals = [
     expect(names.map((name) => name.textContent?.trim())).toEqual(['web', 'logs']);
   });
 
+  it('opens a menu of presets in file order and appends the chosen preset', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-ready" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-ready" },
+]
+
+[[preset]]
+name = "test"
+
+[[preset.tab]]
+terminals = [
+  { name = "unit", command = "echo unit-ready" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBeNull();
+    const items = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+
+    items[1]?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="preset-menu"]')).toBeNull();
+    expect(tabNames(fixture)).toEqual(['1 unit']);
+    await waitFor(() => paneText(fixture!).includes('unit-ready'));
+
+    clickControl(fixture, 'Run preset');
+    const again = [...fixture.nativeElement.querySelectorAll('[data-testid="preset-menu-item"]')] as HTMLButtonElement[];
+    expect(again.map((item) => item.textContent?.trim())).toEqual(['dev', 'test']);
+    again[0]?.click();
+    fixture.detectChanges();
+    expect(tabNames(fixture)).toEqual(['1 unit', '2 api', '3 web']);
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-ready'));
+    clickTab(fixture, 2);
+    await waitFor(() => paneText(fixture!).includes('web-ready'));
+  });
+
+  it('opens a single terminal tab when one terminal of a pair does not start', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const missing = join(checkout, 'missing-web');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 logs', '2 api']);
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      `Could not start a terminal in ${missing}: No such file or directory`,
+    );
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+  });
+
+  it('adds no tab when neither terminal in a pair starts', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    const missingLogs = join(checkout, 'missing-logs');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", cwd = "missing-web" },
+  { name = "logs", cwd = "missing-logs" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(tabNames(fixture)).toEqual(['1 api']);
+    expect(fixture.nativeElement.querySelector('[data-testid="terminal-pane"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.terminal-pane-column')).toBeNull();
+    expect(terminalCount(fixture, 'feature')).toBe('1');
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      `Could not start a terminal in ${missingLogs}: No such file or directory`,
+    );
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+    expect(paneText(fixture!)).not.toContain('web');
+    expect(paneText(fixture!)).not.toContain('logs');
+  });
+
+  it('omits a terminal whose directory leaves the checkout and opens the others', async () => {
+    const repo = createRepo();
+    root = repo.root;
+    const checkout = join(repo.repo, '.workspaces', 'feature');
+    writeCommittedPreset(
+      checkout,
+      `[[preset]]
+name = "dev"
+
+[[preset.tab]]
+terminals = [
+  { name = "web", command = "echo web-up", cwd = "../outside" },
+  { name = "logs", command = "echo logs-up" },
+]
+
+[[preset.tab]]
+terminals = [
+  { name = "api", command = "echo api-up" },
+]
+`,
+    );
+    fixture = await renderWorkspace(repo.repo);
+    clickBranch(fixture, 'feature');
+    clickControl(fixture, 'Run preset');
+
+    expect(fixture.nativeElement.querySelector('[data-testid="workspace-error"]')?.textContent?.trim()).toBe(
+      'The terminal directory leaves the checkout: ../outside',
+    );
+    expect(tabNames(fixture)).toEqual(['1 logs', '2 api']);
+    expect(terminalCount(fixture, 'feature')).toBe('2');
+    clickTab(fixture, 0);
+    await waitFor(() => paneText(fixture!).includes('logs-up'));
+    expect(paneText(fixture!)).not.toContain('web-up');
+    clickTab(fixture, 1);
+    await waitFor(() => paneText(fixture!).includes('api-up'));
+  });
+
   it('runs an in-app shell in the worktree when tmux is not installed', async () => {
     const repo = createRepo();
     root = repo.root;

@@ -52,6 +52,12 @@ Changes lists files in that checkout, with lines added and deleted. Click a file
 
 On the default branch, Commits is that branch's history, 30 commits at a time, and scrolling the list loads the next page. The heading total is that same history. On any other branch, the list and the heading total are the commits that are not on the default branch, 30 at a time, and scrolling the list loads the next page. Click a commit to show the files it changed and the diff for the selected file.
 
+The diff is inline. Each line shows the old line number and the new line number. A removed line is red and has only the old number. An added line is green and has only the new number. Context, the unchanged lines kept beside a change, has both numbers and is not given a change color. The changed span inside a line is marked more strongly than the rest of that line. A change that is only whitespace is colored. The language of the file is not colored. Three lines of context stay around each change. The stretches between those changes are not shown. Lines do not wrap. The line numbers stay at the left while the line text scrolls sideways. Only the lines in view are drawn.
+
+A rename shows `Renamed from …` above the lines. A binary file shows `Binary file`. A file with no line changes and no rename shows `No diff for this file`. A new file is entirely green. A deleted file is entirely red.
+
+In Changes, the old side is the commit HEAD points at, and the new side is the checkout as it is, including changes already added for the next commit. For a commit, the old side is that commit's first parent and the new side is the commit.
+
 Drag the splitters between the panes to resize them. Each region scrolls on its own.
 
 Changes and Commits keep their share of the stack. Dragging the terminal section, resizing the window, or collapsing and expanding that section applies the share again. When the stack can hold both headings, each one keeps at least 44px. A shorter stack is split by the share, and the terminal section can still grow. Double-click the divider between Changes and Commits to split the stack in half.

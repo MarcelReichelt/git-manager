@@ -631,14 +631,94 @@ ul { margin: 0; padding: 0; list-style: none; }
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 8px;
+  padding: 0;
   overflow: auto;
   overflow-y: auto;
   background: transparent;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
+  line-height: 20px;
+  white-space: pre;
+}
+
+[data-testid='diff-rename'],
+[data-testid='diff-binary'] {
+  margin: 0;
+  padding: 0 8px;
+  box-sizing: border-box;
+  white-space: pre;
+  overflow: hidden;
+}
+
+[data-testid='diff-line'] {
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  min-width: 100%;
+  width: max-content;
+  white-space: pre;
+}
+
+[data-testid='diff-old-number'],
+[data-testid='diff-new-number'] {
+  position: sticky;
+  z-index: 1;
+  flex: 0 0 4rem;
+  box-sizing: border-box;
+  padding-right: 8px;
+  background-color: var(--paper);
+  color: rgba(58, 58, 56, 0.55);
+  text-align: right;
+  user-select: none;
+}
+
+[data-testid='diff-old-number'] {
+  left: 0;
+}
+
+[data-testid='diff-new-number'] {
+  left: 4rem;
+}
+
+[data-testid='diff-line'][data-kind='removed'] {
+  background-color: #ffd9cf;
+}
+
+[data-testid='diff-line'][data-kind='added'] {
+  background-color: #d7ffe6;
+}
+
+[data-testid='diff-line'][data-kind='removed'] [data-testid='diff-old-number'],
+[data-testid='diff-line'][data-kind='removed'] [data-testid='diff-new-number'] {
+  background-color: #ffd9cf;
+}
+
+[data-testid='diff-line'][data-kind='added'] [data-testid='diff-old-number'],
+[data-testid='diff-line'][data-kind='added'] [data-testid='diff-new-number'] {
+  background-color: #d7ffe6;
+}
+
+[data-testid='diff-line'][data-kind='removed'] [data-changed='true'] {
+  background-color: var(--coral);
+}
+
+[data-testid='diff-line'][data-kind='added'] [data-changed='true'] {
+  background-color: var(--mint);
+}
+
+.diff-code {
+  white-space: pre;
+}
+
+.diff-rows {
+  position: relative;
+}
+
+.diff-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 100%;
 }
 
 .commit-files {

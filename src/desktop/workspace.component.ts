@@ -135,6 +135,7 @@ import {
   type BranchCommit,
   type ChangedFile,
 } from '../branches.js';
+import { diffLines, type DiffLine } from '../diff-lines.js';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -169,6 +170,19 @@ interface SampleBranchList {
   branches: SampleBranch[];
 }
 
+function sampleAddedDiff(markedLine: string): string {
+  const text = markedLine.startsWith('+') ? markedLine.slice(1) : markedLine;
+  return [
+    'diff --git a/sample b/sample',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ b/sample',
+    '@@ -0,0 +1 @@',
+    `+${text}`,
+    '',
+  ].join('\n');
+}
+
 const harborBranches: SampleBranch[] = [
   {
     name: 'feature/login',
@@ -177,25 +191,25 @@ const harborBranches: SampleBranch[] = [
     ahead: 3,
     behind: 1,
     files: [
-      { path: 'src/login.ts', added: 12, deleted: 3, diff: '+export function login' },
+      { path: 'src/login.ts', added: 12, deleted: 3, diff: sampleAddedDiff('+export function login') },
       { path: 'README.md', added: 4, deleted: 1 },
     ],
     commits: [
       {
         subject: 'Add the login form',
         files: [{ path: 'src/login.ts', added: 10, deleted: 0 }],
-        diff: '+function login',
+        diff: sampleAddedDiff('+function login'),
       },
       {
         subject: 'Wire the session',
         files: [{ path: 'src/session.ts', added: 8, deleted: 2 }],
-        diff: '+export function session',
+        diff: sampleAddedDiff('+export function session'),
       },
       {
         subject: 'Open the harbor',
         onDefaultBranch: true,
         files: [{ path: 'README.md', added: 1, deleted: 0 }],
-        diff: '+# harbor',
+        diff: sampleAddedDiff('+# harbor'),
       },
     ],
   },
@@ -1365,8 +1379,37 @@ button, input { font: inherit; color: inherit; }
                 (dblclick)="equalizeContentColumns($event)"
               ></div>
             }
-            @if (diffText()) {
-              <pre data-testid="diff" gmOverlayScroll>{{ diffText() }}</pre>
+            @if (showInlineDiff()) {
+              <div #diffScroller data-testid="diff" gmOverlayScroll (scroll)="onDiffScroll($event)">
+                @if (inlineDiff().previousPath; as previousPath) {
+                  <p data-testid="diff-rename" [style.height.px]="diffRowHeight" [style.lineHeight.px]="diffRowHeight">Renamed from {{ previousPath }}</p>
+                }
+                @if (inlineDiff().binary) {
+                  <p data-testid="diff-binary" [style.height.px]="diffRowHeight" [style.lineHeight.px]="diffRowHeight">Binary file</p>
+                }
+                @if (inlineDiff().lines.length > 0) {
+                  <div class="diff-rows" [style.height.px]="inlineDiff().lines.length * diffRowHeight">
+                    <div class="diff-window" [style.transform]="diffWindowTransform()">
+                      @for (line of visibleDiffLines(); track line.index) {
+                        <div
+                          data-testid="diff-line"
+                          [attr.data-kind]="line.kind"
+                          [style.height.px]="diffRowHeight"
+                          [style.lineHeight.px]="diffRowHeight"
+                        >
+                          <span data-testid="diff-old-number">{{ line.oldNumber ?? '' }}</span>
+                          <span data-testid="diff-new-number">{{ line.newNumber ?? '' }}</span>
+                          <span class="diff-code">
+                            @for (span of line.spans; track $index) {
+                              <span [attr.data-changed]="span.changed ? 'true' : 'false'">{{ span.text }}</span>
+                            }
+                          </span>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
             } @else {
               <p data-testid="empty-diff">No diff for this file</p>
             }
@@ -2274,6 +2317,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly commitTotal = signal<number | null>(null);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
+  readonly diffRowHeight = 20;
+  private readonly diffScrollTop = signal(0);
+  private readonly diffClientHeight = signal(0);
   readonly appSettingsOpen = signal(false);
   readonly defaultLayout = signal<AppSettings['defaultLayout']>('workspaces');
   readonly sidebarColorSwatches = sidebarSwatches;
@@ -2351,6 +2397,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.sectionFor(this.selectedBranchName()) === 'maximized';
   });
   private readonly sheetBody = viewChild<ElementRef<HTMLElement>>('sheetBody');
+  private readonly diffScroller = viewChild<ElementRef<HTMLElement>>('diffScroller');
   private readonly maximizedBodyHeight = signal<number | null>(null);
   private terminalSerial = 0;
   private terminalsPresetCheckout = '';
@@ -2557,6 +2604,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   ngAfterViewChecked(): void {
     this.captureMaximizedBody();
+    this.scheduleDiffViewport();
     this.revealPendingTab();
     this.fitAnchoredMenu('[data-testid="terminal-menu"]', this.terminalMenu());
     this.fitAnchoredMenu('[data-testid="preset-menu"]', this.presetMenu());
@@ -2905,6 +2953,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   selectFile(path: string): void {
+    this.resetDiffScroll();
     this.selectedFilePath.set(path);
     this.selectedCommitSubject.set(null);
     const repo = this.effectivePath();
@@ -2916,6 +2965,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   }
 
   selectCommit(subject: string, sha?: string): void {
+    this.resetDiffScroll();
     this.selectedCommitSubject.set(sha ?? subject);
     const repo = this.effectivePath();
     if (!repo) {
@@ -2938,6 +2988,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   selectCommitFile(path: string, event: Event): void {
     event.stopPropagation();
+    this.resetDiffScroll();
     this.selectedFilePath.set(path);
     const repo = this.effectivePath();
     const identity = this.selectedCommitSubject();
@@ -3915,8 +3966,109 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.selectedDiff() ?? '';
   }
 
-  diffText(): string {
-    return this.paneDiff().trim();
+  readonly inlineDiff = computed(() => {
+    const file = this.selectedDiffFile();
+    return diffLines(this.paneDiff(), {
+      previousPath: file?.previousPath ?? null,
+      binary: file?.binary ?? false,
+    });
+  });
+
+  showInlineDiff(): boolean {
+    const diff = this.inlineDiff();
+    return diff.lines.length > 0 || diff.previousPath !== null || diff.binary;
+  }
+
+  visibleDiffLines(): Array<DiffLine & { index: number }> {
+    return this.diffWindow().lines;
+  }
+
+  diffWindowTransform(): string {
+    if (this.diffClientHeight() <= 0) {
+      return 'translateY(0px)';
+    }
+    return `translateY(${this.diffWindow().start * this.diffRowHeight}px)`;
+  }
+
+  onDiffScroll(event: Event): void {
+    const element = event.currentTarget;
+    if (element instanceof HTMLElement) {
+      this.syncDiffViewport(element);
+    }
+  }
+
+  private diffWindow(): { start: number; lines: Array<DiffLine & { index: number }> } {
+    const lines = this.inlineDiff().lines.map((line, index) => ({ ...line, index }));
+    const height = this.diffClientHeight();
+    if (height <= 0 || lines.length === 0) {
+      return { start: 0, lines };
+    }
+    const header = this.diffHeaderHeight();
+    const rowScroll = Math.max(0, this.diffScrollTop() - header);
+    const start = Math.min(lines.length, Math.floor(rowScroll / this.diffRowHeight));
+    const headerStillVisible = Math.max(0, header - this.diffScrollTop());
+    const count = Math.max(1, Math.ceil((height - headerStillVisible) / this.diffRowHeight));
+    return { start, lines: lines.slice(start, start + count) };
+  }
+
+  private diffHeaderHeight(): number {
+    const diff = this.inlineDiff();
+    const rows = (diff.previousPath !== null ? 1 : 0) + (diff.binary ? 1 : 0);
+    return rows * this.diffRowHeight;
+  }
+
+  private selectedDiffFile(): { previousPath: string | null; binary: boolean } | null {
+    const path = this.selectedFilePath();
+    if (path === null) {
+      return null;
+    }
+    if (this.effectivePath() !== null) {
+      const files = this.showingCommit() ? this.loadedCommitFiles() : this.loadedFiles();
+      const file = files.find((item) => item.path === path);
+      return file ? { previousPath: file.previousPath, binary: file.binary } : null;
+    }
+    const sample = this.showingCommit()
+      ? this.selectedCommit()?.files?.find((item) => item.path === path)
+      : this.selectedBranch()?.files?.find((item) => item.path === path);
+    if (!sample) {
+      return null;
+    }
+    return {
+      previousPath: sample.previousPath ?? null,
+      binary: sample.added === null && sample.deleted === null,
+    };
+  }
+
+  private syncDiffViewport(element: HTMLElement): void {
+    if (element.scrollTop !== this.diffScrollTop()) {
+      this.diffScrollTop.set(element.scrollTop);
+    }
+    if (element.clientHeight !== this.diffClientHeight()) {
+      this.diffClientHeight.set(element.clientHeight);
+    }
+  }
+
+  private scheduleDiffViewport(): void {
+    const element = this.diffScroller()?.nativeElement;
+    if (!element) {
+      return;
+    }
+    if (element.scrollTop === this.diffScrollTop() && element.clientHeight === this.diffClientHeight()) {
+      return;
+    }
+    runAfterPaint(() => {
+      if (element.isConnected) {
+        this.syncDiffViewport(element);
+      }
+    });
+  }
+
+  private resetDiffScroll(): void {
+    this.diffScrollTop.set(0);
+    const element = this.diffScroller()?.nativeElement;
+    if (element) {
+      element.scrollTop = 0;
+    }
   }
 
   moveSplit(event: PointerEvent): void {
@@ -5579,6 +5731,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (this.loadedDiff() !== diff) {
       this.loadedDiff.set(diff);
+    }
+    if (this.selectedFilePath() !== nextFile || this.selectedCommitSubject() !== nextCommit) {
+      this.resetDiffScroll();
     }
     if (this.selectedFilePath() !== nextFile) {
       this.selectedFilePath.set(nextFile);

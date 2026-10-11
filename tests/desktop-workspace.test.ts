@@ -4009,8 +4009,276 @@ describe('desktop workspace', () => {
 
     expect(loginFile.classList.contains('is-selected')).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain(
-      '+export function login',
+      'export function login',
     );
+  });
+
+  it('shows src/login.ts as an added line with a new number and no patch header', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+    const line = diff.querySelector('[data-testid="diff-line"]');
+    expect(line.getAttribute('data-kind')).toBe('added');
+    expect(line.querySelector('[data-testid="diff-old-number"]').textContent.trim()).toBe('');
+    expect(line.querySelector('[data-testid="diff-new-number"]').textContent.trim()).toBe('1');
+    expect(line.textContent).toContain('export function login');
+    expect(diff.textContent).not.toContain('diff --git');
+    expect(diff.textContent).not.toContain('@@');
+  });
+
+  it('colors a one-word change in Changes and numbers the context on both sides', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'alpha\nhello world\nomega\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add the greeting']);
+    writeFileSync(join(feature, 'notes.txt'), 'alpha\nhello there\nomega\n');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="notes.txt"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.textContent).not.toContain('diff --git');
+    expect(diff.textContent).not.toContain('@@');
+    const lines = [...diff.querySelectorAll('[data-testid="diff-line"]')];
+    const context = lines.find((line) => line.textContent?.includes('alpha'));
+    const removed = lines.find((line) => line.getAttribute('data-kind') === 'removed');
+    const added = lines.find((line) => line.getAttribute('data-kind') === 'added');
+    expect(context?.getAttribute('data-kind')).toBe('context');
+    expect(context?.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('1');
+    expect(context?.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('1');
+    expect(getComputedStyle(context as HTMLElement).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(removed?.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('2');
+    expect(removed?.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('');
+    expect(added?.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('');
+    expect(added?.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('2');
+    const removedWord = removed?.querySelector('[data-changed="true"]') as HTMLElement;
+    const addedWord = added?.querySelector('[data-changed="true"]') as HTMLElement;
+    expect(removedWord.textContent).toBe('world');
+    expect(addedWord.textContent).toBe('there');
+    expect(getComputedStyle(removed as HTMLElement).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(getComputedStyle(added as HTMLElement).backgroundColor).toBe('rgb(215, 255, 230)');
+    expect(getComputedStyle(removedWord).backgroundColor).not.toBe(getComputedStyle(removed as HTMLElement).backgroundColor);
+    expect(getComputedStyle(addedWord).backgroundColor).not.toBe(getComputedStyle(added as HTMLElement).backgroundColor);
+  });
+
+  it('shows old and new numbers for a commit file and leaves out the patch header', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'alpha\nbeta\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'alpha\nbeta!\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Edit notes']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Edit notes"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.textContent).not.toContain('diff --git');
+    expect(diff.textContent).not.toContain('@@');
+    const context = [...diff.querySelectorAll('[data-testid="diff-line"]')].find((line) =>
+      line.textContent?.includes('alpha'),
+    );
+    expect(context?.getAttribute('data-kind')).toBe('context');
+    expect(context?.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('1');
+    expect(context?.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('1');
+    const removed = [...diff.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'removed',
+    );
+    expect(removed?.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('2');
+    expect(removed?.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('');
+    expect(getComputedStyle(removed as HTMLElement).backgroundColor).toBe('rgb(255, 217, 207)');
+  });
+
+  it('keeps three lines of context around a change and colors a whitespace-only edit', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'wide.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\n');
+    writeFileSync(join(feature, 'space.txt'), 'alpha\nhello world\nomega\n');
+    git(feature, ['add', 'wide.txt', 'space.txt']);
+    git(feature, ['commit', '-m', 'Add the lines']);
+    writeFileSync(join(feature, 'wide.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\n');
+    writeFileSync(join(feature, 'space.txt'), 'alpha\nhello  world\nomega\n');
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="wide.txt"]').click();
+    fixture.detectChanges();
+    const wide = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(wide.textContent).toContain('two');
+    expect(wide.textContent).toContain('three');
+    expect(wide.textContent).toContain('four');
+    expect(wide.textContent).toContain('FIVE');
+    expect(wide.textContent).toContain('six');
+    expect(wide.textContent).toContain('seven');
+    expect(wide.textContent).toContain('eight');
+    expect(wide.textContent).not.toContain('one');
+    expect(wide.textContent).not.toContain('nine');
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="space.txt"]').click();
+    fixture.detectChanges();
+    const space = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const removed = [...space.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'removed',
+    ) as HTMLElement;
+    const added = [...space.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'added',
+    ) as HTMLElement;
+    const removedSpace = removed.querySelector('[data-changed="true"]') as HTMLElement;
+    const addedSpace = added.querySelector('[data-changed="true"]') as HTMLElement;
+    expect(removedSpace.textContent).toBe(' ');
+    expect(addedSpace.textContent).toBe('  ');
+    expect(getComputedStyle(removed).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(getComputedStyle(added).backgroundColor).toBe('rgb(215, 255, 230)');
+    expect(getComputedStyle(removedSpace).backgroundColor).not.toBe(getComputedStyle(removed).backgroundColor);
+    expect(getComputedStyle(addedSpace).backgroundColor).not.toBe(getComputedStyle(added).backgroundColor);
+  });
+
+  it('keeps the line numbers in place and does not wrap the diff', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const line = diff.querySelector('[data-testid="diff-line"]') as HTMLElement;
+    expect(getComputedStyle(diff).whiteSpace).toBe('pre');
+    expect(getComputedStyle(line).whiteSpace).toBe('pre');
+    expect(getComputedStyle(line).lineHeight).toBe('20px');
+    expect(getComputedStyle(line).height).toBe('20px');
+    expect(getComputedStyle(line.querySelector('[data-testid="diff-old-number"]')).position).toBe('sticky');
+    expect(getComputedStyle(line.querySelector('[data-testid="diff-new-number"]')).position).toBe('sticky');
+  });
+
+  it('leaves lines outside the diff view undrawn', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const body = Array.from({ length: 40 }, (_, index) => `row-${String(index).padStart(2, '0')}`).join('\n');
+    writeFileSync(join(feature, 'long.txt'), `${body}\n`);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="long.txt"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const line = diff.querySelector('[data-testid="diff-line"]') as HTMLElement;
+    const rowHeight = Number.parseFloat(getComputedStyle(line).lineHeight);
+    expect(diff.textContent).toContain('row-00');
+    expect(diff.textContent).toContain('row-39');
+    installScrollMetrics(diff, {
+      clientHeight: rowHeight * 2,
+      scrollHeight: rowHeight * 40,
+      scrollTop: rowHeight * 30,
+    });
+    diff.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(diff.textContent).not.toContain('row-00');
+    expect(diff.textContent).not.toContain('row-39');
+    expect(diff.textContent).toContain('row-30');
+    expect(diff.classList.contains('overlay-scroll')).toBe(true);
+  });
+
+  it('shows Renamed from the old path above the commit diff', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Retitle the guide"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from docs/old-guide.md');
+    expect(diff.textContent).toContain('new guide');
+    expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]')).toBeNull();
+  });
+
+  it('shows Binary file for the logo commit', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Add the logo"]').click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.querySelector('[data-testid="diff-binary"]')?.textContent).toBe('Binary file');
+    expect(diff.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]')).toBeNull();
+  });
+
+  it('colors a new file green and a deleted file red', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'gone.txt'), 'gone line\n');
+    git(feature, ['add', 'gone.txt']);
+    git(feature, ['commit', '-m', 'Add gone']);
+    writeFileSync(join(feature, 'fresh.txt'), 'fresh line\n');
+    rmSync(join(feature, 'gone.txt'));
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="fresh.txt"]').click();
+    fixture.detectChanges();
+    const fresh = [...fixture.nativeElement.querySelectorAll('[data-testid="diff-line"]')] as HTMLElement[];
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(fresh.every((line) => line.getAttribute('data-kind') === 'added')).toBe(true);
+    expect(fresh.every((line) => getComputedStyle(line).backgroundColor === 'rgb(215, 255, 230)')).toBe(true);
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="gone.txt"]').click();
+    fixture.detectChanges();
+    const gone = [...fixture.nativeElement.querySelectorAll('[data-testid="diff-line"]')] as HTMLElement[];
+    expect(gone.length).toBeGreaterThan(0);
+    expect(gone.every((line) => line.getAttribute('data-kind') === 'removed')).toBe(true);
+    expect(gone.every((line) => getComputedStyle(line).backgroundColor === 'rgb(255, 217, 207)')).toBe(true);
+  });
+
+  it('shows a staged addition in Changes', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'staged.txt'), 'staged line\n');
+    git(feature, ['add', 'staged.txt']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="staged.txt"]').click();
+    fixture.detectChanges();
+
+    const line = fixture.nativeElement.querySelector('[data-testid="diff-line"]') as HTMLElement;
+    expect(line.getAttribute('data-kind')).toBe('added');
+    expect(line.textContent).toContain('staged line');
+    expect(line.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('');
+    expect(line.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('1');
   });
 
   it('shows Add the login form files with the diff in the column to the right', async () => {
@@ -4035,7 +4303,7 @@ describe('desktop workspace', () => {
     expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('0');
 
     const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
-    expect(diff.textContent).toContain('+function login');
+    expect(diff.textContent).toContain('function login');
     expect(commitFiles.closest('[data-testid="commits"]')).toBeNull();
     expect(commitFiles.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -4132,7 +4400,7 @@ describe('desktop workspace', () => {
     expect(file.querySelector('[data-testid="lines-added"]').textContent.trim()).toBe('8');
     expect(file.querySelector('[data-testid="lines-deleted"]').textContent.trim()).toBe('2');
     expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain(
-      '+export function session',
+      'export function session',
     );
   });
 
@@ -4600,7 +4868,7 @@ describe('desktop workspace', () => {
       .click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+pier note');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('pier note');
   });
 
   it('shows the renamed guide and the binary logo for commits on rewrite', async () => {
@@ -4970,12 +5238,12 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const commitFiles = fixture.nativeElement.querySelector('[data-testid="commit-files"]');
-    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+alpha');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('alpha');
     commitFiles.querySelector('[data-path="b.txt"]').click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('+beta');
-    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('+alpha');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).toContain('beta');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]').textContent).not.toContain('alpha');
   });
 
   it('omits a branch that has no worktree', async () => {

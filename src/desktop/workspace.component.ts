@@ -3042,7 +3042,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     const repo = this.effectivePath();
     const branch = this.selectedBranchName();
     if (repo && branch) {
-      this.loadedDiff.set(readWorkingTreeDiff(repo, branch, path));
+      const previousPath = this.loadedFiles().find((file) => file.path === path)?.previousPath;
+      this.loadedDiff.set(readWorkingTreeDiff(repo, branch, path, previousPath));
     }
     this.refreshFullFileSides();
   }
@@ -3068,7 +3069,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.loadedCommitFiles.set(files);
     const first = files[0];
     this.selectedFilePath.set(first?.path ?? null);
-    this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path) : '');
+    this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path, first.previousPath) : '');
     this.refreshFullFileSides();
   }
 
@@ -3087,7 +3088,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       this.refreshFullFileSides();
       return;
     }
-    this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
+    const previousPath = this.loadedCommitFiles().find((file) => file.path === path)?.previousPath;
+    this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path, previousPath));
     this.refreshFullFileSides();
   }
 
@@ -5879,16 +5881,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
         diff = null;
       } else {
         commitFiles = readCommitFiles(path, commit.sha);
-        if (nextFile && commitFiles.some((file) => file.path === nextFile)) {
-          diff = readCommitFileDiff(path, commit.sha, nextFile);
+        const commitFile = nextFile ? commitFiles.find((file) => file.path === nextFile) : undefined;
+        if (nextFile && commitFile) {
+          diff = readCommitFileDiff(path, commit.sha, nextFile, commitFile.previousPath);
         } else {
           nextFile = null;
           diff = '';
         }
       }
     } else if (nextFile) {
-      if (files.some((file) => file.path === nextFile)) {
-        diff = readWorkingTreeDiff(path, name, nextFile);
+      const changed = files.find((file) => file.path === nextFile);
+      if (changed) {
+        diff = readWorkingTreeDiff(path, name, nextFile, changed.previousPath);
       } else {
         nextFile = null;
         diff = null;

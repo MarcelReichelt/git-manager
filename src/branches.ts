@@ -1031,12 +1031,17 @@ function parseCommitLog(output: string): BranchCommit[] {
   });
 }
 
-export function readWorkingTreeDiff(repoPath: string, branch: string, filePath: string): string {
+export function readWorkingTreeDiff(
+  repoPath: string,
+  branch: string,
+  filePath: string,
+  previousPath?: string | null,
+): string {
   const checkout = worktreePath(repoPath, branch);
   if (!checkout) {
     throw new Error(`No worktree for branch: ${branch}`);
   }
-  const tracked = gitText(checkout, ['diff', '-M', '-U3', 'HEAD', '--', filePath], true);
+  const tracked = gitText(checkout, ['diff', '-M', '-U3', 'HEAD', '--', ...diffPaths(filePath, previousPath)], true);
   if (tracked !== '') {
     return tracked;
   }
@@ -1050,8 +1055,24 @@ export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
   return parseNumstat(gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--numstat', '-z', '--format=', sha]));
 }
 
-export function readCommitFileDiff(repoPath: string, sha: string, filePath: string): string {
-  return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '-U3', '--format=', sha, '--', filePath], true);
+export function readCommitFileDiff(
+  repoPath: string,
+  sha: string,
+  filePath: string,
+  previousPath?: string | null,
+): string {
+  return gitText(
+    repoPath,
+    ['show', '-m', '--first-parent', '-M', '-U3', '--format=', sha, '--', ...diffPaths(filePath, previousPath)],
+    true,
+  );
+}
+
+function diffPaths(filePath: string, previousPath?: string | null): string[] {
+  if (previousPath && previousPath !== filePath) {
+    return [previousPath, filePath];
+  }
+  return [filePath];
 }
 
 export interface DiffFileSides {

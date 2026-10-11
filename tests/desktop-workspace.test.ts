@@ -4263,6 +4263,78 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]')).toBeNull();
   });
 
+  it('shows the removed and added lines of a rename that also edits a line', async () => {
+    const repoPath = createRewriteRepository(roots);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="rewrite"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Retitle the guide"]').click();
+    fixture.detectChanges();
+
+    const commitDiff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(commitDiff.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from docs/old-guide.md');
+    const commitRemoved = [...commitDiff.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'removed',
+    ) as HTMLElement | undefined;
+    const commitAdded = [...commitDiff.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'added',
+    ) as HTMLElement | undefined;
+    expect(commitRemoved?.textContent).toContain('old guide');
+    expect(getComputedStyle(commitRemoved as HTMLElement).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(commitAdded?.textContent).toContain('new guide');
+    expect(getComputedStyle(commitAdded as HTMLElement).backgroundColor).toBe('rgb(215, 255, 230)');
+
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const paired = sideRowContaining(commitDiff, 'old guide');
+    expect(paired.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('old guide');
+    expect(paired.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('new guide');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-inline"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const workRepo = createEmptyRepository(roots);
+    const feature = join(workRepo, '.workspaces', 'feature');
+    git(workRepo, ['branch', 'feature']);
+    git(workRepo, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'plain.txt'), 'leave this line\n');
+    writeFileSync(join(feature, 'notes.txt'), 'harbor notes\nold guide\nkeep the rest\n');
+    git(feature, ['add', 'plain.txt', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add the notes']);
+    git(feature, ['mv', 'plain.txt', 'moved.txt']);
+    git(feature, ['mv', 'notes.txt', 'renamed.txt']);
+    writeFileSync(join(feature, 'renamed.txt'), 'harbor notes\nnew guide\nkeep the rest\n');
+    const work = await renderRepository(workRepo);
+    work.nativeElement.querySelector('[data-branch="feature"]').click();
+    work.detectChanges();
+
+    work.nativeElement.querySelector('[data-testid="changed-file"][data-path="moved.txt"]').click();
+    work.detectChanges();
+    const pure = work.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(pure.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from plain.txt');
+    expect(pure.querySelector('[data-testid="diff-line"]')).toBeNull();
+
+    work.nativeElement.querySelector('[data-testid="changed-file"][data-path="renamed.txt"]').click();
+    work.detectChanges();
+    const edited = work.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(edited.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from notes.txt');
+    const removed = [...edited.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'removed',
+    ) as HTMLElement | undefined;
+    const added = [...edited.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'added',
+    ) as HTMLElement | undefined;
+    expect(removed?.textContent).toContain('old guide');
+    expect(getComputedStyle(removed as HTMLElement).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(added?.textContent).toContain('new guide');
+    expect(getComputedStyle(added as HTMLElement).backgroundColor).toBe('rgb(215, 255, 230)');
+
+    (work.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    work.detectChanges();
+    const workPaired = sideRowContaining(edited, 'old guide');
+    expect(workPaired.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('old guide');
+    expect(workPaired.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('new guide');
+  });
+
   it('shows Binary file for the logo commit', async () => {
     const repoPath = createRewriteRepository(roots);
     const fixture = await renderRepository(repoPath);

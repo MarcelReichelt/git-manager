@@ -954,6 +954,7 @@ describe('desktop workspace', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -1001,6 +1002,7 @@ describe('desktop workspace', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });

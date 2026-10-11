@@ -463,6 +463,7 @@ describe('terminal font and colors', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 });

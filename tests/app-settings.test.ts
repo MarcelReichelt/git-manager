@@ -17,6 +17,7 @@ import {
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
+  saveDiffLayout,
   saveDiffMode,
   saveIdeCommand,
   saveOpenRepositoryTabs,
@@ -72,6 +73,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -203,6 +205,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -246,6 +249,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -290,6 +294,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -322,6 +327,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -557,6 +563,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -599,6 +606,7 @@ describe('app settings', () => {
       changesFileWidth: 240,
       commitFileWidth: 240,
       diffMode: 'folded',
+      diffLayout: 'inline',
     });
   });
 
@@ -1139,5 +1147,53 @@ describe('app settings', () => {
     const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
 
     expect(readAppSettings(env).diffMode).toBe('folded');
+  });
+
+  it('starts the diff layout on Inline when that setting is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"diffMode":"full"}\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).diffLayout).toBe('inline');
+  });
+
+  it('saves Side by side without dropping the diff mode or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","diffMode":"full","terminalMode":"tmux"}\n',
+    );
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveDiffLayout('side', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      diffMode: 'full',
+      terminalMode: 'tmux',
+      diffLayout: 'side',
+    });
+    expect(readAppSettings(env).diffLayout).toBe('side');
+
+    saveDiffLayout('inline', env);
+
+    expect(readAppSettings(env).diffLayout).toBe('inline');
+    expect(readAppSettings(env).diffMode).toBe('full');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).theme).toBe('mint');
+  });
+
+  it('uses Inline when the saved diff layout is not inline or side', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"diffLayout":"split"}\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).diffLayout).toBe('inline');
   });
 });

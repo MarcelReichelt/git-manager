@@ -7,6 +7,7 @@ import { runtimeEnv } from './runtime-env.js';
 export type TerminalMode = 'none' | 'terminal' | 'tmux';
 export type SidebarText = 'white' | 'black';
 export type DiffMode = 'folded' | 'full';
+export type DiffLayout = 'inline' | 'side';
 
 export interface AppSettings {
   defaultLayout: 'workspaces' | 'sibling';
@@ -24,6 +25,7 @@ export interface AppSettings {
   changesFileWidth: number;
   commitFileWidth: number;
   diffMode: DiffMode;
+  diffLayout: DiffLayout;
 }
 
 const originalSidebarColor = '#1a3c2b';
@@ -106,6 +108,7 @@ export function readAppSettings(env?: NodeJS.ProcessEnv): AppSettings {
     changesFileWidth: readPixels(stored.changesFileWidth, defaultChangesFileWidth),
     commitFileWidth: readPixels(stored.commitFileWidth, defaultCommitFileWidth),
     diffMode: diffMode(stored.diffMode),
+    diffLayout: diffLayout(stored.diffLayout),
   };
 }
 
@@ -288,6 +291,14 @@ export function saveDiffMode(mode: DiffMode, env?: NodeJS.ProcessEnv): void {
   mkdirSync(dirname(settingsPath), { recursive: true });
   const current = readSettingsObject(settingsPath);
   current.diffMode = mode;
+  writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
+}
+
+export function saveDiffLayout(layout: DiffLayout, env?: NodeJS.ProcessEnv): void {
+  const settingsPath = resolveAppSettingsPath(env);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const current = readSettingsObject(settingsPath);
+  current.diffLayout = layout;
   writeFileSync(settingsPath, `${JSON.stringify(current)}\n`);
 }
 
@@ -501,6 +512,13 @@ function diffMode(value: unknown): DiffMode {
     return value;
   }
   return 'folded';
+}
+
+function diffLayout(value: unknown): DiffLayout {
+  if (value === 'inline' || value === 'side') {
+    return value;
+  }
+  return 'inline';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

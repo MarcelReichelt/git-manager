@@ -9764,3 +9764,479 @@ async function render() {
   fixture.detectChanges();
   return fixture;
 }
+
+describe('side by side diff', () => {
+  const roots: string[] = [];
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+  const previousAppSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+
+  beforeEach(() => {
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-side-by-side-settings-'));
+    roots.push(settingsRoot);
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+  });
+
+  afterEach(() => {
+    setAfterPaintScheduler((task) => {
+      task();
+    });
+    if (previousRegistryPath === undefined) {
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+    } else {
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
+    }
+    if (previousAppSettingsPath === undefined) {
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    } else {
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
+    }
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  async function renderRepository(repoPath: string) {
+    if (!process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH) {
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    }
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [WorkspaceComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixture.componentRef.setInput('repositoryPath', repoPath);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await whenRemoteRefreshIdle();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function openChangedFile(fixture: ComponentFixture<WorkspaceComponent>, branch: string, path: string): void {
+    fixture.nativeElement.querySelector(`[data-branch="${branch}"]`).click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector(`[data-testid="changed-file"][data-path="${path}"]`).click();
+    fixture.detectChanges();
+  }
+
+  it('starts on Inline beside Folded and stays outside the scroller', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="src/login.ts"]').click();
+    fixture.detectChanges();
+
+    const inline = fixture.nativeElement.querySelector('[data-testid="diff-layout-inline"]') as HTMLButtonElement;
+    const side = fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement;
+    expect(inline.textContent?.trim()).toBe('Inline');
+    expect(side.textContent?.trim()).toBe('Side by side');
+    expect(inline.getAttribute('aria-pressed')).toBe('true');
+    expect(side.getAttribute('aria-pressed')).toBe('false');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const layout = fixture.nativeElement.querySelector('[data-testid="diff-layout"]') as HTMLElement;
+    const mode = fixture.nativeElement.querySelector('[data-testid="diff-mode"]') as HTMLElement;
+    expect(diff.contains(layout)).toBe(false);
+    expect(diff.contains(mode)).toBe(false);
+    expect(layout.parentElement).toBe(mode.parentElement);
+    expect(getComputedStyle(layout.parentElement).flexDirection).toBe('row');
+    expect(diff.querySelector('[data-testid="diff-line"]')).not.toBeNull();
+    expect(diff.querySelector('[data-testid="diff-side-row"]')).toBeNull();
+  });
+
+  it('puts the old file on the left and the new file on the right in one scroller', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'keep\nold-a\nold-b\ntail\n');
+    writeFileSync(join(feature, 'fresh.txt'), 'was\n');
+    writeFileSync(join(feature, 'word.txt'), 'alpha beta\n');
+    git(feature, ['add', 'notes.txt', 'fresh.txt', 'word.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'keep\nnew-a\ntail\n');
+    writeFileSync(join(feature, 'word.txt'), 'alpha gamma\n');
+    rmSync(join(feature, 'fresh.txt'));
+    writeFileSync(join(feature, 'added.txt'), 'inserted\n');
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="diff"]').length).toBe(1);
+    const rows = [...diff.querySelectorAll('[data-testid="diff-side-row"]')] as HTMLElement[];
+    expect(rows.map((row) => sideTexts(row))).toEqual([
+      ['keep', 'keep'],
+      ['old-a', 'new-a'],
+      ['old-b', ''],
+      ['tail', 'tail'],
+    ]);
+
+    const paired = rows[1] as HTMLElement;
+    const pairedOld = paired.querySelector('[data-testid="diff-side-old"]') as HTMLElement;
+    const pairedNew = paired.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    expect(pairedOld.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('2');
+    expect(pairedNew.querySelector('[data-testid="diff-new-number"]')?.textContent?.trim()).toBe('2');
+    expect(getComputedStyle(pairedOld).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(getComputedStyle(pairedNew).backgroundColor).toBe('rgb(215, 255, 230)');
+
+    const leftover = rows[2] as HTMLElement;
+    const leftoverOld = leftover.querySelector('[data-testid="diff-side-old"]') as HTMLElement;
+    const leftoverNew = leftover.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    expect(leftoverOld.querySelector('[data-testid="diff-old-number"]')?.textContent?.trim()).toBe('3');
+    expect(leftoverNew.querySelector('[data-testid="diff-old-number"]')).toBeNull();
+    expect(leftoverNew.querySelector('[data-testid="diff-new-number"]')).toBeNull();
+    expect(leftoverNew.getAttribute('data-kind')).toBe('empty');
+    expect(getComputedStyle(leftoverNew).backgroundColor).not.toBe('rgb(255, 217, 207)');
+    expect(getComputedStyle(leftoverNew).backgroundColor).not.toBe('rgb(215, 255, 230)');
+
+    const context = rows[0] as HTMLElement;
+    expect(getComputedStyle(context.querySelector('[data-testid="diff-side-old"]')).backgroundColor).not.toBe(
+      'rgb(255, 217, 207)',
+    );
+    expect(context.querySelector('[data-testid="diff-side-old"] [data-testid="diff-old-number"]')?.textContent?.trim()).toBe(
+      '1',
+    );
+    expect(context.querySelector('[data-testid="diff-side-new"] [data-testid="diff-new-number"]')?.textContent?.trim()).toBe(
+      '1',
+    );
+
+    openChangedFile(fixture, 'feature', 'added.txt');
+    const added = fixture.nativeElement.querySelector('[data-testid="diff-side-row"]') as HTMLElement;
+    const addedOld = added.querySelector('[data-testid="diff-side-old"]') as HTMLElement;
+    const addedNew = added.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    expect(addedOld.getAttribute('data-kind')).toBe('empty');
+    expect(addedOld.querySelector('[data-testid="diff-old-number"]')).toBeNull();
+    expect(addedOld.textContent?.trim()).toBe('');
+    expect(getComputedStyle(addedOld).backgroundColor).not.toBe('rgb(215, 255, 230)');
+    expect(addedNew.getAttribute('data-kind')).toBe('added');
+    expect(addedNew.textContent).toContain('inserted');
+    expect(getComputedStyle(addedNew).backgroundColor).toBe('rgb(215, 255, 230)');
+
+    openChangedFile(fixture, 'feature', 'fresh.txt');
+    const deleted = fixture.nativeElement.querySelector('[data-testid="diff-side-row"]') as HTMLElement;
+    const deletedOld = deleted.querySelector('[data-testid="diff-side-old"]') as HTMLElement;
+    const deletedNew = deleted.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    expect(deletedOld.getAttribute('data-kind')).toBe('removed');
+    expect(deletedOld.textContent).toContain('was');
+    expect(getComputedStyle(deletedOld).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(deletedNew.getAttribute('data-kind')).toBe('empty');
+    expect(deletedNew.querySelector('[data-testid="diff-new-number"]')).toBeNull();
+    expect(getComputedStyle(deletedNew).backgroundColor).not.toBe('rgb(255, 217, 207)');
+
+    openChangedFile(fixture, 'feature', 'word.txt');
+    const word = fixture.nativeElement.querySelector('[data-testid="diff-side-row"]') as HTMLElement;
+    const wordOld = word.querySelector('[data-testid="diff-side-old"]') as HTMLElement;
+    const wordNew = word.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    const oldSpan = wordOld.querySelector('[data-changed="true"]') as HTMLElement;
+    const newSpan = wordNew.querySelector('[data-changed="true"]') as HTMLElement;
+    expect(oldSpan.textContent).toBe('beta');
+    expect(newSpan.textContent).toBe('gamma');
+    expect(getComputedStyle(oldSpan).backgroundColor).not.toBe(getComputedStyle(wordOld).backgroundColor);
+    expect(getComputedStyle(newSpan).backgroundColor).not.toBe(getComputedStyle(wordNew).backgroundColor);
+  });
+
+  it('keeps a fold as one row and its buttons change both columns', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const lines = Array.from({ length: 24 }, (_, index) => `n${String(index + 1).padStart(2, '0')}`);
+    writeFileSync(join(feature, 'notes.txt'), `${lines.join('\n')}\n`);
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    lines[4] = 'N05';
+    lines[19] = 'N20';
+    writeFileSync(join(feature, 'notes.txt'), `${lines.join('\n')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const fold = foldWithCount(diff, '8 hidden lines');
+    expect(fold.closest('[data-testid="diff-side-row"]')).toBeNull();
+    expect([...diff.querySelectorAll('[data-testid="diff-fold-count"]')].filter((node) => node.textContent === '8 hidden lines')).toHaveLength(1);
+    expect(fold.parentElement).toBe(diff.querySelector('[data-testid="diff-side-row"]')?.parentElement ?? null);
+    expect(diff.textContent).not.toContain('n09');
+
+    (fold.querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const revealed = sideRowContaining(diff, 'n09');
+    expect(revealed.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('n09');
+    expect(revealed.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('n09');
+    expect(revealed.querySelector('[data-testid="diff-side-old"] [data-testid="diff-old-number"]')?.textContent?.trim()).toBe(
+      '9',
+    );
+    expect(revealed.querySelector('[data-testid="diff-side-new"] [data-testid="diff-new-number"]')?.textContent?.trim()).toBe(
+      '9',
+    );
+    expect(diff.textContent).not.toContain('n12');
+    expect(foldWithCount(diff, '2 hidden lines')).toBeTruthy();
+  });
+
+  it('shows the complete old file on the left and the complete new file on the right', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n');
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.querySelector('[data-testid="diff-fold"]')).toBeNull();
+    expect(diff.querySelector('[data-testid="diff-line"]')).toBeNull();
+    const rows = [...diff.querySelectorAll('[data-testid="diff-side-row"]')] as HTMLElement[];
+    expect(rows.map((row) => sideTexts(row))).toEqual([
+      ['one', 'one'],
+      ['two', 'two'],
+      ['three', 'three'],
+      ['four', 'four'],
+      ['five', 'FIVE'],
+      ['six', 'six'],
+      ['seven', 'seven'],
+      ['eight', 'eight'],
+      ['nine', 'nine'],
+      ['ten', 'ten'],
+    ]);
+    const changed = rows[4] as HTMLElement;
+    expect(changed.querySelector('[data-testid="diff-side-old"]')?.getAttribute('data-kind')).toBe('removed');
+    expect(changed.querySelector('[data-testid="diff-side-new"]')?.getAttribute('data-kind')).toBe('added');
+    expect(getComputedStyle(changed.querySelector('[data-testid="diff-side-old"]')).backgroundColor).toBe(
+      'rgb(255, 217, 207)',
+    );
+    expect(getComputedStyle(changed.querySelector('[data-testid="diff-side-new"]')).backgroundColor).toBe(
+      'rgb(215, 255, 230)',
+    );
+  });
+
+  it('draws one side-by-side row per scroll position and keeps each number in its cell', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const oldBody = Array.from({ length: 40 }, (_, index) => `old-${String(index).padStart(2, '0')}`).join('\n');
+    const newBody = Array.from({ length: 40 }, (_, index) => `new-${String(index).padStart(2, '0')}`).join('\n');
+    writeFileSync(join(feature, 'long.txt'), `${oldBody}\n`);
+    git(feature, ['add', 'long.txt']);
+    git(feature, ['commit', '-m', 'Add long']);
+    writeFileSync(join(feature, 'long.txt'), `${newBody}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'long.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const row = diff.querySelector('[data-testid="diff-side-row"]') as HTMLElement;
+    const cell = row.querySelector('[data-testid="diff-side-new"]') as HTMLElement;
+    const number = cell.querySelector('[data-testid="diff-new-number"]') as HTMLElement;
+    expect(getComputedStyle(cell).whiteSpace).toBe('pre');
+    expect(getComputedStyle(cell).overflowX).toBe('auto');
+    expect(getComputedStyle(number).position).toBe('sticky');
+    expect(getComputedStyle(row).height).toBe('20px');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="diff"]').length).toBe(1);
+    const rowHeight = Number.parseFloat(getComputedStyle(row).height);
+    installScrollMetrics(diff, {
+      clientHeight: rowHeight * 2,
+      scrollHeight: rowHeight * 40,
+      scrollTop: rowHeight * 30,
+    });
+    diff.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(diff.textContent).not.toContain('old-00');
+    expect(diff.textContent).not.toContain('new-00');
+    const visible = sideRowContaining(diff, 'new-30');
+    expect(visible.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('old-30');
+    expect(visible.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('new-30');
+    expect(diff.querySelector('[data-testid="diff-layout"]')).toBeNull();
+
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    installScrollMetrics(diff, {
+      clientHeight: rowHeight * 2,
+      scrollHeight: rowHeight * 40,
+      scrollTop: rowHeight * 30,
+    });
+    diff.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    expect(diff.textContent).not.toContain('old-00');
+    expect(diff.querySelector('[data-testid="diff-fold"]')).toBeNull();
+    const fullRow = sideRowContaining(diff, 'new-30');
+    expect(fullRow.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('old-30');
+  });
+
+  it('applies the fold and full-file size limits to both columns', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const head = ['lead-1', 'lead-2', 'lead-3', 'lead-4', 'near-1', 'near-2', 'near-3', 'before', 'near-4', 'near-5', 'near-6'];
+    const tail = Array.from({ length: 100004 }, (_, index) => `tail-${index + 1}`);
+    writeFileSync(join(feature, 'huge.txt'), `${[...head, ...tail].join('\n')}\n`);
+    git(feature, ['add', 'huge.txt']);
+    git(feature, ['commit', '-m', 'Add the huge file']);
+    head[7] = 'after';
+    writeFileSync(join(feature, 'huge.txt'), `${[...head, ...tail].join('\n')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'huge.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const large = foldWithCount(diff, '100004 hidden lines');
+    (large.querySelector('[data-testid="diff-fold-all"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(diff.querySelectorAll('[data-testid="diff-fold-too-large"]').length).toBe(1);
+    expect(large.querySelector('[data-testid="diff-fold-too-large"]')?.textContent).toBe('This file is too large to show');
+    expect(large.closest('[data-testid="diff-side-row"]')).toBeNull();
+    const change = sideRowContaining(diff, 'after');
+    expect(change.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('before');
+    expect(change.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('after');
+    expect(diff.textContent).not.toContain('tail-4');
+
+    const lines = Array.from({ length: 100_001 }, (_, index) => `row-${index}`);
+    lines[50_000] = 'before-change';
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    git(feature, ['add', 'wide.txt']);
+    git(feature, ['commit', '-m', 'Add wide']);
+    lines[50_000] = 'after-change';
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    openChangedFile(fixture, 'feature', 'wide.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-side-row"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-too-large"]')?.textContent?.trim()).toBe(
+      'This file is too large to show',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]')?.getAttribute('aria-pressed')).toBe('true');
+    const sentence = fixture.nativeElement.querySelector('[data-testid="diff-too-large"]') as HTMLElement;
+    expect(sentence.contains(fixture.nativeElement.querySelector('[data-testid="diff-layout"]'))).toBe(false);
+  });
+
+  it('keeps the layout switch visible when the diff shows only a sentence', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="README.md"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]')?.textContent?.trim()).toBe(
+      'No diff for this file',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-layout-inline"]')?.textContent?.trim()).toBe('Inline');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]')?.textContent?.trim()).toBe('Side by side');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-branch="rename-docs"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="docs/guide.md"]').click();
+    fixture.detectChanges();
+    const renamed = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(renamed.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from docs/old-guide.md');
+    expect(renamed.contains(fixture.nativeElement.querySelector('[data-testid="diff-layout"]'))).toBe(false);
+
+    fixture.nativeElement.querySelector('[data-branch="abandoned"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="assets/logo.png"]').click();
+    fixture.detectChanges();
+    const binary = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(binary.querySelector('[data-testid="diff-binary"]')?.textContent).toBe('Binary file');
+    expect(binary.contains(fixture.nativeElement.querySelector('[data-testid="diff-layout"]'))).toBe(false);
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-layout"]')).not.toBeNull();
+  });
+
+  it('remembers Side by side for the next file, the next launch, and every repository', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const otherPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    writeFileSync(join(feature, 'other.txt'), 'kept-start\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nkept-end\n');
+    git(feature, ['add', 'notes.txt', 'other.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n');
+    writeFileSync(join(feature, 'other.txt'), 'kept-start\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nkept-end\n');
+    const otherFeature = join(otherPath, '.workspaces', 'feature');
+    git(otherPath, ['branch', 'feature']);
+    git(otherPath, ['worktree', 'add', otherFeature, 'feature']);
+    writeFileSync(join(otherFeature, 'quay.txt'), 'quay-start\nmiddle\nquay-end\n');
+    git(otherFeature, ['add', 'quay.txt']);
+    git(otherFeature, ['commit', '-m', 'Add quay']);
+    writeFileSync(join(otherFeature, 'quay.txt'), 'quay-start\nMIDDLE\nquay-end\n');
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    openChangedFile(fixture, 'feature', 'other.txt');
+    const next = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(next.querySelector('[data-testid="diff-line"]')).toBeNull();
+    const changed = sideRowContaining(next, 'FIVE');
+    expect(changed.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('five');
+    expect(changed.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('FIVE');
+    expect(
+      (fixture.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    fixture.destroy();
+
+    const again = await renderRepository(repoPath);
+    openChangedFile(again, 'feature', 'other.txt');
+    expect(
+      (again.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    expect(again.nativeElement.querySelector('[data-testid="diff-side-row"]')).not.toBeNull();
+    expect(readAppSettings().diffLayout).toBe('side');
+    again.destroy();
+
+    const elsewhere = await renderRepository(otherPath);
+    openChangedFile(elsewhere, 'feature', 'quay.txt');
+    const quay = elsewhere.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(
+      (elsewhere.nativeElement.querySelector('[data-testid="diff-layout-side"]') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    const middle = sideRowContaining(quay, 'MIDDLE');
+    expect(middle.querySelector('[data-testid="diff-side-old"]')?.textContent).toContain('middle');
+    expect(middle.querySelector('[data-testid="diff-side-new"]')?.textContent).toContain('MIDDLE');
+  });
+});
+
+function sideTexts(row: HTMLElement): [string, string] {
+  const oldText = row.querySelector('[data-testid="diff-side-old"] .diff-code')?.textContent ?? '';
+  const newText = row.querySelector('[data-testid="diff-side-new"] .diff-code')?.textContent ?? '';
+  return [oldText, newText];
+}
+
+function sideRowContaining(diff: ParentNode, text: string): HTMLElement {
+  const row = [...diff.querySelectorAll('[data-testid="diff-side-row"]')].find((item) =>
+    item.textContent?.includes(text),
+  );
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`missing side row ${text}`);
+  }
+  return row;
+}

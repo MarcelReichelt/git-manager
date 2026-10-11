@@ -35,6 +35,7 @@ import {
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
+  saveDiffLayout,
   saveDiffMode,
   saveIdeCommand,
   saveOpenRepositoryTabs,
@@ -47,6 +48,7 @@ import {
   saveTerminalMode,
   unpinWorktree,
   type AppSettings,
+  type DiffLayout,
   type DiffMode,
   type SidebarText,
   type TerminalMode,
@@ -145,11 +147,14 @@ import {
   fullFileLines,
   openFoldAll,
   openFoldMore,
+  sideBySideRows,
   type DiffLine,
   type FoldedFoldRow,
   type FoldedRow,
   type FoldOpenings,
   type FullFileDiff,
+  type SideBySideLineRow,
+  type SideCell,
 } from '../diff-lines.js';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
@@ -1395,9 +1400,15 @@ button, input { font: inherit; color: inherit; }
               ></div>
             }
             <div class="diff-pane">
-              <div data-testid="diff-mode" role="group" aria-label="Diff">
-                <button type="button" data-testid="diff-mode-folded" [attr.aria-pressed]="diffMode() === 'folded'" (click)="chooseDiffMode('folded')">Folded</button>
-                <button type="button" data-testid="diff-mode-full" [attr.aria-pressed]="diffMode() === 'full'" (click)="chooseDiffMode('full')">Full file</button>
+              <div class="diff-toolbar">
+                <div data-testid="diff-mode" role="group" aria-label="Diff">
+                  <button type="button" data-testid="diff-mode-folded" [attr.aria-pressed]="diffMode() === 'folded'" (click)="chooseDiffMode('folded')">Folded</button>
+                  <button type="button" data-testid="diff-mode-full" [attr.aria-pressed]="diffMode() === 'full'" (click)="chooseDiffMode('full')">Full file</button>
+                </div>
+                <div data-testid="diff-layout" role="group" aria-label="Layout">
+                  <button type="button" data-testid="diff-layout-inline" [attr.aria-pressed]="diffLayout() === 'inline'" (click)="chooseDiffLayout('inline')">Inline</button>
+                  <button type="button" data-testid="diff-layout-side" [attr.aria-pressed]="diffLayout() === 'side'" (click)="chooseDiffLayout('side')">Side by side</button>
+                </div>
               </div>
             @if (showDiffTooLarge()) {
               <p data-testid="diff-too-large">This file is too large to show</p>
@@ -1422,6 +1433,33 @@ button, input { font: inherit; color: inherit; }
                             <div>
                               <button type="button" data-testid="diff-fold-more" (click)="revealFold(row, 'more')">3 more lines</button>
                               <button type="button" data-testid="diff-fold-all" (click)="revealFold(row, 'all')">All lines</button>
+                            </div>
+                          </div>
+                        } @else if (row.side; as side) {
+                          <div
+                            data-testid="diff-side-row"
+                            [style.height.px]="diffRowHeight"
+                            [style.lineHeight.px]="diffRowHeight"
+                          >
+                            <div data-testid="diff-side-old" [attr.data-kind]="side.old.kind">
+                              @if (side.old.kind !== 'empty') {
+                                <span data-testid="diff-old-number">{{ side.old.number ?? '' }}</span>
+                              }
+                              <span class="diff-code">
+                                @for (span of side.old.spans; track $index) {
+                                  <span [attr.data-changed]="span.changed ? 'true' : 'false'">{{ span.text }}</span>
+                                }
+                              </span>
+                            </div>
+                            <div data-testid="diff-side-new" [attr.data-kind]="side.new.kind">
+                              @if (side.new.kind !== 'empty') {
+                                <span data-testid="diff-new-number">{{ side.new.number ?? '' }}</span>
+                              }
+                              <span class="diff-code">
+                                @for (span of side.new.spans; track $index) {
+                                  <span [attr.data-changed]="span.changed ? 'true' : 'false'">{{ span.text }}</span>
+                                }
+                              </span>
                             </div>
                           </div>
                         } @else if (row.line; as line) {
@@ -2379,6 +2417,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly ideCommand = signal(this.initialSettings.ideCommand);
   readonly terminalMode = signal<TerminalMode>(this.initialSettings.terminalMode);
   readonly diffMode = signal<DiffMode>(this.initialSettings.diffMode);
+  readonly diffLayout = signal<DiffLayout>(this.initialSettings.diffLayout);
   readonly shellCommand = signal(this.initialSettings.shellCommand);
   readonly shellCommandDraft = signal(this.initialSettings.shellCommand);
   readonly shellCommandEditing = signal(false);
@@ -3057,6 +3096,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     saveDiffMode(mode);
     this.resetDiffScroll();
     this.refreshFullFileSides();
+  }
+
+  chooseDiffLayout(layout: DiffLayout): void {
+    this.diffLayout.set(layout);
+    saveDiffLayout(layout);
+    this.resetDiffScroll();
   }
 
   isSelectedCommit(commit: { sha?: string; subject: string }): boolean {
@@ -4111,15 +4156,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   private buildDiffWindow(): { height: number; offset: number; rows: DiffViewRow[] } {
     let offset = 0;
-    const rows = this.displayedRows().map((row, index) => {
+    const source: Array<FoldedRow | SideBySideLineRow> =
+      this.diffLayout() === 'side' ? sideBySideRows(this.displayedRows()) : this.displayedRows();
+    const rows = source.map((row, index) => {
       const height = row.kind === 'fold' ? this.diffFoldHeight : this.diffRowHeight;
       const placed: DiffViewRow = {
         index,
         offset,
         height,
         kind: row.kind,
-        line: row.kind === 'line' ? row.line : null,
+        line: row.kind === 'line' && 'line' in row ? row.line : null,
         fold: row.kind === 'fold' ? row : null,
+        side: row.kind === 'line' && 'old' in row ? { old: row.old, new: row.new } : null,
       };
       offset += height;
       return placed;
@@ -6654,6 +6702,7 @@ interface DiffViewRow {
   kind: 'line' | 'fold';
   line: DiffLine | null;
   fold: FoldedFoldRow | null;
+  side: { old: SideCell; new: SideCell } | null;
 }
 
 interface TerminalMenuState {

@@ -4157,6 +4157,47 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(addedSpace).backgroundColor).not.toBe(getComputedStyle(added).backgroundColor);
   });
 
+  it('keeps three lines of context around a middle change when diff.context is 0', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['config', 'diff.context', '0']);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const original = 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\n';
+    const edited = 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\n';
+    writeFileSync(join(feature, 'wide.txt'), original);
+    writeFileSync(join(feature, 'open.txt'), original);
+    git(feature, ['add', 'wide.txt', 'open.txt']);
+    git(feature, ['commit', '-m', 'Add the lines']);
+    writeFileSync(join(feature, 'wide.txt'), edited);
+    git(feature, ['add', 'wide.txt']);
+    git(feature, ['commit', '-m', 'Edit the lines']);
+    writeFileSync(join(feature, 'open.txt'), edited);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+
+    const expectThreeLines = (diff: HTMLElement): void => {
+      expect(diff.textContent).toContain('two');
+      expect(diff.textContent).toContain('three');
+      expect(diff.textContent).toContain('four');
+      expect(diff.textContent).toContain('FIVE');
+      expect(diff.textContent).toContain('six');
+      expect(diff.textContent).toContain('seven');
+      expect(diff.textContent).toContain('eight');
+      expect(diff.textContent).not.toContain('one');
+      expect(diff.textContent).not.toContain('nine');
+    };
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="open.txt"]').click();
+    fixture.detectChanges();
+    expectThreeLines(fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement);
+
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Edit the lines"]').click();
+    fixture.detectChanges();
+    expectThreeLines(fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement);
+  });
+
   it('keeps the line numbers in place and does not wrap the diff', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

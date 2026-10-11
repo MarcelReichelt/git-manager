@@ -1036,14 +1036,14 @@ export function readWorkingTreeDiff(repoPath: string, branch: string, filePath: 
   if (!checkout) {
     throw new Error(`No worktree for branch: ${branch}`);
   }
-  const tracked = gitText(checkout, ['diff', '-M', 'HEAD', '--', filePath], true);
+  const tracked = gitText(checkout, ['diff', '-M', '-U3', 'HEAD', '--', filePath], true);
   if (tracked !== '') {
     return tracked;
   }
   if (gitOptional(checkout, ['ls-files', '--error-unmatch', '--', filePath]) !== undefined) {
     return '';
   }
-  return gitText(checkout, ['diff', '--no-index', '--', '/dev/null', filePath], true);
+  return gitText(checkout, ['diff', '--no-index', '-U3', '--', '/dev/null', filePath], true);
 }
 
 export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
@@ -1051,7 +1051,7 @@ export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
 }
 
 export function readCommitFileDiff(repoPath: string, sha: string, filePath: string): string {
-  return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--format=', sha, '--', filePath], true);
+  return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '-U3', '--format=', sha, '--', filePath], true);
 }
 
 export interface DiffFileSides {

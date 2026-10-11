@@ -77,6 +77,14 @@ _Avoid_: shell mode
 The program an in-app terminal runs. Tmux mode does not use it.
 _Avoid_: terminal command
 
+**Preset**:
+A named set of terminal tabs to open in the selected worktree.
+_Avoid_: session, action, layout, arrangement
+
+**Startup command**:
+The text a terminal runs after its shell starts.
+_Avoid_: shell command
+
 **Sibling**:
 The worktree layout where the branch checkout is a folder next to the main repo folder, named from the branch.
 _Avoid_: side-by-side

@@ -17,6 +17,7 @@ import {
   saveArrangement,
   saveContentColor,
   saveDefaultLayout,
+  saveDiffMode,
   saveIdeCommand,
   saveOpenRepositoryTabs,
   pinWorktree,
@@ -70,6 +71,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -200,6 +202,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -242,6 +245,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -285,6 +289,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -316,6 +321,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -550,6 +556,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -591,6 +598,7 @@ describe('app settings', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -1084,5 +1092,52 @@ describe('app settings', () => {
     clearRepositorySidebarText(repoPath);
 
     expect(existsSync(join(repoPath, '.git-worktree-manager', 'config.toml'))).toBe(false);
+  });
+
+  it('starts the diff on Folded when that setting is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"defaultLayout":"sibling","terminalMode":"tmux"}\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).diffMode).toBe('folded');
+  });
+
+  it('saves Full file without dropping the layout or other settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(
+      settingsPath,
+      '{"theme":"mint","defaultLayout":"sibling","terminalMode":"tmux","shellCommand":"/bin/zsh"}\n',
+    );
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    saveDiffMode('full', env);
+
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({
+      theme: 'mint',
+      defaultLayout: 'sibling',
+      terminalMode: 'tmux',
+      shellCommand: '/bin/zsh',
+      diffMode: 'full',
+    });
+    expect(readAppSettings(env).diffMode).toBe('full');
+
+    saveDiffMode('folded', env);
+
+    expect(readAppSettings(env).diffMode).toBe('folded');
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).theme).toBe('mint');
+  });
+
+  it('uses Folded when the saved diff mode is not folded or full', () => {
+    const root = mkdtempSync(join(tmpdir(), 'git-worktree-manager-app-settings-'));
+    roots.push(root);
+    const settingsPath = join(root, 'app-settings.json');
+    writeFileSync(settingsPath, '{"diffMode":"side-by-side"}\n');
+    const env = { GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH: settingsPath };
+
+    expect(readAppSettings(env).diffMode).toBe('folded');
   });
 });

@@ -1,7 +1,8 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
-import { dirname, resolve, sep } from 'node:path';
+import { lstatSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { readPinnedWorktrees } from './app-settings.js';
+import { fullFileByteLimit } from './diff-lines.js';
 
 export type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -1053,20 +1054,25 @@ export function readCommitFileDiff(repoPath: string, sha: string, filePath: stri
   return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--format=', sha, '--', filePath], true);
 }
 
+export interface DiffFileSides {
+  oldText: string;
+  newText: string;
+  tooLarge: boolean;
+}
+
 export function readWorkingTreeFileSides(
   repoPath: string,
   branch: string,
   filePath: string,
   previousPath: string | null,
-): { oldText: string; newText: string } {
+  binary = false,
+): DiffFileSides {
   const checkout = worktreePath(repoPath, branch);
   if (!checkout) {
-    return { oldText: '', newText: '' };
+    return { oldText: '', newText: '', tooLarge: false };
   }
-  return {
-    oldText: gitBlob(checkout, `HEAD:${blobPath(previousPath, filePath)}`),
-    newText: readCheckoutText(checkout, filePath),
-  };
+  const oldSpec = `HEAD:${sidePath(filePath, previousPath)}`;
+  return readFileSides(readGitBlob(checkout, oldSpec), readCheckoutFile(checkout, filePath), binary);
 }
 
 export function readCommitFileSides(
@@ -1074,36 +1080,64 @@ export function readCommitFileSides(
   sha: string,
   filePath: string,
   previousPath: string | null,
-): { oldText: string; newText: string } {
-  const oldPath = blobPath(previousPath, filePath);
-  return {
-    oldText: gitBlob(repoPath, `${sha}^:${oldPath}`),
-    newText: gitBlob(repoPath, `${sha}:${filePath}`),
-  };
+  binary = false,
+): DiffFileSides {
+  const oldSpec = `${sha}^:${sidePath(filePath, previousPath)}`;
+  return readFileSides(readGitBlob(repoPath, oldSpec), readGitBlob(repoPath, `${sha}:${filePath}`), binary);
 }
 
-function blobPath(previousPath: string | null, filePath: string): string {
-  const previous = previousPath?.trim() ?? '';
-  return previous !== '' ? previous : filePath;
+function sidePath(filePath: string, previousPath: string | null): string {
+  if (previousPath !== null && previousPath !== '') {
+    return previousPath;
+  }
+  return filePath;
 }
 
-function gitBlob(cwd: string, revPath: string): string {
+function readFileSides(
+  oldSide: { text: string; tooLarge: boolean },
+  newSide: { text: string; tooLarge: boolean },
+  binary: boolean,
+): DiffFileSides {
+  if (oldSide.tooLarge || newSide.tooLarge) {
+    return { oldText: '', newText: '', tooLarge: true };
+  }
+  if (binary) {
+    return { oldText: '', newText: '', tooLarge: false };
+  }
+  return { oldText: oldSide.text, newText: newSide.text, tooLarge: false };
+}
+
+function readGitBlob(cwd: string, spec: string): { text: string; tooLarge: boolean } {
+  const sizeText = gitOptional(cwd, ['cat-file', '-s', spec]);
+  if (sizeText === undefined || !/^\d+$/.test(sizeText)) {
+    return { text: '', tooLarge: false };
+  }
+  if (Number(sizeText) > fullFileByteLimit) {
+    return { text: '', tooLarge: true };
+  }
   try {
-    return execFileSync('git', ['show', revPath], {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    return {
+      text: execFileSync('git', ['cat-file', '-p', spec], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: fullFileByteLimit + 1024,
+      }),
+      tooLarge: false,
+    };
   } catch {
-    return '';
+    return { text: '', tooLarge: false };
   }
 }
 
-function readCheckoutText(checkout: string, filePath: string): string {
+function readCheckoutFile(checkout: string, filePath: string): { text: string; tooLarge: boolean } {
+  const full = join(checkout, filePath);
   try {
-    return readFileSync(resolve(checkout, filePath), 'utf8');
+    if (statSync(full).size > fullFileByteLimit) {
+      return { text: '', tooLarge: true };
+    }
+    return { text: readFileSync(full, 'utf8'), tooLarge: false };
   } catch {
-    return '';
+    return { text: '', tooLarge: false };
   }
 }

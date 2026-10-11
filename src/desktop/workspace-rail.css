@@ -620,7 +620,40 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: 12px;
 }
 
-[data-testid='empty-diff'] {
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-testid='diff-mode'] {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 8px 8px 4px;
+}
+
+[data-testid='diff-mode'] button {
+  padding: 2px 8px;
+  border: 1px solid rgba(58, 58, 56, 0.25);
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+[data-testid='diff-mode'] button[aria-pressed='true'] {
+  background: var(--forest);
+  border-color: var(--forest);
+  color: white;
+}
+
+[data-testid='empty-diff'],
+[data-testid='diff-too-large'] {
   margin: 0;
   padding: 16px;
   color: rgba(58, 58, 56, 0.7);

@@ -1140,7 +1140,7 @@ button, input { font: inherit; color: inherit; }
                 <div
                   data-testid="hover-menu"
                   class="branch-actions"
-                  [class.is-open]="openBranch() === branch.name"
+                  [class.is-open]="openBranch() === branch.name && branchHasActions(branch.name)"
                   (contextmenu)="keepBranchMenu($event)"
                 >
                     @if (canPinWorktree(branch.name)) {
@@ -2972,7 +2972,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   openBranchMenu(name: string, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.branchHasActions(name)) {
+      this.openBranch.set(null);
+      return;
+    }
     this.openBranch.set(this.openBranch() === name ? null : name);
+  }
+
+  branchHasActions(name: string): boolean {
+    if (name !== this.defaultBranchName()) {
+      return true;
+    }
+    return this.branches().find((branch) => branch.name === name)?.status === 'local-only';
   }
 
   keepBranchMenu(event: MouseEvent): void {

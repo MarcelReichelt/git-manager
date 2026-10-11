@@ -3591,6 +3591,41 @@ describe('desktop workspace', () => {
     expect(menu.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe('Remove worktree');
   });
 
+  it('does nothing when the default branch menu would be empty', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const remotePath = join(repoPath, '..', 'origin.git');
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const feature = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    openWorktreeMenu(feature);
+    fixture.detectChanges();
+    expect(feature.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="master"]');
+    expect(row.getAttribute('data-status')).toBe('local-and-remote');
+    const opened = openWorktreeMenu(row.querySelector('.branch-name') as Element);
+    fixture.detectChanges();
+
+    expect(opened.defaultPrevented).toBe(true);
+    expect(row.classList.contains('is-selected')).toBe(false);
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+    expect(feature.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(row.querySelector('[data-testid="push-branch"]')).toBeNull();
+    expect(row.querySelector('[data-testid="pin-worktree"]')).toBeNull();
+    expect(row.querySelector('[data-testid="update-from-master"]')).toBeNull();
+    expect(row.querySelector('[data-testid="merge-into-master"]')).toBeNull();
+    expect(row.querySelector('[data-testid="remove-worktree"]')).toBeNull();
+  });
+
   it('keeps Push on the default branch menu when that branch is local only', async () => {
     const repoPath = createEmptyRepository(roots);
     process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');

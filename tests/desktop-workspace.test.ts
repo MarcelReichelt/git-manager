@@ -903,11 +903,15 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(fixture.nativeElement.querySelector('[data-testid="create-worktree"]')).backgroundColor).toBe(
       'rgb(171, 205, 239)',
     );
+    const menuEvent = openWorktreeMenu(
+      fixture.nativeElement.querySelector('.branch-row.is-selected') as Element,
+    );
+    fixture.detectChanges();
+    expect(menuEvent.defaultPrevented).toBe(true);
     expect(
-      getComputedStyle(
-        fixture.nativeElement.querySelector('.branch-row.is-selected [data-testid="branch-menu"]'),
-      ).backgroundColor,
+      getComputedStyle(fixture.nativeElement.querySelector('[data-testid="hover-menu"].is-open')).backgroundColor,
     ).toBe('rgb(171, 205, 239)');
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-menu"]')).toBeNull();
     expect(readAppSettings().contentColor).toBe('#abcdef');
   });
 
@@ -3327,7 +3331,7 @@ describe('desktop workspace', () => {
 
     const row = fixture.nativeElement.querySelector('[data-branch="test"]');
     expect(row.getAttribute('data-status')).toBe('local-only');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     const menu = row.querySelector('[data-testid="hover-menu"]');
     expect(menu.querySelector('[data-testid="push-branch"]').textContent.trim()).toBe('Push');
@@ -3363,7 +3367,7 @@ describe('desktop workspace', () => {
     );
 
     const row = fixture.nativeElement.querySelector('[data-branch="test"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="push-branch"]').click();
     fixture.detectChanges();
@@ -3383,7 +3387,7 @@ describe('desktop workspace', () => {
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
     const closedMenu = row.querySelector('[data-testid="hover-menu"]');
     expect(closedMenu.classList.contains('is-open')).toBe(false);
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
@@ -3409,12 +3413,12 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const tracked = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    tracked.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(tracked);
     fixture.detectChanges();
     expect(tracked.querySelector('[data-testid="push-branch"]')).toBeNull();
 
     const local = fixture.nativeElement.querySelector('[data-branch="wip"]');
-    local.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(local);
     fixture.detectChanges();
     const push = local.querySelector('[data-testid="push-branch"]');
     expect(push.textContent.trim()).toBe('Push');
@@ -3440,12 +3444,12 @@ describe('desktop workspace', () => {
 
     expect(branchNames(fixture)).toEqual(['master', 'zeta', 'feature']);
     const master = fixture.nativeElement.querySelector('[data-branch="master"]');
-    master.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(master);
     fixture.detectChanges();
     expect(master.querySelector('[data-testid="pin-worktree"]')).toBeNull();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     const pin = row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement;
     expect(pin.textContent?.trim()).toBe('Pin');
@@ -3470,7 +3474,7 @@ describe('desktop workspace', () => {
     const restarted = await renderRepository(repoPath);
     expect(branchNames(restarted)).toEqual(['master', 'feature', 'zeta']);
     const again = restarted.nativeElement.querySelector('[data-branch="feature"]');
-    again.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(again);
     restarted.detectChanges();
     expect(again.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Unpin');
     expect(again.querySelector('[data-testid="worktree-pin"]')).not.toBeNull();
@@ -3494,12 +3498,12 @@ describe('desktop workspace', () => {
 
     expect(branchNames(fixture)).toEqual(['zeta', 'feature']);
     const primary = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    primary.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(primary);
     fixture.detectChanges();
     expect(primary.querySelector('[data-testid="pin-worktree"]')).toBeNull();
 
     const row = fixture.nativeElement.querySelector('[data-branch="zeta"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     (row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -3525,7 +3529,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     (row.querySelector('[data-testid="pin-worktree"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -3541,7 +3545,7 @@ describe('desktop workspace', () => {
     const restored = await renderRepository(repoPath);
     expect(branchNames(restored)).toEqual(['master', 'zeta', 'feature']);
     const recreated = restored.nativeElement.querySelector('[data-branch="feature"]');
-    recreated.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(recreated);
     restored.detectChanges();
     expect(recreated.querySelector('[data-testid="pin-worktree"]')?.textContent?.trim()).toBe('Pin');
   });
@@ -3555,7 +3559,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="main"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
@@ -3574,7 +3578,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
@@ -3587,6 +3591,41 @@ describe('desktop workspace', () => {
     expect(menu.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe('Remove worktree');
   });
 
+  it('does nothing when the default branch menu would be empty', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const remotePath = join(repoPath, '..', 'origin.git');
+    mkdirSync(remotePath, { recursive: true });
+    execFileSync('git', ['init', '--bare', '-b', 'master'], { cwd: remotePath, stdio: 'ignore' });
+    git(repoPath, ['remote', 'add', 'origin', remotePath]);
+    git(repoPath, ['push', '-u', 'origin', 'master']);
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'feature'), 'feature']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const feature = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    openWorktreeMenu(feature);
+    fixture.detectChanges();
+    expect(feature.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    const row = fixture.nativeElement.querySelector('[data-branch="master"]');
+    expect(row.getAttribute('data-status')).toBe('local-and-remote');
+    const opened = openWorktreeMenu(row.querySelector('.branch-name') as Element);
+    fixture.detectChanges();
+
+    expect(opened.defaultPrevented).toBe(true);
+    expect(row.classList.contains('is-selected')).toBe(false);
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+    expect(feature.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(row.querySelector('[data-testid="push-branch"]')).toBeNull();
+    expect(row.querySelector('[data-testid="pin-worktree"]')).toBeNull();
+    expect(row.querySelector('[data-testid="update-from-master"]')).toBeNull();
+    expect(row.querySelector('[data-testid="merge-into-master"]')).toBeNull();
+    expect(row.querySelector('[data-testid="remove-worktree"]')).toBeNull();
+  });
+
   it('keeps Push on the default branch menu when that branch is local only', async () => {
     const repoPath = createEmptyRepository(roots);
     process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
@@ -3595,7 +3634,7 @@ describe('desktop workspace', () => {
 
     const row = fixture.nativeElement.querySelector('[data-branch="master"]');
     expect(row.getAttribute('data-status')).toBe('local-only');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
@@ -3636,7 +3675,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     const menu = row.querySelector('[data-testid="hover-menu"]');
@@ -3656,8 +3695,11 @@ describe('desktop workspace', () => {
 
     const login = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
     const wip = fixture.nativeElement.querySelector('[data-branch="wip"]');
-    login.querySelector('[data-testid="branch-menu"]').click();
+    expect(fixture.nativeElement.querySelector('[data-testid="branch-menu"]')).toBeNull();
+    const opened = openWorktreeMenu(login.querySelector('.branch-name') as Element);
     fixture.detectChanges();
+    expect(opened.defaultPrevented).toBe(true);
+    expect(login.classList.contains('is-selected')).toBe(false);
 
     const loginMenu = login.querySelector('[data-testid="hover-menu"]');
     expect(loginMenu.classList.contains('is-open')).toBe(true);
@@ -3672,7 +3714,7 @@ describe('desktop workspace', () => {
       'Remove worktree',
     );
 
-    wip.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(wip);
     fixture.detectChanges();
 
     const wipMenu = wip.querySelector('[data-testid="hover-menu"]');
@@ -3682,18 +3724,23 @@ describe('desktop workspace', () => {
     expect(getComputedStyle(wipMenu).display).toBe('block');
   });
 
-  it('closes the branch menu when that branch menu button is pressed again', async () => {
+  it('closes the branch menu when that worktree is right-clicked again', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    const button = row.querySelector('[data-testid="branch-menu"]');
-    button.click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
 
-    button.click();
+    const onMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 48 });
+    row.querySelector('[data-testid="hover-menu"]').dispatchEvent(onMenu);
+    fixture.detectChanges();
+    expect(onMenu.defaultPrevented).toBe(true);
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
+
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
@@ -3713,7 +3760,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
 
@@ -3724,6 +3771,15 @@ describe('desktop workspace', () => {
     fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
     fixture.detectChanges();
 
+    expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
+    expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
+
+    openWorktreeMenu(row);
+    fixture.detectChanges();
+    const outside = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 200 });
+    fixture.nativeElement.querySelector('[data-testid="content-sheet"]').dispatchEvent(outside);
+    fixture.detectChanges();
+    expect(outside.defaultPrevented).toBe(true);
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
     expect(getComputedStyle(row.querySelector('[data-testid="hover-menu"]')).display).toBe('none');
     expect(branchNames(fixture)).toEqual([
@@ -3741,7 +3797,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(true);
 
@@ -3769,7 +3825,7 @@ describe('desktop workspace', () => {
     openRepositoryCard(fixture);
     fixture.detectChanges();
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="switching-overlay"]')).not.toBeNull();
@@ -3812,21 +3868,21 @@ describe('desktop workspace', () => {
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
 
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     fixture.nativeElement.querySelector('[data-testid="content-sheet"]').click();
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
 
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
 
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="hover-menu"]').classList.contains('is-open')).toBe(false);
 
@@ -4913,7 +4969,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -4943,7 +4999,7 @@ describe('desktop workspace', () => {
     row.click();
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="behind"]').textContent.trim()).toBe('1');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="update-from-master"]').click();
     fixture.detectChanges();
@@ -4964,7 +5020,7 @@ describe('desktop workspace', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="merge-into-master-dialog"]')).toBeNull();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -4999,7 +5055,7 @@ describe('desktop workspace', () => {
     row.click();
     fixture.detectChanges();
     expect(row.querySelector('[data-testid="ahead"]').textContent.trim()).toBe('1');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -5029,7 +5085,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -5061,7 +5117,7 @@ describe('desktop workspace', () => {
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
     row.click();
     fixture.detectChanges();
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -5090,7 +5146,7 @@ describe('desktop workspace', () => {
     const fixture = await renderRepository(repoPath);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
     await confirmKeepBranch(fixture);
@@ -5677,7 +5733,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -5727,7 +5783,7 @@ describe('desktop workspace', () => {
     fixture.detectChanges();
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature/login"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="merge-into-master"]').click();
     fixture.detectChanges();
@@ -7122,7 +7178,7 @@ describe('desktop workspace', () => {
     const held = holdPaint();
     try {
       const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-      row.querySelector('[data-testid="branch-menu"]').click();
+      openWorktreeMenu(row);
       fixture.detectChanges();
       row.querySelector('[data-testid="update-from-master"]').click();
       fixture.detectChanges();
@@ -7151,7 +7207,7 @@ describe('desktop workspace', () => {
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
     row.click();
     fixture.detectChanges();
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
     await confirmKeepBranch(fixture);
@@ -7815,7 +7871,7 @@ describe('desktop workspace', () => {
     git(repoPath, ['update-ref', 'refs/remotes/origin/stale', git(repoPath, ['rev-parse', 'HEAD'])]);
 
     const row = fixture.nativeElement.querySelector('[data-branch="feature"]');
-    row.querySelector('[data-testid="branch-menu"]').click();
+    openWorktreeMenu(row);
     fixture.detectChanges();
     row.querySelector('[data-testid="remove-worktree"]').click();
     await confirmKeepBranch(fixture);
@@ -8352,6 +8408,17 @@ function horizontalGap(left: HTMLElement, right: HTMLElement): number {
   const gap = Number.parseFloat(parentStyle.columnGap);
   const between = Number.isFinite(gap) ? gap : 0;
   return between + boxEdge(getComputedStyle(left).marginRight) + boxEdge(getComputedStyle(right).marginLeft);
+}
+
+function openWorktreeMenu(row: Element): MouseEvent {
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: 32,
+    clientY: 18,
+  });
+  row.dispatchEvent(event);
+  return event;
 }
 
 function branchNames(fixture: { nativeElement: HTMLElement }): string[] {

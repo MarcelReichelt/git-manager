@@ -324,28 +324,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .branch-stats > span { display: block; }
 
-[data-testid='branch-menu'] {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex: none;
-  padding: 0;
-  border: 1px solid rgba(58, 58, 56, 0.2);
-  border-radius: 8px;
-  background-color: var(--paper);
-  color: var(--grid);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.branch-row:hover > [data-testid='branch-menu'],
-.branch-row:focus-within > [data-testid='branch-menu'],
-.branch-row.is-selected > [data-testid='branch-menu'] {
-  opacity: 1;
-}
-
 .branch-actions { display: none; }
 
 .branch-actions.is-open {

@@ -1180,7 +1180,7 @@ button, input { font: inherit; color: inherit; }
                         Push
                       </button>
                     }
-                    @if (branch.name !== defaultBranchName()) {
+                    @if (canRemoveWorktree(branch.name)) {
                       <button
                         type="button"
                         data-testid="remove-worktree"
@@ -4436,6 +4436,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.effectivePath() !== null && name !== this.defaultBranchName() && name !== this.primaryBranchName();
   }
 
+  canRemoveWorktree(name: string): boolean {
+    return name !== this.defaultBranchName() && name !== this.primaryBranchName();
+  }
+
   toggleWorktreePin(name: string, event: Event): void {
     event.stopPropagation();
     const path = this.effectivePath();
@@ -4452,6 +4456,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
 
   removeBranch(name: string, event: Event): void {
     event.stopPropagation();
+    if (!this.canRemoveWorktree(name)) {
+      return;
+    }
     this.workspaceError.set(null);
     this.removeForceDelete.set(false);
     this.removeDialogBranch.set(name);

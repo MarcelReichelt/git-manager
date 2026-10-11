@@ -3513,6 +3513,37 @@ describe('desktop workspace', () => {
     expect(primary.querySelector('[data-testid="worktree-pin"]')).toBeNull();
   });
 
+  it('omits remove from the primary checkout when that checkout is not the default branch', async () => {
+    const repoPath = createEmptyRepository(roots);
+    git(repoPath, ['checkout', '-b', 'feature']);
+    git(repoPath, ['branch', 'zeta']);
+    git(repoPath, ['worktree', 'add', join(repoPath, '.workspaces', 'zeta'), 'zeta']);
+    process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    addRepository(repoPath, 'Harbor');
+    const fixture = await renderRepository(repoPath);
+
+    const primary = fixture.nativeElement.querySelector('[data-branch="feature"]');
+    openWorktreeMenu(primary);
+    fixture.detectChanges();
+
+    const menu = primary.querySelector('[data-testid="hover-menu"]');
+    expect(menu.classList.contains('is-open')).toBe(true);
+    expect(menu.querySelector('[data-testid="update-from-master"]').textContent.trim()).toBe(
+      'Update from master',
+    );
+    expect(menu.querySelector('[data-testid="merge-into-master"]').textContent.trim()).toBe(
+      'Merge into master',
+    );
+    expect(menu.querySelector('[data-testid="remove-worktree"]')).toBeNull();
+
+    const linked = fixture.nativeElement.querySelector('[data-branch="zeta"]');
+    openWorktreeMenu(linked);
+    fixture.detectChanges();
+    expect(linked.querySelector('[data-testid="remove-worktree"]').textContent.trim()).toBe(
+      'Remove worktree',
+    );
+  });
+
   it('removes a worktree pin when that worktree is removed', async () => {
     const repoPath = createEmptyRepository(roots);
     git(repoPath, ['branch', 'feature']);

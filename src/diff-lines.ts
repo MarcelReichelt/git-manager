@@ -193,6 +193,292 @@ function changedTokens(before: string[], after: string[]): { oldChanged: boolean
   return { oldChanged, newChanged };
 }
 
+export interface FoldedLineRow {
+  kind: 'line';
+  line: DiffLine;
+}
+
+export interface FoldedFoldRow {
+  kind: 'fold';
+  id: string;
+  hidden: number;
+  label: string;
+  tooLarge: boolean;
+  hasStart: boolean;
+  hasEnd: boolean;
+}
+
+export type FoldedRow = FoldedLineRow | FoldedFoldRow;
+
+export interface FoldedDiff {
+  rows: FoldedRow[];
+  previousPath: string | null;
+  binary: boolean;
+}
+
+export interface FoldSides {
+  oldText: string;
+  newText: string;
+}
+
+export interface FoldOpening {
+  fromStart: number;
+  fromEnd: number;
+  all: boolean;
+  tooLarge: boolean;
+}
+
+export type FoldOpenings = Readonly<Record<string, FoldOpening>>;
+
+interface HunkRange {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+}
+
+interface FoldGap {
+  id: string;
+  oldStart: number;
+  oldEnd: number;
+  hasStart: boolean;
+  hasEnd: boolean;
+  delta: number;
+}
+
+const hiddenLineLimit = 100_000;
+const foldRevealCount = 3;
+
+export function foldInlineDiff(
+  patch: string,
+  sides: FoldSides,
+  openings: FoldOpenings = {},
+  options: DiffLinesOptions = {},
+): FoldedDiff {
+  const diff = diffLines(patch, options);
+  const hunks = hunkRanges(patch);
+  const counts = hunkLineCounts(patch);
+  const oldLines = splitFileLines(sides.oldText);
+  const gaps = foldGaps(hunks, oldLines.length);
+  const rows: FoldedRow[] = [];
+  let cursor = 0;
+  const leading = gaps.find((gap) => !gap.hasStart && gap.hasEnd);
+  if (leading) {
+    rows.push(...rowsForGap(leading, openings[leading.id], oldLines));
+  }
+  for (let index = 0; index < hunks.length; index += 1) {
+    const count = counts[index] ?? 0;
+    for (const line of diff.lines.slice(cursor, cursor + count)) {
+      rows.push({ kind: 'line', line });
+    }
+    cursor += count;
+    if (index < hunks.length - 1) {
+      const previous = hunks[index];
+      const next = hunks[index + 1];
+      if (previous && next) {
+        const middle = gaps.find((gap) => gap.oldStart === previousLast(previous) + 1 && gap.hasStart && gap.hasEnd);
+        if (middle) {
+          rows.push(...rowsForGap(middle, openings[middle.id], oldLines));
+        }
+      }
+    }
+  }
+  if (cursor < diff.lines.length) {
+    for (const line of diff.lines.slice(cursor)) {
+      rows.push({ kind: 'line', line });
+    }
+  }
+  const trailing = gaps.find((gap) => gap.hasStart && !gap.hasEnd);
+  if (trailing) {
+    rows.push(...rowsForGap(trailing, openings[trailing.id], oldLines));
+  }
+  return { rows, previousPath: diff.previousPath, binary: diff.binary };
+}
+
+export function openFoldMore(openings: FoldOpenings, fold: FoldedFoldRow): FoldOpenings {
+  const current = openings[fold.id] ?? { fromStart: 0, fromEnd: 0, all: false, tooLarge: false };
+  const reveal = (fold.hasStart ? foldRevealCount : 0) + (fold.hasEnd ? foldRevealCount : 0);
+  if (fold.hidden <= reveal) {
+    return { ...openings, [fold.id]: { ...current, all: true, tooLarge: false } };
+  }
+  const nextHidden = fold.hidden - reveal;
+  return {
+    ...openings,
+    [fold.id]: {
+      fromStart: current.fromStart + (fold.hasStart ? foldRevealCount : 0),
+      fromEnd: current.fromEnd + (fold.hasEnd ? foldRevealCount : 0),
+      all: false,
+      tooLarge: current.tooLarge && nextHidden > hiddenLineLimit,
+    },
+  };
+}
+
+export function openFoldAll(openings: FoldOpenings, fold: FoldedFoldRow): FoldOpenings {
+  const current = openings[fold.id] ?? { fromStart: 0, fromEnd: 0, all: false, tooLarge: false };
+  if (fold.hidden > hiddenLineLimit) {
+    return { ...openings, [fold.id]: { ...current, tooLarge: true } };
+  }
+  return { ...openings, [fold.id]: { ...current, all: true, tooLarge: false } };
+}
+
+function rowsForGap(gap: FoldGap, opening: FoldOpening | undefined, oldLines: string[]): FoldedRow[] {
+  const total = gap.oldEnd - gap.oldStart + 1;
+  const state = opening ?? { fromStart: 0, fromEnd: 0, all: false, tooLarge: false };
+  if (state.all) {
+    return rangeLines(gap.oldStart, gap.oldEnd, gap.delta, oldLines).map((line) => ({ kind: 'line', line }));
+  }
+  const fromStart = gap.hasStart ? Math.min(state.fromStart, total) : 0;
+  const fromEnd = gap.hasEnd ? Math.min(state.fromEnd, Math.max(0, total - fromStart)) : 0;
+  const hiddenStart = gap.oldStart + fromStart;
+  const hiddenEnd = gap.oldEnd - fromEnd;
+  const hidden = hiddenEnd - hiddenStart + 1;
+  if (hidden <= 0) {
+    return rangeLines(gap.oldStart, gap.oldEnd, gap.delta, oldLines).map((line) => ({ kind: 'line', line }));
+  }
+  const rows: FoldedRow[] = rangeLines(gap.oldStart, hiddenStart - 1, gap.delta, oldLines).map((line) => ({
+    kind: 'line',
+    line,
+  }));
+  rows.push({
+    kind: 'fold',
+    id: gap.id,
+    hidden,
+    label: hidden === 1 ? '1 hidden line' : `${hidden} hidden lines`,
+    tooLarge: state.tooLarge,
+    hasStart: gap.hasStart,
+    hasEnd: gap.hasEnd,
+  });
+  rows.push(...rangeLines(hiddenEnd + 1, gap.oldEnd, gap.delta, oldLines).map((line) => ({ kind: 'line' as const, line })));
+  return rows;
+}
+
+function rangeLines(start: number, end: number, delta: number, oldLines: string[]): DiffLine[] {
+  const lines: DiffLine[] = [];
+  for (let oldNumber = start; oldNumber <= end; oldNumber += 1) {
+    const newNumber = oldNumber + delta;
+    const text = oldLines[oldNumber - 1] ?? '';
+    lines.push({
+      kind: 'context',
+      oldNumber,
+      newNumber,
+      text,
+      spans: [{ text, changed: false }],
+    });
+  }
+  return lines;
+}
+
+function foldGaps(hunks: HunkRange[], oldLineCount: number): FoldGap[] {
+  const first = hunks[0];
+  if (!first) {
+    return [];
+  }
+  const gaps: FoldGap[] = [];
+  const firstOld = first.oldCount === 0 ? first.oldStart + 1 : first.oldStart;
+  if (firstOld > 1) {
+    gaps.push({
+      id: `1-${firstOld - 1}`,
+      oldStart: 1,
+      oldEnd: firstOld - 1,
+      hasStart: false,
+      hasEnd: true,
+      delta: 0,
+    });
+  }
+  let delta = first.newCount - first.oldCount;
+  for (let index = 0; index < hunks.length - 1; index += 1) {
+    const previous = hunks[index];
+    const next = hunks[index + 1];
+    if (!previous || !next) {
+      continue;
+    }
+    const lastOld = previousLast(previous);
+    const nextOld = next.oldCount === 0 ? next.oldStart + 1 : next.oldStart;
+    if (nextOld > lastOld + 1) {
+      gaps.push({
+        id: `${lastOld + 1}-${nextOld - 1}`,
+        oldStart: lastOld + 1,
+        oldEnd: nextOld - 1,
+        hasStart: true,
+        hasEnd: true,
+        delta,
+      });
+    }
+    delta += next.newCount - next.oldCount;
+  }
+  const last = hunks[hunks.length - 1];
+  if (!last) {
+    return gaps;
+  }
+  const lastOld = previousLast(last);
+  if (oldLineCount > lastOld) {
+    gaps.push({
+      id: `${lastOld + 1}-${oldLineCount}`,
+      oldStart: lastOld + 1,
+      oldEnd: oldLineCount,
+      hasStart: true,
+      hasEnd: false,
+      delta,
+    });
+  }
+  return gaps;
+}
+
+function previousLast(hunk: HunkRange): number {
+  return hunk.oldCount === 0 ? hunk.oldStart : hunk.oldStart + hunk.oldCount - 1;
+}
+
+function hunkRanges(patch: string): HunkRange[] {
+  const hunks: HunkRange[] = [];
+  for (const line of patch.split('\n')) {
+    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!header) {
+      continue;
+    }
+    hunks.push({
+      oldStart: Number(header[1]),
+      oldCount: header[2] === undefined ? 1 : Number(header[2]),
+      newStart: Number(header[3]),
+      newCount: header[4] === undefined ? 1 : Number(header[4]),
+    });
+  }
+  return hunks;
+}
+
+function hunkLineCounts(patch: string): number[] {
+  const counts: number[] = [];
+  let current = -1;
+  for (const line of patch.split('\n')) {
+    if (line.length === 0) {
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      counts.push(0);
+      current = counts.length - 1;
+      continue;
+    }
+    if (current < 0 || line.startsWith('\\')) {
+      continue;
+    }
+    const marker = line[0];
+    if (marker === ' ' || marker === '-' || marker === '+') {
+      counts[current] = (counts[current] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+function splitFileLines(text: string): string[] {
+  if (text === '') {
+    return [];
+  }
+  const lines = text.split('\n');
+  if (lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  return lines;
+}
+
 function coalesce(tokens: string[], changed: boolean[]): DiffSpan[] {
   const spans: DiffSpan[] = [];
   for (let index = 0; index < tokens.length; index += 1) {

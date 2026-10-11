@@ -1052,3 +1052,58 @@ export function readCommitFiles(repoPath: string, sha: string): ChangedFile[] {
 export function readCommitFileDiff(repoPath: string, sha: string, filePath: string): string {
   return gitText(repoPath, ['show', '-m', '--first-parent', '-M', '--format=', sha, '--', filePath], true);
 }
+
+export function readWorkingTreeFileSides(
+  repoPath: string,
+  branch: string,
+  filePath: string,
+  previousPath: string | null,
+): { oldText: string; newText: string } {
+  const checkout = worktreePath(repoPath, branch);
+  if (!checkout) {
+    return { oldText: '', newText: '' };
+  }
+  return {
+    oldText: gitBlob(checkout, `HEAD:${blobPath(previousPath, filePath)}`),
+    newText: readCheckoutText(checkout, filePath),
+  };
+}
+
+export function readCommitFileSides(
+  repoPath: string,
+  sha: string,
+  filePath: string,
+  previousPath: string | null,
+): { oldText: string; newText: string } {
+  const oldPath = blobPath(previousPath, filePath);
+  return {
+    oldText: gitBlob(repoPath, `${sha}^:${oldPath}`),
+    newText: gitBlob(repoPath, `${sha}:${filePath}`),
+  };
+}
+
+function blobPath(previousPath: string | null, filePath: string): string {
+  const previous = previousPath?.trim() ?? '';
+  return previous !== '' ? previous : filePath;
+}
+
+function gitBlob(cwd: string, revPath: string): string {
+  try {
+    return execFileSync('git', ['show', revPath], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch {
+    return '';
+  }
+}
+
+function readCheckoutText(checkout: string, filePath: string): string {
+  try {
+    return readFileSync(resolve(checkout, filePath), 'utf8');
+  } catch {
+    return '';
+  }
+}

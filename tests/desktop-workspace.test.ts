@@ -8503,7 +8503,286 @@ describe('desktop workspace', () => {
     expect(git(repoPath, ['rev-parse', 'refs/remotes/origin/feature'])).toBe(fetched);
     expect(fixture.nativeElement.querySelector('[data-testid="repository-tab"]').getAttribute('data-path')).toBe(repoPath);
   });
+
+  describe('diff folds', () => {
+    it('shows a middle fold and reveals three lines at each edge', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const lines = Array.from({ length: 24 }, (_, index) => `n${String(index + 1).padStart(2, '0')}`);
+      writeFileSync(join(feature, 'notes.txt'), `${lines.join('\n')}\n`);
+      git(feature, ['add', 'notes.txt']);
+      git(feature, ['commit', '-m', 'Add notes']);
+      lines[4] = 'N05';
+      lines[19] = 'N20';
+      writeFileSync(join(feature, 'notes.txt'), `${lines.join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      fixture.detectChanges();
+      fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="notes.txt"]').click();
+      fixture.detectChanges();
+
+      const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+      const fold = foldWithCount(diff, '8 hidden lines');
+      expect(fold.querySelector('[data-testid="diff-fold-more"]')?.textContent).toBe('3 more lines');
+      expect(fold.querySelector('[data-testid="diff-fold-all"]')?.textContent).toBe('All lines');
+      expect(diff.textContent).toContain('n04');
+      expect(diff.textContent).toContain('n17');
+      expect(diff.textContent).not.toContain('n09');
+      expect(diff.textContent).not.toContain('n16');
+
+      (fold.querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(diff.textContent).toContain('n09');
+      expect(diff.textContent).toContain('n11');
+      expect(diff.textContent).toContain('n14');
+      expect(diff.textContent).toContain('n16');
+      expect(diff.textContent).not.toContain('n12');
+      expect(foldWithCount(diff, '2 hidden lines')).toBeTruthy();
+    });
+
+    it('opens a fold of six hidden lines and reveals three lines at the start and the end', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const middle = Array.from({ length: 21 }, (_, index) => `m${String(index + 1).padStart(2, '0')}`);
+      middle[4] = 'M05';
+      middle[17] = 'M18';
+      writeFileSync(join(feature, 'middle.txt'), `${middle.join('\n')}\n`);
+      const edges = Array.from({ length: 18 }, (_, index) => `e${String(index + 1).padStart(2, '0')}`);
+      edges[9] = 'E10';
+      writeFileSync(join(feature, 'edges.txt'), `${edges.join('\n')}\n`);
+      git(feature, ['add', 'middle.txt', 'edges.txt']);
+      git(feature, ['commit', '-m', 'Add the folds']);
+      middle[4] = 'm05';
+      middle[17] = 'm18';
+      edges[9] = 'e10';
+      writeFileSync(join(feature, 'middle.txt'), `${middle.join('\n')}\n`);
+      writeFileSync(join(feature, 'edges.txt'), `${edges.join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      fixture.detectChanges();
+
+      fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="middle.txt"]').click();
+      fixture.detectChanges();
+      let diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+      (foldWithCount(diff, '6 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(diff.textContent).toContain('m09');
+      expect(diff.textContent).toContain('m14');
+      expect(diff.querySelector('[data-testid="diff-fold-count"]')?.textContent).not.toBe('6 hidden lines');
+      expect([...diff.querySelectorAll('[data-testid="diff-fold-count"]')].map((node) => node.textContent)).not.toContain(
+        '6 hidden lines',
+      );
+
+      fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="edges.txt"]').click();
+      fixture.detectChanges();
+      diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+      expect(diff.textContent).not.toContain('e01');
+      expect(diff.textContent).not.toContain('e18');
+      (foldWithCount(diff, '6 hidden lines').querySelector('[data-testid="diff-fold-all"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(diff.textContent).toContain('e01');
+      expect(diff.textContent).toContain('e06');
+      expect([...diff.querySelectorAll('[data-testid="diff-fold-count"]')].map((node) => node.textContent)).not.toContain(
+        '6 hidden lines',
+      );
+      (foldWithCount(diff, '5 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(diff.textContent).toContain('e14');
+      expect(diff.textContent).toContain('e16');
+      expect(diff.textContent).not.toContain('e18');
+      expect(foldWithCount(diff, '2 hidden lines')).toBeTruthy();
+    });
+
+    it('keeps opened folds for the same file and starts folded for another file, a changed file, and the next launch', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const notes = Array.from({ length: 24 }, (_, index) => `n${String(index + 1).padStart(2, '0')}`);
+      const other = Array.from({ length: 24 }, (_, index) => `o${String(index + 1).padStart(2, '0')}`);
+      writeFileSync(join(feature, 'notes.txt'), `${notes.join('\n')}\n`);
+      writeFileSync(join(feature, 'other.txt'), `${other.join('\n')}\n`);
+      git(feature, ['add', 'notes.txt', 'other.txt']);
+      git(feature, ['commit', '-m', 'Add both files']);
+      notes[4] = 'N05';
+      notes[19] = 'N20';
+      other[4] = 'O05';
+      other[19] = 'O20';
+      writeFileSync(join(feature, 'notes.txt'), `${notes.join('\n')}\n`);
+      writeFileSync(join(feature, 'other.txt'), `${other.join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      openBranchFile(fixture, 'notes.txt');
+      (foldWithCount(diffPane(fixture), '8 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(diffPane(fixture).textContent).toContain('n09');
+
+      openBranchFile(fixture, 'other.txt');
+      expect(diffPane(fixture).textContent).not.toContain('o09');
+      expect(foldWithCount(diffPane(fixture), '8 hidden lines')).toBeTruthy();
+
+      openBranchFile(fixture, 'notes.txt');
+      expect(diffPane(fixture).textContent).toContain('n09');
+      expect(foldWithCount(diffPane(fixture), '2 hidden lines')).toBeTruthy();
+
+      fixture.destroy();
+      const relaunched = await renderRepository(repoPath);
+      openBranchFile(relaunched, 'notes.txt');
+      expect(diffPane(relaunched).textContent).not.toContain('n09');
+      expect(foldWithCount(diffPane(relaunched), '8 hidden lines')).toBeTruthy();
+
+      (foldWithCount(diffPane(relaunched), '8 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      relaunched.detectChanges();
+      expect(diffPane(relaunched).textContent).toContain('n09');
+      writeFileSync(join(feature, 'notes.txt'), readFileSync(join(feature, 'notes.txt'), 'utf8').replace('n24\n', 'Z24\n'));
+      await untilVisible(relaunched, (root) => {
+        const diff = root.querySelector('[data-testid="diff"]');
+        return diff?.textContent?.includes('n09') !== true && foldCount(diff, '8 hidden lines');
+      });
+      expect(diffPane(relaunched).textContent).not.toContain('n09');
+      expect(foldWithCount(diffPane(relaunched), '8 hidden lines')).toBeTruthy();
+    });
+
+    it('leaves a huge fold closed and still opens three lines and a smaller fold', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const head = ['lead-1', 'lead-2', 'lead-3', 'lead-4', 'near-1', 'near-2', 'near-3', 'before', 'near-4', 'near-5', 'near-6'];
+      const tail = Array.from({ length: 100004 }, (_, index) => `tail-${index + 1}`);
+      writeFileSync(join(feature, 'huge.txt'), `${[...head, ...tail].join('\n')}\n`);
+      git(feature, ['add', 'huge.txt']);
+      git(feature, ['commit', '-m', 'Add the huge file']);
+      head[7] = 'after';
+      writeFileSync(join(feature, 'huge.txt'), `${[...head, ...tail].join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      openBranchFile(fixture, 'huge.txt');
+      const diff = diffPane(fixture);
+      const large = foldWithCount(diff, '100004 hidden lines');
+      (large.querySelector('[data-testid="diff-fold-all"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(large.querySelector('[data-testid="diff-fold-too-large"]')?.textContent).toBe('This file is too large to show');
+      expect(lineCodes(diff)).toContain('after');
+      expect(lineCodes(diff)).not.toContain('tail-1');
+      expect(foldWithCount(diff, '100004 hidden lines')).toBeTruthy();
+
+      (foldWithCount(diff, '100004 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(lineCodes(diff)).toEqual(expect.arrayContaining(['tail-1', 'tail-2', 'tail-3']));
+      expect(lineCodes(diff)).not.toContain('tail-4');
+      expect(foldWithCount(diff, '100001 hidden lines').querySelector('[data-testid="diff-fold-too-large"]')?.textContent).toBe(
+        'This file is too large to show',
+      );
+
+      (foldWithCount(diff, '4 hidden lines').querySelector('[data-testid="diff-fold-all"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(lineCodes(diff)).toEqual(expect.arrayContaining(['lead-1', 'lead-2', 'lead-3', 'lead-4', 'after']));
+      expect(lineCodes(diff)).not.toContain('tail-4');
+      expect(foldWithCount(diff, '100001 hidden lines')).toBeTruthy();
+    });
+
+    it('draws a fold only when that fold is in view', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const lines = Array.from({ length: 30 }, (_, index) => `row-${String(index).padStart(2, '0')}`);
+      writeFileSync(join(feature, 'long.txt'), `${lines.join('\n')}\n`);
+      git(feature, ['add', 'long.txt']);
+      git(feature, ['commit', '-m', 'Add the long file']);
+      lines[0] = 'ROW-00';
+      writeFileSync(join(feature, 'long.txt'), `${lines.join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      openBranchFile(fixture, 'long.txt');
+      const diff = diffPane(fixture);
+      expect(diff.querySelector('[data-testid="diff-fold"]')).not.toBeNull();
+      installScrollMetrics(diff, { clientHeight: 40, scrollHeight: 400, scrollTop: 0 });
+      diff.dispatchEvent(new Event('scroll'));
+      fixture.detectChanges();
+      expect(diff.querySelector('[data-testid="diff-fold"]')).toBeNull();
+      expect(diff.textContent).toContain('row-00');
+
+      installScrollMetrics(diff, { clientHeight: 40, scrollHeight: 400, scrollTop: 120 });
+      diff.dispatchEvent(new Event('scroll'));
+      fixture.detectChanges();
+      expect(diff.querySelector('[data-testid="diff-fold"]')).not.toBeNull();
+      expect(diff.textContent).not.toContain('row-00');
+    });
+
+    it('reveals a commit fold from the parent file rather than the dirty checkout', async () => {
+      const repoPath = createEmptyRepository(roots);
+      const feature = join(repoPath, '.workspaces', 'feature');
+      git(repoPath, ['branch', 'feature']);
+      git(repoPath, ['worktree', 'add', feature, 'feature']);
+      const notes = ['same', 'keep-2', 'keep-3', 'keep-4', 'keep-5', 'keep-6', 'keep-7', 'old', 'keep-9', 'keep-10'];
+      writeFileSync(join(feature, 'notes.txt'), `${notes.join('\n')}\n`);
+      git(feature, ['add', 'notes.txt']);
+      git(feature, ['commit', '-m', 'Add the notes']);
+      notes[7] = 'new';
+      writeFileSync(join(feature, 'notes.txt'), `${notes.join('\n')}\n`);
+      git(feature, ['add', 'notes.txt']);
+      git(feature, ['commit', '-m', 'Edit the notes']);
+      writeFileSync(join(feature, 'notes.txt'), `${['dirty', ...notes.slice(1)].join('\n')}\n`);
+      const fixture = await renderRepository(repoPath);
+      fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+      fixture.detectChanges();
+      fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Edit the notes"]').click();
+      fixture.detectChanges();
+      const diff = diffPane(fixture);
+      (foldWithCount(diff, '4 hidden lines').querySelector('[data-testid="diff-fold-all"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(lineCodes(diff)).toContain('same');
+      expect(lineCodes(diff)).not.toContain('dirty');
+    });
+  });
 });
+
+function openBranchFile(fixture: { nativeElement: HTMLElement; detectChanges(): void }, path: string): void {
+  const branch = fixture.nativeElement.querySelector('[data-branch="feature"]');
+  if (!branch?.classList.contains('is-selected')) {
+    branch?.click();
+    fixture.detectChanges();
+  }
+  const file = fixture.nativeElement.querySelector(`[data-testid="changed-file"][data-path="${path}"]`);
+  if (!(file instanceof HTMLElement)) {
+    throw new Error(`missing file ${path}`);
+  }
+  file.click();
+  fixture.detectChanges();
+}
+
+function diffPane(fixture: { nativeElement: HTMLElement }): HTMLElement {
+  const diff = fixture.nativeElement.querySelector('[data-testid="diff"]');
+  if (!(diff instanceof HTMLElement)) {
+    throw new Error('missing diff');
+  }
+  return diff;
+}
+
+function lineCodes(diff: ParentNode): string[] {
+  return [...diff.querySelectorAll('[data-testid="diff-line"] .diff-code')].map((node) => node.textContent ?? '');
+}
+
+function foldCount(diff: ParentNode | null, count: string): boolean {
+  if (!diff) {
+    return false;
+  }
+  return [...diff.querySelectorAll('[data-testid="diff-fold-count"]')].some((node) => node.textContent === count);
+}
+
+function foldWithCount(diff: ParentNode, count: string): HTMLElement {
+  const fold = [...diff.querySelectorAll('[data-testid="diff-fold"]')].find(
+    (row) => row.querySelector('[data-testid="diff-fold-count"]')?.textContent === count,
+  );
+  if (!(fold instanceof HTMLElement)) {
+    throw new Error(`missing fold ${count}`);
+  }
+  return fold;
+}
 
 async function confirmKeepBranch(fixture: {
   detectChanges(): void;

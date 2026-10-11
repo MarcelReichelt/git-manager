@@ -710,6 +710,36 @@ ul { margin: 0; padding: 0; list-style: none; }
   white-space: pre;
 }
 
+[data-testid='diff-fold'] {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: pre;
+  background: var(--surface);
+}
+
+[data-testid='diff-fold'] div {
+  height: 20px;
+  line-height: 20px;
+}
+
+[data-testid='diff-fold'] button {
+  height: 20px;
+  margin: 0 8px 0 0;
+  padding: 0 8px;
+  border: 1px solid rgba(58, 58, 56, 0.25);
+  border-radius: 2px;
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+  line-height: 18px;
+  cursor: pointer;
+}
+
 .diff-rows {
   position: relative;
 }

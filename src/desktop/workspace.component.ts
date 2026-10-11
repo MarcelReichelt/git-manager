@@ -124,6 +124,7 @@ import {
   countCommitsOnlyOnBranch,
   readChangedFiles,
   readCommitFileDiff,
+  readCommitFileSides,
   readCommitFiles,
   readCommitsOnlyOnBranch,
   readDefaultBranch,
@@ -132,10 +133,19 @@ import {
   withWorktreeList,
   recentCommitPageSize,
   readWorkingTreeDiff,
+  readWorkingTreeFileSides,
   type BranchCommit,
   type ChangedFile,
 } from '../branches.js';
-import { diffLines, type DiffLine } from '../diff-lines.js';
+import {
+  diffLines,
+  foldInlineDiff,
+  openFoldAll,
+  openFoldMore,
+  type DiffLine,
+  type FoldedFoldRow,
+  type FoldOpenings,
+} from '../diff-lines.js';
 
 type BranchStatus = 'local-only' | 'local-and-remote' | 'remote-only' | 'remote-deleted';
 
@@ -1381,30 +1391,43 @@ button, input { font: inherit; color: inherit; }
             }
             @if (showInlineDiff()) {
               <div #diffScroller data-testid="diff" gmOverlayScroll (scroll)="onDiffScroll($event)">
-                @if (inlineDiff().previousPath; as previousPath) {
+                @if (foldedDiff().previousPath; as previousPath) {
                   <p data-testid="diff-rename" [style.height.px]="diffRowHeight" [style.lineHeight.px]="diffRowHeight">Renamed from {{ previousPath }}</p>
                 }
-                @if (inlineDiff().binary) {
+                @if (foldedDiff().binary) {
                   <p data-testid="diff-binary" [style.height.px]="diffRowHeight" [style.lineHeight.px]="diffRowHeight">Binary file</p>
                 }
-                @if (inlineDiff().lines.length > 0) {
-                  <div class="diff-rows" [style.height.px]="inlineDiff().lines.length * diffRowHeight">
+                @if (foldedDiff().rows.length > 0) {
+                  <div class="diff-rows" [style.height.px]="diffBodyHeight()">
                     <div class="diff-window" [style.transform]="diffWindowTransform()">
-                      @for (line of visibleDiffLines(); track line.index) {
-                        <div
-                          data-testid="diff-line"
-                          [attr.data-kind]="line.kind"
-                          [style.height.px]="diffRowHeight"
-                          [style.lineHeight.px]="diffRowHeight"
-                        >
-                          <span data-testid="diff-old-number">{{ line.oldNumber ?? '' }}</span>
-                          <span data-testid="diff-new-number">{{ line.newNumber ?? '' }}</span>
-                          <span class="diff-code">
-                            @for (span of line.spans; track $index) {
-                              <span [attr.data-changed]="span.changed ? 'true' : 'false'">{{ span.text }}</span>
+                      @for (row of visibleDiffRows(); track row.index) {
+                        @if (row.kind === 'fold') {
+                          <div data-testid="diff-fold" [style.height.px]="diffFoldHeight" [style.lineHeight.px]="diffRowHeight">
+                            @if (row.fold?.tooLarge) {
+                              <div data-testid="diff-fold-too-large">This file is too large to show</div>
                             }
-                          </span>
-                        </div>
+                            <div data-testid="diff-fold-count">{{ row.fold?.label }}</div>
+                            <div>
+                              <button type="button" data-testid="diff-fold-more" (click)="revealFold(row, 'more')">3 more lines</button>
+                              <button type="button" data-testid="diff-fold-all" (click)="revealFold(row, 'all')">All lines</button>
+                            </div>
+                          </div>
+                        } @else if (row.line; as line) {
+                          <div
+                            data-testid="diff-line"
+                            [attr.data-kind]="line.kind"
+                            [style.height.px]="diffRowHeight"
+                            [style.lineHeight.px]="diffRowHeight"
+                          >
+                            <span data-testid="diff-old-number">{{ line.oldNumber ?? '' }}</span>
+                            <span data-testid="diff-new-number">{{ line.newNumber ?? '' }}</span>
+                            <span class="diff-code">
+                              @for (span of line.spans; track $index) {
+                                <span [attr.data-changed]="span.changed ? 'true' : 'false'">{{ span.text }}</span>
+                              }
+                            </span>
+                          </div>
+                        }
                       }
                     </div>
                   </div>
@@ -2317,7 +2340,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   readonly commitTotal = signal<number | null>(null);
   readonly loadedCommitFiles = signal<ChangedFile[]>([]);
   readonly loadedDiff = signal<string | null>(null);
+  readonly loadedOldText = signal('');
+  readonly loadedNewText = signal('');
   readonly diffRowHeight = 20;
+  readonly diffFoldHeight = 60;
+  private readonly foldMemory = signal<ReadonlyMap<string, FoldOpenings>>(new Map());
   private readonly diffScrollTop = signal(0);
   private readonly diffClientHeight = signal(0);
   readonly appSettingsOpen = signal(false);
@@ -2961,7 +2988,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!repo || !branch) {
       return;
     }
-    this.loadedDiff.set(readWorkingTreeDiff(repo, branch, path));
+    const diff = readWorkingTreeDiff(repo, branch, path);
+    const previous = this.loadedFiles().find((file) => file.path === path)?.previousPath ?? diffLines(diff).previousPath;
+    this.storeDiff(diff, readWorkingTreeFileSides(repo, branch, path, previous));
   }
 
   selectCommit(subject: string, sha?: string): void {
@@ -2976,14 +3005,20 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!commit) {
       this.selectedFilePath.set(null);
       this.loadedCommitFiles.set([]);
-      this.loadedDiff.set(null);
+      this.storeDiff(null);
       return;
     }
     const files = readCommitFiles(repo, commit.sha);
     this.loadedCommitFiles.set(files);
     const first = files[0];
     this.selectedFilePath.set(first?.path ?? null);
-    this.loadedDiff.set(first ? readCommitFileDiff(repo, commit.sha, first.path) : '');
+    if (!first) {
+      this.storeDiff('');
+      return;
+    }
+    const diff = readCommitFileDiff(repo, commit.sha, first.path);
+    const previous = first.previousPath ?? diffLines(diff).previousPath;
+    this.storeDiff(diff, readCommitFileSides(repo, commit.sha, first.path, previous));
   }
 
   selectCommitFile(path: string, event: Event): void {
@@ -2999,7 +3034,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     if (!commit) {
       return;
     }
-    this.loadedDiff.set(readCommitFileDiff(repo, commit.sha, path));
+    const diff = readCommitFileDiff(repo, commit.sha, path);
+    const previous =
+      this.loadedCommitFiles().find((file) => file.path === path)?.previousPath ?? diffLines(diff).previousPath;
+    this.storeDiff(diff, readCommitFileSides(repo, commit.sha, path, previous));
   }
 
   isSelectedCommit(commit: { sha?: string; subject: string }): boolean {
@@ -3966,28 +4004,56 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     return this.selectedDiff() ?? '';
   }
 
-  readonly inlineDiff = computed(() => {
+  readonly foldedDiff = computed(() => {
     const file = this.selectedDiffFile();
-    return diffLines(this.paneDiff(), {
-      previousPath: file?.previousPath ?? null,
-      binary: file?.binary ?? false,
-    });
+    const key = this.diffFoldKey();
+    const openings = key === null ? {} : (this.foldMemory().get(key) ?? {});
+    return foldInlineDiff(
+      this.paneDiff(),
+      { oldText: this.diffOldText(), newText: this.diffNewText() },
+      openings,
+      {
+        previousPath: file?.previousPath ?? null,
+        binary: file?.binary ?? false,
+      },
+    );
   });
 
+  private readonly diffWindowState = computed(() => this.buildDiffWindow());
+
   showInlineDiff(): boolean {
-    const diff = this.inlineDiff();
-    return diff.lines.length > 0 || diff.previousPath !== null || diff.binary;
+    const diff = this.foldedDiff();
+    return diff.rows.length > 0 || diff.previousPath !== null || diff.binary;
   }
 
-  visibleDiffLines(): Array<DiffLine & { index: number }> {
-    return this.diffWindow().lines;
+  visibleDiffRows(): DiffViewRow[] {
+    return this.diffWindowState().rows;
+  }
+
+  diffBodyHeight(): number {
+    return this.diffWindowState().height;
   }
 
   diffWindowTransform(): string {
     if (this.diffClientHeight() <= 0) {
       return 'translateY(0px)';
     }
-    return `translateY(${this.diffWindow().start * this.diffRowHeight}px)`;
+    return `translateY(${this.diffWindowState().offset}px)`;
+  }
+
+  revealFold(row: DiffViewRow, action: 'more' | 'all'): void {
+    if (row.fold === null) {
+      return;
+    }
+    const key = this.diffFoldKey();
+    if (key === null) {
+      return;
+    }
+    const current = this.foldMemory().get(key) ?? {};
+    const next = action === 'more' ? openFoldMore(current, row.fold) : openFoldAll(current, row.fold);
+    const memory = new Map(this.foldMemory());
+    memory.set(key, next);
+    this.foldMemory.set(memory);
   }
 
   onDiffScroll(event: Event): void {
@@ -3997,24 +4063,79 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
   }
 
-  private diffWindow(): { start: number; lines: Array<DiffLine & { index: number }> } {
-    const lines = this.inlineDiff().lines.map((line, index) => ({ ...line, index }));
+  private buildDiffWindow(): { height: number; offset: number; rows: DiffViewRow[] } {
+    let offset = 0;
+    const rows = this.foldedDiff().rows.map((row, index) => {
+      const height = row.kind === 'fold' ? this.diffFoldHeight : this.diffRowHeight;
+      const placed: DiffViewRow = {
+        index,
+        offset,
+        height,
+        kind: row.kind,
+        line: row.kind === 'line' ? row.line : null,
+        fold: row.kind === 'fold' ? row : null,
+      };
+      offset += height;
+      return placed;
+    });
     const height = this.diffClientHeight();
-    if (height <= 0 || lines.length === 0) {
-      return { start: 0, lines };
+    if (height <= 0 || rows.length === 0) {
+      return { height: offset, offset: 0, rows };
     }
     const header = this.diffHeaderHeight();
     const rowScroll = Math.max(0, this.diffScrollTop() - header);
-    const start = Math.min(lines.length, Math.floor(rowScroll / this.diffRowHeight));
     const headerStillVisible = Math.max(0, header - this.diffScrollTop());
-    const count = Math.max(1, Math.ceil((height - headerStillVisible) / this.diffRowHeight));
-    return { start, lines: lines.slice(start, start + count) };
+    const view = Math.max(this.diffRowHeight, height - headerStillVisible);
+    const limit = rowScroll + view;
+    let start = 0;
+    while (start < rows.length && (rows[start]?.offset ?? 0) + (rows[start]?.height ?? 0) <= rowScroll) {
+      start += 1;
+    }
+    let end = start;
+    while (end < rows.length && (rows[end]?.offset ?? 0) < limit) {
+      end += 1;
+    }
+    if (end === start && start < rows.length) {
+      end = start + 1;
+    }
+    return { height: offset, offset: rows[start]?.offset ?? 0, rows: rows.slice(start, end) };
   }
 
   private diffHeaderHeight(): number {
-    const diff = this.inlineDiff();
+    const diff = this.foldedDiff();
     const rows = (diff.previousPath !== null ? 1 : 0) + (diff.binary ? 1 : 0);
     return rows * this.diffRowHeight;
+  }
+
+  private diffFoldKey(): string | null {
+    const path = this.selectedFilePath();
+    if (path === null) {
+      return null;
+    }
+    const place = this.showingCommit() ? (this.selectedCommitSubject() ?? '') : 'worktree';
+    return `${path}\0${place}\0${this.paneDiff()}`;
+  }
+
+  private diffOldText(): string {
+    return this.effectivePath() === null ? '' : this.loadedOldText();
+  }
+
+  private diffNewText(): string {
+    return this.effectivePath() === null ? '' : this.loadedNewText();
+  }
+
+  private storeDiff(diff: string | null, sides: { oldText: string; newText: string } = { oldText: '', newText: '' }): void {
+    this.loadedDiff.set(diff);
+    this.loadedOldText.set(sides.oldText);
+    this.loadedNewText.set(sides.newText);
+  }
+
+  private sidePrevious(files: readonly ChangedFile[], path: string, patch: string): string | null {
+    const recorded = files.find((file) => file.path === path)?.previousPath ?? null;
+    if (recorded !== null && recorded.trim() !== '') {
+      return recorded;
+    }
+    return diffLines(patch).previousPath;
   }
 
   private selectedDiffFile(): { previousPath: string | null; binary: boolean } | null {
@@ -5678,27 +5799,41 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     let nextCommit = commitIdentity;
     let commitFiles = this.loadedCommitFiles();
     let diff = this.loadedDiff();
+    let oldText = this.loadedOldText();
+    let newText = this.loadedNewText();
     if (commitIdentity) {
       if (!commit) {
         nextCommit = null;
         nextFile = null;
         commitFiles = [];
         diff = null;
+        oldText = '';
+        newText = '';
       } else {
         commitFiles = readCommitFiles(path, commit.sha);
         if (nextFile && commitFiles.some((file) => file.path === nextFile)) {
           diff = readCommitFileDiff(path, commit.sha, nextFile);
+          const sides = readCommitFileSides(path, commit.sha, nextFile, this.sidePrevious(commitFiles, nextFile, diff));
+          oldText = sides.oldText;
+          newText = sides.newText;
         } else {
           nextFile = null;
           diff = '';
+          oldText = '';
+          newText = '';
         }
       }
     } else if (nextFile) {
       if (files.some((file) => file.path === nextFile)) {
         diff = readWorkingTreeDiff(path, name, nextFile);
+        const sides = readWorkingTreeFileSides(path, name, nextFile, this.sidePrevious(files, nextFile, diff));
+        oldText = sides.oldText;
+        newText = sides.newText;
       } else {
         nextFile = null;
         diff = null;
+        oldText = '';
+        newText = '';
       }
     }
     if (!sameChangedFiles(this.loadedFiles(), files)) {
@@ -5731,6 +5866,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     if (this.loadedDiff() !== diff) {
       this.loadedDiff.set(diff);
+    }
+    if (this.loadedOldText() !== oldText) {
+      this.loadedOldText.set(oldText);
+    }
+    if (this.loadedNewText() !== newText) {
+      this.loadedNewText.set(newText);
     }
     if (this.selectedFilePath() !== nextFile || this.selectedCommitSubject() !== nextCommit) {
       this.resetDiffScroll();
@@ -6101,7 +6242,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
   private clearLoadedBranch(): void {
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
-    this.loadedDiff.set(null);
+    this.storeDiff(null);
     this.loadedCommitFiles.set([]);
     this.loadedFiles.set([]);
     this.loadedCommits.set([]);
@@ -6122,6 +6263,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
       commitTotal: this.commitTotal(),
       commitFiles: this.loadedCommitFiles(),
       diff: this.loadedDiff(),
+      oldText: this.loadedOldText(),
+      newText: this.loadedNewText(),
     };
   }
 
@@ -6135,7 +6278,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     this.commitListComplete.set(snapshot.commitListComplete);
     this.commitTotal.set(snapshot.commitTotal);
     this.loadedCommitFiles.set(snapshot.commitFiles);
-    this.loadedDiff.set(snapshot.diff);
+    this.storeDiff(snapshot.diff, { oldText: snapshot.oldText, newText: snapshot.newText });
   }
 
   private loadBranchContent(name: string): void {
@@ -6145,7 +6288,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy, AfterViewInit, Aft
     }
     this.selectedFilePath.set(null);
     this.selectedCommitSubject.set(null);
-    this.loadedDiff.set(null);
+    this.storeDiff(null);
     this.loadedCommitFiles.set([]);
     this.loadedFiles.set(readChangedFiles(path, name));
     this.commitTotal.set(null);
@@ -6468,6 +6611,17 @@ interface BranchViewSnapshot {
   commitTotal: number | null;
   commitFiles: ChangedFile[];
   diff: string | null;
+  oldText: string;
+  newText: string;
+}
+
+interface DiffViewRow {
+  index: number;
+  offset: number;
+  height: number;
+  kind: 'line' | 'fold';
+  line: DiffLine | null;
+  fold: FoldedFoldRow | null;
 }
 
 interface TerminalMenuState {

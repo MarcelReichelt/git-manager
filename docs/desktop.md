@@ -56,6 +56,8 @@ The diff is inline. Each line shows the old line number and the new line number.
 
 A rename shows `Renamed from …` above the lines. A binary file shows `Binary file`. A file with no line changes and no rename shows `No diff for this file`. A new file is entirely green. A deleted file is entirely red.
 
+In the folded diff, each hidden stretch of unchanged lines is a fold. The fold shows `1 hidden line` or `N hidden lines`, and the buttons `3 more lines` and `All lines`. `3 more lines` reveals up to three lines at each edge of that fold, directly beside the context already shown, and the count updates. A fold of six or fewer hidden lines opens completely. A fold at the start or the end of the file has one edge and reveals three lines there. `All lines` opens the whole stretch. The same file keeps the folds that were opened. Another file starts folded. A reload after the file changes starts folded. The next launch starts folded. `All lines` on a stretch of more than 100,000 lines shows `This file is too large to show` on that fold, that fold stays closed, and the rest of the diff stays. `3 more lines`, and `All lines` on a smaller stretch, still open those lines.
+
 In Changes, the old side is the commit HEAD points at, and the new side is the checkout as it is, including changes already added for the next commit. For a commit, the old side is that commit's first parent and the new side is the commit.
 
 Drag the splitters between the panes to resize them. Each region scrolls on its own.

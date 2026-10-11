@@ -480,7 +480,7 @@ function splitFileLines(text: string): string[] {
 }
 
 export const fullFileByteLimit = 2 * 1024 * 1024;
-export const fullFileLineLimit = 100_000;
+const fullFileLineLimit = 100_000;
 
 export interface FullFileDiff {
   lines: DiffLine[];

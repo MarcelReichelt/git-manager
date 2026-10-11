@@ -1131,23 +1131,19 @@ function readFileSides(
 
 function readGitBlob(cwd: string, spec: string): { text: string; tooLarge: boolean } {
   const sizeText = gitOptional(cwd, ['cat-file', '-s', spec]);
-  if (sizeText === undefined || !/^\d+$/.test(sizeText)) {
+  if (sizeText === undefined) {
     return { text: '', tooLarge: false };
   }
   const size = Number(sizeText);
-  try {
-    return {
-      text: execFileSync('git', ['cat-file', '-p', spec], {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: size,
-      }),
-      tooLarge: size > fullFileByteLimit,
-    };
-  } catch {
-    return { text: '', tooLarge: false };
-  }
+  return {
+    text: execFileSync('git', ['cat-file', '-p', spec], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: size,
+    }),
+    tooLarge: size > fullFileByteLimit,
+  };
 }
 
 function readCheckoutFile(checkout: string, filePath: string): { text: string; tooLarge: boolean } {

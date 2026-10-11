@@ -565,6 +565,85 @@ function emitUnchanged(
   }
 }
 
+export interface SideCell {
+  kind: 'context' | 'removed' | 'added' | 'empty';
+  number: number | null;
+  text: string;
+  spans: DiffSpan[];
+}
+
+export interface SideBySideLineRow {
+  kind: 'line';
+  old: SideCell;
+  new: SideCell;
+}
+
+export type SideBySideRow = SideBySideLineRow | FoldedFoldRow;
+
+const emptySideCell: SideCell = { kind: 'empty', number: null, text: '', spans: [] };
+
+export function sideBySideRows(rows: readonly FoldedRow[]): SideBySideRow[] {
+  const paired: SideBySideRow[] = [];
+  let index = 0;
+  while (index < rows.length) {
+    const row = rows[index];
+    if (!row) {
+      break;
+    }
+    if (row.kind === 'fold') {
+      paired.push(row);
+      index += 1;
+      continue;
+    }
+    if (row.line.kind === 'context') {
+      paired.push(contextSideRow(row.line));
+      index += 1;
+      continue;
+    }
+    const removed: DiffLine[] = [];
+    while (index < rows.length) {
+      const current = rows[index];
+      if (!current || current.kind !== 'line' || current.line.kind !== 'removed') {
+        break;
+      }
+      removed.push(current.line);
+      index += 1;
+    }
+    const added: DiffLine[] = [];
+    while (index < rows.length) {
+      const current = rows[index];
+      if (!current || current.kind !== 'line' || current.line.kind !== 'added') {
+        break;
+      }
+      added.push(current.line);
+      index += 1;
+    }
+    const count = Math.max(removed.length, added.length);
+    for (let pair = 0; pair < count; pair += 1) {
+      const oldLine = removed[pair];
+      const newLine = added[pair];
+      paired.push({
+        kind: 'line',
+        old: oldLine ? sideCell('removed', oldLine.oldNumber, oldLine) : emptySideCell,
+        new: newLine ? sideCell('added', newLine.newNumber, newLine) : emptySideCell,
+      });
+    }
+  }
+  return paired;
+}
+
+function contextSideRow(line: DiffLine): SideBySideLineRow {
+  return {
+    kind: 'line',
+    old: sideCell('context', line.oldNumber, line),
+    new: sideCell('context', line.newNumber, line),
+  };
+}
+
+function sideCell(kind: 'context' | 'removed' | 'added', number: number | null, line: DiffLine): SideCell {
+  return { kind, number, text: line.text, spans: line.spans };
+}
+
 function coalesce(tokens: string[], changed: boolean[]): DiffSpan[] {
   const spans: DiffSpan[] = [];
   for (let index = 0; index < tokens.length; index += 1) {

@@ -33,6 +33,34 @@ _Avoid_: sheet
 The files that differ in the selected checkout.
 _Avoid_: status, diff
 
+**Diff**:
+The view of one selected file in the content, from Changes or from a commit.
+_Avoid_: patch, changes
+
+**Folded**:
+The diff mode in which unchanged stretches are folds.
+_Avoid_: collapsed, compact
+
+**Full file**:
+The diff mode that shows the whole diff with no folds.
+_Avoid_: expanded
+
+**Fold**:
+A hidden stretch of unchanged lines in the diff.
+_Avoid_: collapse
+
+**Context**:
+The unchanged lines kept beside a change while the rest of the diff is folded.
+_Avoid_: padding
+
+**Inline**:
+The diff layout with the old and new lines in one column.
+_Avoid_: unified
+
+**Side by side**:
+The diff layout with the old file on the left and the new file on the right.
+_Avoid_: split
+
 **Commits**:
 The commits of the selected branch. On the default branch, that is that branch's history. On any other branch, that is the commits that are not on the default branch.
 _Avoid_: history, log

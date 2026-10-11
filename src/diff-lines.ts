@@ -193,6 +193,92 @@ function changedTokens(before: string[], after: string[]): { oldChanged: boolean
   return { oldChanged, newChanged };
 }
 
+export const fullFileByteLimit = 2 * 1024 * 1024;
+export const fullFileLineLimit = 100_000;
+
+export interface FullFileDiff {
+  lines: DiffLine[];
+  tooLarge: boolean;
+}
+
+export function fullFileLines(patch: string, oldText: string, newText: string): FullFileDiff {
+  if (sideTooLarge(oldText) || sideTooLarge(newText)) {
+    return { lines: [], tooLarge: true };
+  }
+  const oldLines = gitLines(oldText);
+  const newLines = gitLines(newText);
+  const hasOldFile = !/^--- \/dev\/null$/m.test(patch) && !/@@ -0,0 /.test(patch);
+  const result: DiffLine[] = [];
+  let oldCursor = 1;
+  let newCursor = 1;
+  for (const line of diffLines(patch).lines) {
+    if (line.oldNumber !== null && line.oldNumber > oldCursor) {
+      emitUnchanged(result, oldLines, newLines, oldCursor, newCursor, line.oldNumber);
+      const gap = line.oldNumber - oldCursor;
+      oldCursor = line.oldNumber;
+      newCursor += gap;
+    } else if (line.oldNumber === null && line.newNumber !== null && line.newNumber > newCursor) {
+      const gap = line.newNumber - newCursor;
+      emitUnchanged(result, oldLines, newLines, oldCursor, newCursor, oldCursor + gap);
+      oldCursor += gap;
+      newCursor = line.newNumber;
+    }
+    result.push(line);
+    if (line.oldNumber !== null) {
+      oldCursor = line.oldNumber + 1;
+    }
+    if (line.newNumber !== null) {
+      newCursor = line.newNumber + 1;
+    }
+  }
+  if (hasOldFile && oldCursor <= oldLines.length) {
+    emitUnchanged(result, oldLines, newLines, oldCursor, newCursor, oldLines.length + 1);
+  }
+  return { lines: result, tooLarge: false };
+}
+
+function sideTooLarge(text: string): boolean {
+  if (Buffer.byteLength(text) > fullFileByteLimit) {
+    return true;
+  }
+  return gitLines(text).length > fullFileLineLimit;
+}
+
+function gitLines(text: string): string[] {
+  if (text === '') {
+    return [];
+  }
+  const lines = text.split('\n');
+  if (text.endsWith('\n')) {
+    lines.pop();
+  }
+  return lines;
+}
+
+function emitUnchanged(
+  result: DiffLine[],
+  oldLines: string[],
+  newLines: string[],
+  oldCursor: number,
+  newCursor: number,
+  untilOld: number,
+): void {
+  let oldNumber = oldCursor;
+  let newNumber = newCursor;
+  while (oldNumber < untilOld) {
+    const text = oldLines[oldNumber - 1] ?? newLines[newNumber - 1] ?? '';
+    result.push({
+      kind: 'context',
+      oldNumber,
+      newNumber,
+      text,
+      spans: [{ text, changed: false }],
+    });
+    oldNumber += 1;
+    newNumber += 1;
+  }
+}
+
 function coalesce(tokens: string[], changed: boolean[]): DiffSpan[] {
   const spans: DiffSpan[] = [];
   for (let index = 0; index < tokens.length; index += 1) {

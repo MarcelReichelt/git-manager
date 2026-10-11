@@ -953,6 +953,7 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
   });
 
@@ -999,6 +1000,7 @@ describe('desktop workspace', () => {
       terminalRowHeight: 240,
       changesFileWidth: 240,
       commitFileWidth: 240,
+      diffMode: 'folded',
     });
     expect(JSON.parse(readFileSync(settingsPath, 'utf8')).ideCommand).toBe('cursor');
   });
@@ -9170,4 +9172,314 @@ function shellProcessesIn(cwd: string): number[] {
 function remoteUrlValue(root: ParentNode): string {
   const field = root.querySelector('[data-testid="remote-url"]');
   return field instanceof HTMLInputElement ? field.value : '';
+}
+
+describe('full file diff', () => {
+  const roots: string[] = [];
+  const previousRegistryPath = process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+  const previousAppSettingsPath = process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+
+  beforeEach(() => {
+    const settingsRoot = mkdtempSync(join(tmpdir(), 'git-worktree-manager-full-file-settings-'));
+    roots.push(settingsRoot);
+    process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = join(settingsRoot, 'app-settings.json');
+  });
+
+  afterEach(() => {
+    setAfterPaintScheduler((task) => {
+      task();
+    });
+    if (previousRegistryPath === undefined) {
+      delete process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH;
+    } else {
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = previousRegistryPath;
+    }
+    if (previousAppSettingsPath === undefined) {
+      delete process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH;
+    } else {
+      process.env.GIT_WORKTREE_MANAGER_APP_SETTINGS_PATH = previousAppSettingsPath;
+    }
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  async function renderRepository(repoPath: string) {
+    if (!process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH) {
+      process.env.GIT_WORKTREE_MANAGER_REGISTRY_PATH = join(repoPath, '..', 'registry.db');
+    }
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [WorkspaceComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(WorkspaceComponent);
+    fixture.componentRef.setInput('repositoryPath', repoPath);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await whenRemoteRefreshIdle();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function openChangedFile(fixture: ComponentFixture<WorkspaceComponent>, branch: string, path: string): void {
+    fixture.nativeElement.querySelector(`[data-branch="${branch}"]`).click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector(`[data-testid="changed-file"][data-path="${path}"]`).click();
+    fixture.detectChanges();
+  }
+
+  it('starts on Folded and shows every colored line when Full file is chosen', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n');
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+
+    const folded = fixture.nativeElement.querySelector('[data-testid="diff-mode-folded"]') as HTMLButtonElement;
+    const full = fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement;
+    expect(folded.textContent?.trim()).toBe('Folded');
+    expect(full.textContent?.trim()).toBe('Full file');
+    expect(folded.getAttribute('aria-pressed')).toBe('true');
+    expect(full.getAttribute('aria-pressed')).toBe('false');
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.contains(fixture.nativeElement.querySelector('[data-testid="diff-mode"]'))).toBe(false);
+    expect(diff.textContent).not.toContain('one');
+    expect(diff.textContent).not.toContain('ten');
+    expect(diff.querySelector('[data-testid="diff-fold"]')).toBeNull();
+
+    full.click();
+    fixture.detectChanges();
+
+    const shown = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(shown.textContent).toContain('one');
+    expect(shown.textContent).toContain('ten');
+    expect(shown.textContent).toContain('FIVE');
+    expect(shown.querySelector('[data-testid="diff-fold"]')).toBeNull();
+    const removed = [...shown.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'removed',
+    ) as HTMLElement;
+    const added = [...shown.querySelectorAll('[data-testid="diff-line"]')].find(
+      (line) => line.getAttribute('data-kind') === 'added',
+    ) as HTMLElement;
+    const removedWord = removed.querySelector('[data-changed="true"]') as HTMLElement;
+    expect(removedWord.textContent).toBe('five');
+    expect(getComputedStyle(removed).backgroundColor).toBe('rgb(255, 217, 207)');
+    expect(getComputedStyle(added).backgroundColor).toBe('rgb(215, 255, 230)');
+    expect(getComputedStyle(removedWord).backgroundColor).not.toBe(getComputedStyle(removed).backgroundColor);
+    expect(readAppSettings().diffMode).toBe('full');
+  });
+
+  it('keeps Full file for the next file and the next launch', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    writeFileSync(join(feature, 'other.txt'), 'kept-start\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nkept-end\n');
+    git(feature, ['add', 'notes.txt', 'other.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n');
+    writeFileSync(join(feature, 'other.txt'), 'kept-start\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nkept-end\n');
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'notes.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="other.txt"]').click();
+    fixture.detectChanges();
+
+    const next = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(next.textContent).toContain('kept-start');
+    expect(next.textContent).toContain('kept-end');
+    expect((fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+    fixture.destroy();
+
+    const again = await renderRepository(repoPath);
+    openChangedFile(again, 'feature', 'other.txt');
+    const restored = again.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(restored.textContent).toContain('kept-start');
+    expect(restored.textContent).toContain('kept-end');
+    expect((again.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+    expect(readAppSettings().diffMode).toBe('full');
+  });
+
+  it('shows every line of a commit file', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Add notes']);
+    writeFileSync(join(feature, 'notes.txt'), 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n');
+    git(feature, ['add', 'notes.txt']);
+    git(feature, ['commit', '-m', 'Edit notes']);
+    const fixture = await renderRepository(repoPath);
+    fixture.nativeElement.querySelector('[data-branch="feature"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="commit"][data-subject="Edit notes"]').click();
+    fixture.detectChanges();
+
+    const folded = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(folded.textContent).not.toContain('one');
+    expect(folded.textContent).not.toContain('ten');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const full = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(full.textContent).toContain('one');
+    expect(full.textContent).toContain('ten');
+    expect(full.textContent).toContain('FIVE');
+    expect(full.querySelector('[data-testid="diff-fold"]')).toBeNull();
+  });
+
+  it('draws only the full-file lines in view', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const body = Array.from({ length: 40 }, (_, index) => `row-${String(index).padStart(2, '0')}`).join('\n');
+    writeFileSync(join(feature, 'long.txt'), `${body}\n`);
+    git(feature, ['add', 'long.txt']);
+    git(feature, ['commit', '-m', 'Add long']);
+    writeFileSync(join(feature, 'long.txt'), `${body.replace('row-20', 'ROW-20')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'long.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    const line = diff.querySelector('[data-testid="diff-line"]') as HTMLElement;
+    const rowHeight = Number.parseFloat(getComputedStyle(line).lineHeight);
+    expect(diff.textContent).toContain('row-00');
+    expect(diff.textContent).toContain('row-39');
+    installScrollMetrics(diff, {
+      clientHeight: rowHeight * 2,
+      scrollHeight: rowHeight * 40,
+      scrollTop: rowHeight * 30,
+    });
+    diff.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(diff.textContent).not.toContain('row-00');
+    expect(diff.textContent).toContain('row-30');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]')).not.toBeNull();
+    expect(diff.contains(fixture.nativeElement.querySelector('[data-testid="diff-mode"]'))).toBe(false);
+  });
+
+  it('shows only that a file over 100,000 lines is too large, then Folded brings the diff back', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const lines = Array.from({ length: 100_001 }, (_, index) => `row-${index}`);
+    lines[50_000] = 'before-change';
+    writeFileSync(join(feature, 'huge.txt'), `${lines.join('\n')}\n`);
+    git(feature, ['add', 'huge.txt']);
+    git(feature, ['commit', '-m', 'Add huge']);
+    lines[50_000] = 'after-change';
+    writeFileSync(join(feature, 'huge.txt'), `${lines.join('\n')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'huge.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-too-large"]')?.textContent?.trim()).toBe(
+      'This file is too large to show',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]')).not.toBeNull();
+    expect(readAppSettings().diffMode).toBe('full');
+
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-folded"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const folded = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-too-large"]')).toBeNull();
+    expect(folded.textContent).toContain('after-change');
+    expect(folded.textContent).not.toContain('row-0');
+    expect(readAppSettings().diffMode).toBe('folded');
+  });
+
+  it('shows only that a side over 2 MiB is too large and keeps Full file', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const line = 'a'.repeat(200);
+    const count = Math.ceil((2 * 1024 * 1024 + 1) / (line.length + 1));
+    const lines = Array.from({ length: count }, () => line);
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    git(feature, ['add', 'wide.txt']);
+    git(feature, ['commit', '-m', 'Add wide']);
+    lines[0] = `b${'a'.repeat(199)}`;
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'wide.txt');
+    (fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-too-large"]')?.textContent?.trim()).toBe(
+      'This file is too large to show',
+    );
+    expect(readAppSettings().diffMode).toBe('full');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-folded"]')).not.toBeNull();
+  });
+
+  it('keeps the switch visible when the diff is only a sentence', async () => {
+    const fixture = await render();
+    fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-branch="feature/login"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="README.md"]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="empty-diff"]')?.textContent?.trim()).toBe(
+      'No diff for this file',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="diff"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-folded"]')?.textContent?.trim()).toBe('Folded');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-full"]')?.textContent?.trim()).toBe('Full file');
+
+    fixture.nativeElement.querySelector('[data-branch="rename-docs"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="docs/guide.md"]').click();
+    fixture.detectChanges();
+
+    const renamed = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(renamed.querySelector('[data-testid="diff-rename"]')?.textContent).toBe('Renamed from docs/old-guide.md');
+    expect(renamed.querySelector('[data-testid="diff-line"]')).toBeNull();
+    expect(renamed.contains(fixture.nativeElement.querySelector('[data-testid="diff-mode"]'))).toBe(false);
+
+    fixture.nativeElement.querySelector('[data-branch="abandoned"]').click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[data-testid="changed-file"][data-path="assets/logo.png"]').click();
+    fixture.detectChanges();
+
+    const binary = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(binary.querySelector('[data-testid="diff-binary"]')?.textContent).toBe('Binary file');
+    expect(fixture.nativeElement.querySelector('[data-testid="diff-mode"]')).not.toBeNull();
+    expect(binary.contains(fixture.nativeElement.querySelector('[data-testid="diff-mode"]'))).toBe(false);
+  });
+});
+
+async function render() {
+  TestBed.resetTestingModule();
+  await TestBed.configureTestingModule({
+    imports: [WorkspaceComponent],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(WorkspaceComponent);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  await whenRemoteRefreshIdle();
+  fixture.detectChanges();
+  return fixture;
 }

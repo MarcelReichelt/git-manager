@@ -56,6 +56,8 @@ The diff is inline. Each line shows the old line number and the new line number.
 
 A rename shows `Renamed from …` above the lines. A binary file shows `Binary file`. A file with no line changes and no rename shows `No diff for this file`. A new file is entirely green. A deleted file is entirely red.
 
+Full file shows every line of that diff. Changes stay colored the same way, and there are no folds. The switch offers Folded and Full file and starts on Folded. The choice is for the whole app: it applies to the next file and to the next launch. A side over 2 MiB or 100,000 lines shows only `This file is too large to show`, and the saved mode stays Full file until Folded is chosen. The switch stays visible when the diff shows only a sentence.
+
 In Changes, the old side is the commit HEAD points at, and the new side is the checkout as it is, including changes already added for the next commit. For a commit, the old side is that commit's first parent and the new side is the commit.
 
 Drag the splitters between the panes to resize them. Each region scrolls on its own.

@@ -795,32 +795,26 @@ ul { margin: 0; padding: 0; list-style: none; }
   white-space: pre;
 }
 
-[data-testid='diff-side-old'][data-kind='removed'],
-[data-testid='diff-side-new'][data-kind='removed'] {
+[data-testid='diff-side-old'][data-kind='removed'] {
   background-color: #ffd9cf;
 }
 
-[data-testid='diff-side-old'][data-kind='added'],
 [data-testid='diff-side-new'][data-kind='added'] {
   background-color: #d7ffe6;
 }
 
-[data-testid='diff-side-old'][data-kind='removed'] [data-testid='diff-old-number'],
-[data-testid='diff-side-new'][data-kind='removed'] [data-testid='diff-new-number'] {
+[data-testid='diff-side-old'][data-kind='removed'] [data-testid='diff-old-number'] {
   background-color: #ffd9cf;
 }
 
-[data-testid='diff-side-old'][data-kind='added'] [data-testid='diff-old-number'],
 [data-testid='diff-side-new'][data-kind='added'] [data-testid='diff-new-number'] {
   background-color: #d7ffe6;
 }
 
-[data-testid='diff-side-old'][data-kind='removed'] [data-changed='true'],
-[data-testid='diff-side-new'][data-kind='removed'] [data-changed='true'] {
+[data-testid='diff-side-old'][data-kind='removed'] [data-changed='true'] {
   background-color: var(--coral);
 }
 
-[data-testid='diff-side-old'][data-kind='added'] [data-changed='true'],
 [data-testid='diff-side-new'][data-kind='added'] [data-changed='true'] {
   background-color: var(--mint);
 }

@@ -9827,6 +9827,63 @@ describe('full file diff', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="diff-mode-folded"]')).not.toBeNull();
   });
 
+  it('reveals the real lines of a fold when the file is over 2 MiB', async () => {
+    const repoPath = createEmptyRepository(roots);
+    const feature = join(repoPath, '.workspaces', 'feature');
+    git(repoPath, ['branch', 'feature']);
+    git(repoPath, ['worktree', 'add', feature, 'feature']);
+    const filler = 'x'.repeat(200);
+    const lines = [
+      'before',
+      'c2',
+      'c3',
+      'c4',
+      'edge-a',
+      'edge-b',
+      'edge-c',
+      'mid-8',
+      'mid-9',
+      'mid-10',
+      'mid-11',
+      'mid-12',
+      'mid-13',
+      'edge-d',
+      'edge-e',
+      'edge-f',
+      'c17',
+      'c18',
+      'c19',
+      'before-b',
+      'c21',
+      'c22',
+      'c23',
+    ];
+    while (Buffer.byteLength(`${lines.join('\n')}\n`) <= 2 * 1024 * 1024) {
+      lines.push(filler);
+    }
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    git(feature, ['add', 'wide.txt']);
+    git(feature, ['commit', '-m', 'Add wide']);
+    lines[0] = 'after';
+    lines[19] = 'after-b';
+    writeFileSync(join(feature, 'wide.txt'), `${lines.join('\n')}\n`);
+    const fixture = await renderRepository(repoPath);
+    openChangedFile(fixture, 'feature', 'wide.txt');
+
+    const diff = fixture.nativeElement.querySelector('[data-testid="diff"]') as HTMLElement;
+    expect(diff.textContent).not.toContain('edge-a');
+    expect(diff.textContent).not.toContain('edge-f');
+    (foldWithCount(diff, '12 hidden lines').querySelector('[data-testid="diff-fold-more"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(diff.textContent).toContain('edge-a');
+    expect(diff.textContent).toContain('edge-b');
+    expect(diff.textContent).toContain('edge-c');
+    expect(diff.textContent).toContain('edge-d');
+    expect(diff.textContent).toContain('edge-e');
+    expect(diff.textContent).toContain('edge-f');
+  });
+
   it('keeps the switch visible when the diff is only a sentence', async () => {
     const fixture = await render();
     fixture.nativeElement.querySelector('[data-testid="repository"][data-name="Harbor"]').click();

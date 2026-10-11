@@ -1119,13 +1119,14 @@ function readFileSides(
   newSide: { text: string; tooLarge: boolean },
   binary: boolean,
 ): DiffFileSides {
-  if (oldSide.tooLarge || newSide.tooLarge) {
-    return { oldText: '', newText: '', tooLarge: true };
-  }
   if (binary) {
-    return { oldText: '', newText: '', tooLarge: false };
+    return { oldText: '', newText: '', tooLarge: oldSide.tooLarge || newSide.tooLarge };
   }
-  return { oldText: oldSide.text, newText: newSide.text, tooLarge: false };
+  return {
+    oldText: oldSide.text,
+    newText: newSide.text,
+    tooLarge: oldSide.tooLarge || newSide.tooLarge,
+  };
 }
 
 function readGitBlob(cwd: string, spec: string): { text: string; tooLarge: boolean } {
@@ -1133,18 +1134,16 @@ function readGitBlob(cwd: string, spec: string): { text: string; tooLarge: boole
   if (sizeText === undefined || !/^\d+$/.test(sizeText)) {
     return { text: '', tooLarge: false };
   }
-  if (Number(sizeText) > fullFileByteLimit) {
-    return { text: '', tooLarge: true };
-  }
+  const size = Number(sizeText);
   try {
     return {
       text: execFileSync('git', ['cat-file', '-p', spec], {
         cwd,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: fullFileByteLimit + 1024,
+        maxBuffer: size,
       }),
-      tooLarge: false,
+      tooLarge: size > fullFileByteLimit,
     };
   } catch {
     return { text: '', tooLarge: false };
@@ -1154,10 +1153,8 @@ function readGitBlob(cwd: string, spec: string): { text: string; tooLarge: boole
 function readCheckoutFile(checkout: string, filePath: string): { text: string; tooLarge: boolean } {
   const full = join(checkout, filePath);
   try {
-    if (statSync(full).size > fullFileByteLimit) {
-      return { text: '', tooLarge: true };
-    }
-    return { text: readFileSync(full, 'utf8'), tooLarge: false };
+    const size = statSync(full).size;
+    return { text: readFileSync(full, 'utf8'), tooLarge: size > fullFileByteLimit };
   } catch {
     return { text: '', tooLarge: false };
   }

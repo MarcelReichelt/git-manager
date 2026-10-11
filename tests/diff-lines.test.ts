@@ -3,7 +3,7 @@ import { diffLines } from '../src/diff-lines';
 
 describe('diffLines', () => {
   it('reads a one-word change with old and new numbers and marks that word', () => {
-    const patch = [
+    const diffText = [
       'diff --git a/notes.txt b/notes.txt',
       'index 111..222 100644',
       '--- a/notes.txt',
@@ -16,7 +16,7 @@ describe('diffLines', () => {
       '',
     ].join('\n');
 
-    expect(diffLines(patch)).toEqual({
+    expect(diffLines(diffText)).toEqual({
       previousPath: null,
       binary: false,
       lines: [
@@ -59,9 +59,9 @@ describe('diffLines', () => {
   });
 
   it('marks a whitespace-only change as a removed line and an added line', () => {
-    const patch = ['@@ -1 +1 @@', '-hello world', '+hello  world', ''].join('\n');
+    const diffText = ['@@ -1 +1 @@', '-hello world', '+hello  world', ''].join('\n');
 
-    expect(diffLines(patch).lines).toEqual([
+    expect(diffLines(diffText).lines).toEqual([
       {
         kind: 'removed',
         oldNumber: 1,
@@ -88,9 +88,9 @@ describe('diffLines', () => {
   });
 
   it('reads a new file as added lines with no old numbers', () => {
-    const patch = ['--- /dev/null', '+++ b/notes.txt', '@@ -0,0 +1,2 @@', '+alpha', '+beta', ''].join('\n');
+    const diffText = ['--- /dev/null', '+++ b/notes.txt', '@@ -0,0 +1,2 @@', '+alpha', '+beta', ''].join('\n');
 
-    expect(diffLines(patch).lines).toEqual([
+    expect(diffLines(diffText).lines).toEqual([
       {
         kind: 'added',
         oldNumber: null,
@@ -109,9 +109,9 @@ describe('diffLines', () => {
   });
 
   it('reads a deleted file as removed lines with no new numbers', () => {
-    const patch = ['--- a/notes.txt', '+++ /dev/null', '@@ -1,2 +0,0 @@', '-alpha', '-beta', ''].join('\n');
+    const diffText = ['--- a/notes.txt', '+++ /dev/null', '@@ -1,2 +0,0 @@', '-alpha', '-beta', ''].join('\n');
 
-    expect(diffLines(patch).lines).toEqual([
+    expect(diffLines(diffText).lines).toEqual([
       {
         kind: 'removed',
         oldNumber: 1,
@@ -130,7 +130,7 @@ describe('diffLines', () => {
   });
 
   it('reads only the hunk lines and drops the no-newline marker', () => {
-    const patch = [
+    const diffText = [
       '@@ -1,5 +1,5 @@',
       ' one',
       ' two',
@@ -147,7 +147,7 @@ describe('diffLines', () => {
       '',
     ].join('\n');
 
-    expect(diffLines(patch).lines.map((line) => line.text)).toEqual([
+    expect(diffLines(diffText).lines.map((line) => line.text)).toEqual([
       'one',
       'two',
       'three',
@@ -162,9 +162,9 @@ describe('diffLines', () => {
   });
 
   it('leaves a block that is not a one-for-one replacement unmarked inside the line', () => {
-    const patch = ['@@ -1,2 +1 @@', '-alpha', '-beta', '+gamma', ''].join('\n');
+    const diffText = ['@@ -1,2 +1 @@', '-alpha', '-beta', '+gamma', ''].join('\n');
 
-    expect(diffLines(patch).lines).toEqual([
+    expect(diffLines(diffText).lines).toEqual([
       {
         kind: 'removed',
         oldNumber: 1,
@@ -189,8 +189,8 @@ describe('diffLines', () => {
     ]);
   });
 
-  it('reads Renamed from the patch and still returns the changed lines', () => {
-    const patch = [
+  it('reads Renamed from the diff and still returns the changed lines', () => {
+    const diffText = [
       'diff --git a/docs/old-guide.md b/docs/guide.md',
       'similarity index 90%',
       'rename from docs/old-guide.md',
@@ -205,7 +205,7 @@ describe('diffLines', () => {
       '',
     ].join('\n');
 
-    const diff = diffLines(patch);
+    const diff = diffLines(diffText);
     expect(diff.previousPath).toBe('docs/old-guide.md');
     expect(diff.binary).toBe(false);
     expect(diff.lines.map((line) => line.text)).toEqual(['harbor notes', 'old guide', 'new guide', 'keep the rest']);
@@ -217,7 +217,7 @@ describe('diffLines', () => {
     ]);
   });
 
-  it('uses the selected previous path when the patch has no rename', () => {
+  it('uses the selected previous path when the diff has no rename', () => {
     const diff = diffLines('@@ -1 +1 @@\n-old guide\n+new guide\n', { previousPath: 'docs/old-guide.md' });
 
     expect(diff.previousPath).toBe('docs/old-guide.md');
@@ -225,9 +225,9 @@ describe('diffLines', () => {
   });
 
   it('reads a pure rename as the old path and no lines', () => {
-    const patch = ['similarity index 100%', 'rename from docs/old-guide.md', 'rename to docs/guide.md', ''].join('\n');
+    const diffText = ['similarity index 100%', 'rename from docs/old-guide.md', 'rename to docs/guide.md', ''].join('\n');
 
-    expect(diffLines(patch)).toEqual({
+    expect(diffLines(diffText)).toEqual({
       previousPath: 'docs/old-guide.md',
       binary: false,
       lines: [],
@@ -235,16 +235,16 @@ describe('diffLines', () => {
   });
 
   it('does not pair a removed line with an added line from another hunk', () => {
-    const patch = ['@@ -1 +0,0 @@', '-alpha word', '@@ -8,0 +8 @@', '+alpha other', ''].join('\n');
+    const diffText = ['@@ -1 +0,0 @@', '-alpha word', '@@ -8,0 +8 @@', '+alpha other', ''].join('\n');
 
-    expect(diffLines(patch).lines.map((line) => line.spans)).toEqual([
+    expect(diffLines(diffText).lines.map((line) => line.spans)).toEqual([
       [{ text: 'alpha word', changed: false }],
       [{ text: 'alpha other', changed: false }],
     ]);
   });
 
-  it('reads a binary patch as binary and no lines', () => {
-    const patch = [
+  it('reads a binary diff as binary and no lines', () => {
+    const diffText = [
       'diff --git a/assets/logo.png b/assets/logo.png',
       'new file mode 100644',
       'index 0000000..1111111',
@@ -252,7 +252,7 @@ describe('diffLines', () => {
       '',
     ].join('\n');
 
-    expect(diffLines(patch)).toEqual({
+    expect(diffLines(diffText)).toEqual({
       previousPath: null,
       binary: true,
       lines: [],

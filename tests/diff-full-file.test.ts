@@ -3,7 +3,7 @@ import { fullFileLines } from '../src/diff-lines';
 
 describe('fullFileLines', () => {
   it('shows every line of a one-word change, including the stretches outside the hunk', () => {
-    const patch = [
+    const diffText = [
       'diff --git a/notes.txt b/notes.txt',
       'index 111..222 100644',
       '--- a/notes.txt',
@@ -22,7 +22,7 @@ describe('fullFileLines', () => {
     const oldText = 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n';
     const newText = 'one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n';
 
-    expect(fullFileLines(patch, oldText, newText)).toEqual({
+    expect(fullFileLines(diffText, oldText, newText)).toEqual({
       tooLarge: false,
       lines: [
         context(1, 1, 'one'),
@@ -53,7 +53,7 @@ describe('fullFileLines', () => {
   });
 
   it('fills the stretch between hunks and numbers lines after an insertion', () => {
-    const patch = [
+    const diffText = [
       '@@ -1,5 +1,5 @@',
       ' l01',
       '-l02',
@@ -71,7 +71,7 @@ describe('fullFileLines', () => {
     const oldText = Array.from({ length: 20 }, (_, index) => `l${String(index + 1).padStart(2, '0')}`).join('\n');
     const newText = oldText.replace('l02', 'L02').replace('l15', 'INSERTED\nl15');
 
-    const lines = fullFileLines(patch, `${oldText}\n`, `${newText}\n`).lines;
+    const lines = fullFileLines(diffText, `${oldText}\n`, `${newText}\n`).lines;
 
     expect(lines.map((line) => line.text)).toEqual([
       'l01',
@@ -112,11 +112,11 @@ describe('fullFileLines', () => {
   });
 
   it('keeps a whitespace change marked inside the line', () => {
-    const patch = ['@@ -4 +4 @@', '-hello world', '+hello  world', ''].join('\n');
+    const diffText = ['@@ -4 +4 @@', '-hello world', '+hello  world', ''].join('\n');
     const oldText = 'one\ntwo\nthree\nhello world\nfour\n';
     const newText = 'one\ntwo\nthree\nhello  world\nfour\n';
 
-    const lines = fullFileLines(patch, oldText, newText).lines;
+    const lines = fullFileLines(diffText, oldText, newText).lines;
 
     expect(lines.map((line) => line.text)).toEqual(['one', 'two', 'three', 'hello world', 'hello  world', 'four']);
     expect(lines[3]?.spans).toEqual([
@@ -133,8 +133,8 @@ describe('fullFileLines', () => {
     expect(lines[5]).toEqual(context(5, 5, 'four'));
   });
 
-  it('does not append the previous file when the patch is a new file', () => {
-    const patch = [
+  it('does not append the previous file when the diff is a new file', () => {
+    const diffText = [
       'diff --git a/docs/guide.md b/docs/guide.md',
       'new file mode 100644',
       '--- /dev/null',
@@ -145,18 +145,18 @@ describe('fullFileLines', () => {
       '',
     ].join('\n');
 
-    expect(fullFileLines(patch, 'alpha\nold line that must stay hidden\nbeta\n', 'alpha\nbeta\n').lines.map((line) => line.text)).toEqual([
+    expect(fullFileLines(diffText, 'alpha\nold line that must stay hidden\nbeta\n', 'alpha\nbeta\n').lines.map((line) => line.text)).toEqual([
       'alpha',
       'beta',
     ]);
   });
 
-  it('shows the lines around an insertion that has no context in the patch', () => {
-    const patch = ['@@ -5,0 +6,1 @@', '+INSERTED', ''].join('\n');
+  it('shows the lines around an insertion that has no context in the diff', () => {
+    const diffText = ['@@ -5,0 +6,1 @@', '+INSERTED', ''].join('\n');
     const oldText = 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n';
     const newText = 'l1\nl2\nl3\nl4\nl5\nINSERTED\nl6\nl7\nl8\nl9\nl10\n';
 
-    expect(fullFileLines(patch, oldText, newText).lines.map((line) => line.text)).toEqual([
+    expect(fullFileLines(diffText, oldText, newText).lines.map((line) => line.text)).toEqual([
       'l1',
       'l2',
       'l3',
@@ -169,7 +169,7 @@ describe('fullFileLines', () => {
       'l9',
       'l10',
     ]);
-    expect(fullFileLines(patch, oldText, newText).lines.find((line) => line.text === 'l10')).toEqual(context(10, 11, 'l10'));
+    expect(fullFileLines(diffText, oldText, newText).lines.find((line) => line.text === 'l10')).toEqual(context(10, 11, 'l10'));
   });
 
   it('shows a new file as its added lines and a deleted file as its removed lines', () => {
@@ -193,14 +193,14 @@ describe('fullFileLines', () => {
   });
 
   it('counts a final newline as no extra line and still shows a last line without one', () => {
-    const patch = ['@@ -1 +1 @@', '-one', '+ONE', ''].join('\n');
+    const diffText = ['@@ -1 +1 @@', '-one', '+ONE', ''].join('\n');
 
-    expect(fullFileLines(patch, 'one\ntwo', 'ONE\ntwo').lines.map((line) => [line.kind, line.oldNumber, line.newNumber, line.text])).toEqual([
+    expect(fullFileLines(diffText, 'one\ntwo', 'ONE\ntwo').lines.map((line) => [line.kind, line.oldNumber, line.newNumber, line.text])).toEqual([
       ['removed', 1, null, 'one'],
       ['added', null, 1, 'ONE'],
       ['context', 2, 2, 'two'],
     ]);
-    expect(fullFileLines(patch, 'one\n', 'ONE\n').lines).toHaveLength(2);
+    expect(fullFileLines(diffText, 'one\n', 'ONE\n').lines).toHaveLength(2);
   });
 
   it('refuses a side over 2 MiB or over 100,000 lines and keeps a side at either limit', () => {

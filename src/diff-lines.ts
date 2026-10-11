@@ -29,7 +29,7 @@ export interface DiffLinesOptions {
   binary?: boolean;
 }
 
-export function diffLines(patch: string, options: DiffLinesOptions = {}): InlineDiff {
+export function diffLines(diffText: string, options: DiffLinesOptions = {}): InlineDiff {
   const lines: DiffLine[] = [];
   let hunk: RawLine[] = [];
   let oldNumber = 0;
@@ -43,7 +43,7 @@ export function diffLines(patch: string, options: DiffLinesOptions = {}): Inline
     hunk = [];
   };
 
-  for (const line of patch.split('\n')) {
+  for (const line of diffText.split('\n')) {
     if (line.length === 0) {
       continue;
     }
@@ -250,14 +250,14 @@ const hiddenLineLimit = 100_000;
 const foldRevealCount = 3;
 
 export function foldInlineDiff(
-  patch: string,
+  diffText: string,
   sides: FoldSides,
   openings: FoldOpenings = {},
   options: DiffLinesOptions = {},
 ): FoldedDiff {
-  const diff = diffLines(patch, options);
-  const hunks = hunkRanges(patch);
-  const counts = hunkLineCounts(patch);
+  const diff = diffLines(diffText, options);
+  const hunks = hunkRanges(diffText);
+  const counts = hunkLineCounts(diffText);
   const oldLines = splitFileLines(sides.oldText);
   const gaps = foldGaps(hunks, oldLines.length);
   const rows: FoldedRow[] = [];
@@ -428,9 +428,9 @@ function previousLast(hunk: HunkRange): number {
   return hunk.oldCount === 0 ? hunk.oldStart : hunk.oldStart + hunk.oldCount - 1;
 }
 
-function hunkRanges(patch: string): HunkRange[] {
+function hunkRanges(diffText: string): HunkRange[] {
   const hunks: HunkRange[] = [];
-  for (const line of patch.split('\n')) {
+  for (const line of diffText.split('\n')) {
     const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (!header) {
       continue;
@@ -445,10 +445,10 @@ function hunkRanges(patch: string): HunkRange[] {
   return hunks;
 }
 
-function hunkLineCounts(patch: string): number[] {
+function hunkLineCounts(diffText: string): number[] {
   const counts: number[] = [];
   let current = -1;
-  for (const line of patch.split('\n')) {
+  for (const line of diffText.split('\n')) {
     if (line.length === 0) {
       continue;
     }
@@ -487,17 +487,17 @@ export interface FullFileDiff {
   tooLarge: boolean;
 }
 
-export function fullFileLines(patch: string, oldText: string, newText: string): FullFileDiff {
+export function fullFileLines(diffText: string, oldText: string, newText: string): FullFileDiff {
   if (sideTooLarge(oldText) || sideTooLarge(newText)) {
     return { lines: [], tooLarge: true };
   }
   const oldLines = gitLines(oldText);
   const newLines = gitLines(newText);
-  const hasOldFile = !/^--- \/dev\/null$/m.test(patch) && !/@@ -0,0 /.test(patch);
+  const hasOldFile = !/^--- \/dev\/null$/m.test(diffText) && !/@@ -0,0 /.test(diffText);
   const result: DiffLine[] = [];
   let oldCursor = 1;
   let newCursor = 1;
-  for (const line of diffLines(patch).lines) {
+  for (const line of diffLines(diffText).lines) {
     if (line.oldNumber !== null && line.oldNumber > oldCursor) {
       emitUnchanged(result, oldLines, newLines, oldCursor, newCursor, line.oldNumber);
       const gap = line.oldNumber - oldCursor;
